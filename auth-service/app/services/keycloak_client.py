@@ -1,3 +1,4 @@
+# APP/SERVICES/KEYCLOAK_CLIENT.PY (auth-service) - для Варианта 1
 from keycloak import KeycloakOpenID, KeycloakAdmin
 from keycloak.exceptions import KeycloakError, KeycloakPostError, KeycloakAuthenticationError
 from typing import List, Callable, Dict, Any, Tuple
@@ -9,16 +10,27 @@ from app.core.exceptions import (
     InvalidCredentialsException,
     InvalidTokenException
 )
-from app.database.models import UserRole
+from shared.schemas.shared import UserRole
 
 class KeycloakClient:
     def __init__(self):
+        # Используем общую конфигурацию Keycloak
+        server_url = settings.keycloak.server_url
+        realm = settings.keycloak.realm
+        
+        # Используем настройки клиента auth-service
+        client_id = settings.keycloak_client.client_id  # Для Варианта 1
+        # или client_id = settings.keycloak_client_id  # Для Варианта 2
+        
+        client_secret = settings.keycloak_client.client_secret  # Для Варианта 1
+        # или client_secret = settings.keycloak_client_secret  # Для Варианта 2
+        
         # Клиент для Login (получение токена)
         self.oidc = KeycloakOpenID(
-            server_url=settings.keycloak.server_url,
-            client_id=settings.keycloak.client_id,
-            realm_name=settings.keycloak.realm,
-            client_secret_key=settings.keycloak.client_secret,
+            server_url=server_url,
+            client_id=client_id,
+            realm_name=realm,
+            client_secret_key=client_secret,
         )
         
         # Клиент для Admin API (создание юзеров)
@@ -127,7 +139,11 @@ class KeycloakClient:
             try:
                 action()
             except Exception as e:
-                logger.error(f"Compensation action failed: {e}")
+                # Если пользователь уже удален (404), это не ошибка
+                if "404" in str(e) and "User not found" in str(e):
+                    logger.debug(f"User already deleted during compensation, skipping")
+                else:
+                    logger.error(f"Compensation action failed: {e}")
 
     def get_token(self, username: str, password: str) -> Dict[str, Any]:
         """Синхронный метод получения токена"""

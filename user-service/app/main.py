@@ -6,7 +6,9 @@ from app.core.config import settings
 from app.core.logger import logger
 from app.database.session import dispose_engine, engine
 from app.database.models import Base
-from app.api.v1.endpoints import router as api_router
+from app.core.exceptions import UserServiceException
+from app.core.exception_handlers import user_exception_handler, global_exception_handler
+from app.api.v1 import router as api_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,6 +26,10 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if settings.debug else None
 )
+
+# Регистрируем обработчики исключений
+app.add_exception_handler(UserServiceException, user_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,

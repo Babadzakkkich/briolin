@@ -1,12 +1,8 @@
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
-
-class KeycloakConfig(BaseModel):
-    server_url: str = Field(..., env="KEYCLOAK__SERVER_URL")
-    realm: str = Field(..., env="KEYCLOAK__REALM")
-    client_id: str = Field(..., env="USER__KEYCLOAK__CLIENT_ID")
-    client_secret: str = Field(..., env="USER__KEYCLOAK__CLIENT_SECRET")
+from typing import ClassVar
+from shared.config import get_shared_config, KeycloakConfig
 
 class DatabaseConfig(BaseModel):
     user: str = Field(..., env="USER__DB__USER")
@@ -32,12 +28,17 @@ class Settings(BaseSettings):
         env_nested_delimiter="__",
         env_prefix="USER__",
         case_sensitive=False,
+        env_file=".env",
+        env_file_encoding="utf-8"
     )
 
     app_name: str = "Briolin User Service"
-    debug: bool = Field(..., env="USER__DEBUG")
+    debug: bool = Field(False, env="USER__DEBUG")
 
-    keycloak: KeycloakConfig = Field(...)
+    # Используем общую конфигурацию Keycloak
+    keycloak: KeycloakConfig = Field(default_factory=lambda: get_shared_config().keycloak)
     db: DatabaseConfig = Field(...)
+    
+    auth_service_url: str = Field("http://auth-service:8001", env="USER__AUTH_SERVICE__URL")
 
 settings = Settings()

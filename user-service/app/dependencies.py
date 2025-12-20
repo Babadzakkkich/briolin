@@ -1,59 +1,38 @@
-from typing import AsyncGenerator, Dict, Any
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import AsyncGenerator
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.auth.dependencies import get_current_user, get_current_active_user, require_role, require_any_role
 from app.database.session import async_session_factory
+from app.services.keycloak_client import KeycloakClient
 from app.services.user_service import UserService
+from app.services.auth_service_client import get_auth_service_client
 
-security = HTTPBearer(auto_error=False)
+_keycloak_client = None
 
-# Keycloak клиент будет подключен через API Gateway
-# В этом сервисе мы только валидируем токен через публичный эндпоинт Keycloak
+def get_keycloak_client() -> KeycloakClient:
+    global _keycloak_client
+    if _keycloak_client is None:
+        _keycloak_client = KeycloakClient()
+    return _keycloak_client
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         yield session
 
-def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
-    return UserService(db)
+def get_user_service(
+    db: AsyncSession = Depends(get_db),
+    kc_client: KeycloakClient = Depends(get_keycloak_client)
+) -> UserService:
+    return UserService(db, kc_client)
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> Dict[str, Any]:
-    """Получение текущего пользователя из заголовков Gateway"""
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
-    
-    token = credentials.credentials
-    
-    try:
-        # Gateway должен передавать информацию о пользователе в заголовках
-        # Но для совместимости пока валидируем токен самостоятельно
-        
-        # TODO: В будущем Gateway будет передавать X-User-Info
-        # Пока возвращаем минимальную информацию
-        
-        return {
-            "id": "user-id-from-token",  # Временно
-            "keycloak_id": "keycloak-id-from-token",  # Временно
-            "roles": ["user"]  # Временно
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication failed: {str(e)}"
-        )
-
-async def require_role(role: str, current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Декоратор для проверки роли"""
-    if role not in current_user.get("roles", []):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Role {role} required"
-        )
-    return current_user
+# Экспортируем shared зависимости
+__all__ = [
+    'get_db',
+    'get_keycloak_client',
+    'get_user_service',
+    'get_current_user',
+    'get_current_active_user',
+    'require_role',
+    'require_any_role'
+]

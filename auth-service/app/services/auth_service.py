@@ -2,9 +2,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Dict, Any, List, Callable
 
-from app.database.models import User, UserRole
+from app.database.models import User
 from app.schemas.auth import UserRegister, UserLogin
 from app.services.keycloak_client import KeycloakClient
+from app.services.user_service_client import user_service_client
 from app.core.exceptions import (
     InvalidTokenException,
     UserAlreadyExistsException, 
@@ -15,7 +16,6 @@ from app.core.exceptions import (
 )
 from app.core.logger import logger
 
-
 class AuthService:
     def __init__(self, db: AsyncSession, kc_client: KeycloakClient):
         self.db = db
@@ -23,20 +23,18 @@ class AuthService:
 
     async def register(self, user_data: dict) -> Dict[str, Any]:
         """Регистрация пользователя"""
-        # Преобразуем dict в UserRegister
         user_register = UserRegister(**user_data)
         
         # Проверка существования пользователя в локальной БД
-        stmt = select(User).where(
-            (User.email == user_register.email) | (User.username == user_register.username)
-        )
+        stmt = select(User).where(User.email == user_register.email)
         result = await self.db.execute(stmt)
         if result.scalar_one_or_none():
-            logger.info(f"Registration failed: User {user_register.username} already exists locally")
+            logger.info(f"Registration failed: User {user_register.email} already exists locally")
             raise UserAlreadyExistsException()
 
         keycloak_id = None
         compensation_actions: List[Callable[[], None]] = []
+        user_created_in_db = False
         
         try:
             # Создание в Keycloak
@@ -56,48 +54,75 @@ class AuthService:
             logger.error(f"Keycloak registration failed: {e}")
             raise KeycloakConnectionError(f"Registration failed in Identity Provider: {str(e)}")
 
-        # Создание пользователя в локальной БД
+        # Создание пользователя в локальной БД auth
         new_user = User(
             keycloak_id=keycloak_id,
             email=user_register.email,
-            username=user_register.username,
-            first_name=user_register.first_name,
-            last_name=user_register.last_name
-        )
-        
-        # Добавляем роль
-        from app.database.models import UserRoleAssignment
-        role_assignment = UserRoleAssignment(
-            user=new_user,
-            role=user_register.role
         )
         
         try:
             self.db.add(new_user)
             await self.db.commit()
             await self.db.refresh(new_user)
+            user_created_in_db = True
             
-            compensation_actions.clear()
+            logger.info(f"User registered in auth-db: {new_user.id}")
             
-            logger.info(f"User registered successfully: {new_user.id} with role {user_register.role.value}")
+            # Создание расширенного профиля в user-service
+            try:
+                await user_service_client.create_user_profile(
+                    keycloak_id=keycloak_id,
+                    email=user_register.email,
+                    username=user_register.username,
+                    first_name=user_register.first_name,
+                    last_name=user_register.last_name,
+                    role=user_register.role
+                )
+                logger.info(f"User profile created in user-service for {keycloak_id}")
+            except Exception as e:
+                logger.error(f"Failed to create user profile in user-service: {e}")
+                # Компенсация: удаляем пользователя из auth-db
+                try:
+                    await self.db.delete(new_user)
+                    await self.db.commit()
+                    user_created_in_db = False
+                except Exception as db_error:
+                    logger.error(f"Failed to delete user from auth-db during compensation: {db_error}")
+                    await self.db.rollback()
+                
+                # Компенсация: удаляем пользователя из Keycloak
+                self.kc._execute_compensation(compensation_actions)
+                raise DatabaseException("Failed to create user profile in user-service")
             
-            # Возвращаем информацию о пользователе
             return {
                 "id": new_user.id,
                 "keycloak_id": new_user.keycloak_id,
-                "username": new_user.username,
                 "email": new_user.email,
-                "first_name": new_user.first_name,
-                "last_name": new_user.last_name,
-                "roles": [user_register.role.value],
                 "is_active": new_user.is_active
             }
             
         except Exception as e:
             logger.error(f"DB Error during registration: {e}")
-            await self.db.rollback()
-            self.kc._execute_compensation(kc_compensation)
-            raise DatabaseException("System error during registration")
+            
+            # Если пользователь был создан в БД, пытаемся удалить
+            if user_created_in_db:
+                try:
+                    await self.db.rollback()
+                    self.db.add(new_user)
+                    await self.db.delete(new_user)
+                    await self.db.commit()
+                except Exception as delete_error:
+                    logger.error(f"Failed to delete user during cleanup: {delete_error}")
+                    await self.db.rollback()
+            
+            # Компенсация для Keycloak
+            if compensation_actions:
+                self.kc._execute_compensation(compensation_actions)
+            
+            if isinstance(e, DatabaseException):
+                raise e
+            else:
+                raise DatabaseException("System error during registration")
 
     async def login(self, credentials: dict) -> Dict[str, Any]:
         """Аутентификация пользователя"""
@@ -119,9 +144,6 @@ class AuthService:
         
         try:
             return self.kc.refresh_token(refresh_token)
-        except InvalidTokenException as e:
-            # Пробрасываем InvalidTokenException с правильным сообщением
-            raise e
         except KeycloakConnectionError:
             raise KeycloakConnectionError("Auth service temporarily unavailable")
     
@@ -136,9 +158,86 @@ class AuthService:
             raise KeycloakConnectionError("Auth service temporarily unavailable")
     
     async def validate_token(self, token: str) -> Dict[str, Any]:
-        """Валидация токена (для совместимости)"""
+        """Валидация токена"""
         try:
             payload = self.kc.decode_token(token, validate=True)
             return {"valid": True, "payload": payload}
         except Exception as e:
             return {"valid": False, "error": str(e)}
+    
+    async def check_user_exists(self, keycloak_id: str) -> bool:
+        """Проверка существования пользователя в auth-db"""
+        stmt = select(User).where(User.keycloak_id == keycloak_id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none() is not None
+    
+    async def check_user_active(self, keycloak_id: str) -> bool:
+        """Проверка активности пользователя в auth-db"""
+        stmt = select(User).where(User.keycloak_id == keycloak_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+        return user.is_active if user else False
+    
+    async def get_user_basic_info(self, keycloak_id: str) -> Dict[str, Any]:
+        """Получение базовой информации о пользователе из auth-db"""
+        stmt = select(User).where(User.keycloak_id == keycloak_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            return None
+        
+        return {
+            "id": user.id,
+            "keycloak_id": user.keycloak_id,
+            "email": user.email,
+            "is_active": user.is_active,
+            "created_at": user.created_at
+        }
+        
+    async def update_user_in_auth_db(self, keycloak_id: str, update_data: dict) -> bool:
+        """Обновление пользователя в auth-db (вызывается из user-service)"""
+        stmt = select(User).where(User.keycloak_id == keycloak_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            logger.warning(f"User with keycloak_id {keycloak_id} not found in auth-db")
+            return False
+        
+        try:
+            # Обновляем только разрешенные поля
+            if 'email' in update_data:
+                user.email = update_data['email']
+            if 'is_active' in update_data:
+                user.is_active = update_data['is_active']
+            
+            await self.db.commit()
+            logger.info(f"User {keycloak_id} updated in auth-db: {list(update_data.keys())}")
+            return True
+            
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Failed to update user in auth-db: {e}")
+            raise DatabaseException("Failed to update user in auth-db")
+
+    async def delete_user_from_auth_db(self, keycloak_id: str) -> bool:
+        """Удаление пользователя из auth-db (вызывается из user-service)"""
+        stmt = select(User).where(User.keycloak_id == keycloak_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            logger.warning(f"User with keycloak_id {keycloak_id} not found in auth-db")
+            return False
+        
+        try:
+            await self.db.delete(user)
+            await self.db.commit()
+            logger.warning(f"User {keycloak_id} deleted from auth-db")
+            return True
+            
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Failed to delete user from auth-db: {e}")
+            raise DatabaseException("Failed to delete user from auth-db")

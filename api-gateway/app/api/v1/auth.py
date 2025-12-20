@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Response
+from fastapi import APIRouter, Request, Depends, Response, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.services.http_client import http_client
 from app.schemas.auth import (
@@ -11,8 +11,6 @@ from app.schemas.auth import (
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-# Схема безопасности для роутов, требующих авторизации
 security = HTTPBearer(auto_error=False)
 
 @router.post("/register", response_model=UserInfo)
@@ -20,9 +18,7 @@ async def register_user(
     user_data: UserRegister,
     request: Request
 ):
-    """
-    Регистрация нового пользователя
-    """
+    """Регистрация нового пользователя"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -35,9 +31,7 @@ async def login_user(
     credentials: UserLogin,
     request: Request
 ):
-    """
-    Аутентификация пользователя
-    """
+    """Аутентификация пользователя"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -50,9 +44,7 @@ async def refresh_token(
     refresh_data: RefreshRequest,
     request: Request
 ):
-    """
-    Обновление токена
-    """
+    """Обновление токена"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -66,9 +58,7 @@ async def logout_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """
-    Выход из системы
-    """
+    """Выход из системы"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -80,9 +70,7 @@ async def logout_user(
 async def validate_token(
     request: Request
 ):
-    """
-    Валидация токена (для совместимости)
-    """
+    """Валидация токена (для совместимости)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
