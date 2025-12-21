@@ -126,6 +126,25 @@ services:
       timeout: 10s
       retries: 3
 
+  rabbitmq:
+    image: rabbitmq:4.2.2-management-alpine
+    container_name: briolin-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   auth-service:
     build: 
       context: .
@@ -139,6 +158,8 @@ services:
       auth-postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     volumes:
       - ./shared:/app/shared:ro
@@ -156,6 +177,8 @@ services:
       - .env 
     depends_on:
       user-postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     volumes:
       - ./shared:/app/shared:ro
@@ -193,6 +216,7 @@ volumes:
   keycloak-postgres-data:
   redis-data:
   redis-insight-data:
+  rabbitmq-data:
 
 networks:
   briolin-network:

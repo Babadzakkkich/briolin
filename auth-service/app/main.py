@@ -9,16 +9,41 @@ from app.database.models import Base
 from app.core.exceptions import AuthException
 from app.core.exception_handlers import auth_exception_handler, global_exception_handler
 from app.api.v1 import router as api_router
+from app.services.rabbitmq import rabbitmq_publisher, rabbitmq_consumer
+from app.consumers import register_consumers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Auth Service...")
+    
+    # Инициализация БД
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Подключение к RabbitMQ
+    try:
+        await rabbitmq_publisher.connect()
+        await rabbitmq_consumer.connect()
+        
+        # Регистрация consumers
+        await register_consumers()
+        
+        logger.info("Auth Service started successfully with RabbitMQ")
+    except Exception as e:
+        logger.error(f"Failed to connect to RabbitMQ: {e}")
     
     yield
     
     logger.info("Shutting down Auth Service...")
+    
+    # Отключение от RabbitMQ
+    try:
+        await rabbitmq_consumer.disconnect()
+        await rabbitmq_publisher.disconnect()
+    except Exception as e:
+        logger.error(f"Error disconnecting from RabbitMQ: {e}")
+    
+    # Закрытие соединений с БД
     await dispose_engine()
 
 app = FastAPI(

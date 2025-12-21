@@ -6,7 +6,6 @@ from shared.auth.dependencies import get_current_user, get_current_active_user, 
 from app.database.session import async_session_factory
 from app.services.keycloak_client import KeycloakClient
 from app.services.user_service import UserService
-from app.services.auth_service_client import get_auth_service_client
 
 _keycloak_client = None
 

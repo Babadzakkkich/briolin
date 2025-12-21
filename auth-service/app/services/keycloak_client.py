@@ -1,4 +1,3 @@
-# APP/SERVICES/KEYCLOAK_CLIENT.PY (auth-service) - для Варианта 1
 from keycloak import KeycloakOpenID, KeycloakAdmin
 from keycloak.exceptions import KeycloakError, KeycloakPostError, KeycloakAuthenticationError
 from typing import List, Callable, Dict, Any, Tuple
@@ -17,13 +16,8 @@ class KeycloakClient:
         # Используем общую конфигурацию Keycloak
         server_url = settings.keycloak.server_url
         realm = settings.keycloak.realm
-        
-        # Используем настройки клиента auth-service
-        client_id = settings.keycloak_client.client_id  # Для Варианта 1
-        # или client_id = settings.keycloak_client_id  # Для Варианта 2
-        
-        client_secret = settings.keycloak_client.client_secret  # Для Варианта 1
-        # или client_secret = settings.keycloak_client_secret  # Для Варианта 2
+        client_id = settings.keycloak_client.client_id 
+        client_secret = settings.keycloak_client.client_secret
         
         # Клиент для Login (получение токена)
         self.oidc = KeycloakOpenID(

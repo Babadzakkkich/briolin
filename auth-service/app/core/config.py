@@ -2,7 +2,7 @@
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
-from shared.config import get_shared_config, KeycloakConfig
+from shared.config import get_shared_config, KeycloakConfig, RabbitMQConfig
 
 # Делаем AuthKeycloakClientConfig BaseSettings
 class AuthKeycloakClientConfig(BaseSettings):
@@ -55,9 +55,11 @@ class Settings(BaseSettings):
     db: DatabaseConfig = Field(...)
     user_service: UserServiceConfig = Field(...)
     
-    # Делаем keycloak свойством
     @property
     def keycloak(self) -> KeycloakConfig:
         return get_shared_config().keycloak
+    @property
+    def rabbitmq(self) -> RabbitMQConfig:
+        return get_shared_config().rabbitmq
 
 settings = Settings()
