@@ -1,4 +1,3 @@
-# auth-service/app/services/event_service.py
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -43,11 +42,7 @@ class EventService:
                 }
             )
             
-            success = await self.publisher.publish(
-                exchange_name="briolin.events",
-                routing_key=EventType.USER_REGISTERED,
-                message=event.model_dump()
-            )
+            success = await self.publisher.publish_event(event)
             
             if success:
                 logger.info(f"Published USER_REGISTERED event for user: {username}")
@@ -65,10 +60,16 @@ class EventService:
         keycloak_id: str,
         updated_fields: Dict[str, Any],
         old_values: Optional[Dict[str, Any]] = None,
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        processed_by: Optional[list] = None
     ) -> bool:
         """Публикация события обновления пользователя"""
         try:
+            processed_list = processed_by or []
+            # ВСЕГДА добавляем себя при публикации!
+            if "auth-service" not in processed_list:
+                processed_list.append("auth-service")
+            
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
                 event_type=EventType.USER_UPDATED,
@@ -78,14 +79,11 @@ class EventService:
                     "keycloak_id": keycloak_id,
                     "updated_fields": updated_fields,
                     "old_values": old_values or {}
-                }
+                },
+                processed_by=processed_list  # Теперь здесь есть auth-service
             )
             
-            success = await self.publisher.publish(
-                exchange_name="briolin.events",
-                routing_key=EventType.USER_UPDATED,
-                message=event.model_dump()
-            )
+            success = await self.publisher.publish_event(event)
             
             if success:
                 logger.info(f"Published USER_UPDATED event for user: {keycloak_id}")
@@ -99,10 +97,13 @@ class EventService:
     async def publish_user_deleted(
         self, 
         keycloak_id: str,
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        processed_by: Optional[list] = None
     ) -> bool:
         """Публикация события удаления пользователя"""
         try:
+            processed_list = processed_by or []
+            
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
                 event_type=EventType.USER_DELETED,
@@ -111,14 +112,11 @@ class EventService:
                 user_data={
                     "keycloak_id": keycloak_id,
                     "timestamp": datetime.utcnow().isoformat()
-                }
+                },
+                processed_by=processed_list
             )
             
-            success = await self.publisher.publish(
-                exchange_name="briolin.events",
-                routing_key=EventType.USER_DELETED,
-                message=event.model_dump()
-            )
+            success = await self.publisher.publish_event(event)
             
             if success:
                 logger.info(f"Published USER_DELETED event for user: {keycloak_id}")
@@ -128,7 +126,6 @@ class EventService:
         except Exception as e:
             logger.error(f"Error publishing USER_DELETED event: {e}")
             return False
-
 
 # Глобальный экземпляр
 _event_service = None

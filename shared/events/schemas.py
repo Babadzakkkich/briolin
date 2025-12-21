@@ -15,7 +15,7 @@ class EventType(str, Enum):
 
 class BaseEvent(BaseModel):
     """Базовый класс для всех событий"""
-    event_type: str
+    event_type: EventType  # Используем Enum напрямую
     event_id: str = Field(..., description="Уникальный ID события")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     source_service: str = Field(..., description="Сервис-источник события")
@@ -23,3 +23,5 @@ class BaseEvent(BaseModel):
     correlation_id: Optional[str] = Field(None, description="ID для отслеживания цепочки событий")
     user_data: Dict[str, Any] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    # НОВОЕ: отслеживание, какие сервисы уже обработали событие
+    processed_by: List[str] = Field(default_factory=list, description="Сервисы, уже обработавшие это событие")

@@ -53,21 +53,17 @@ class UserService:
             
             logger.info(f"User profile created: {new_user.id} with role {data.role}")
             
-            # Отправляем событие о создании профиля пользователя
-            try:
-                await self.event_service.publish_user_profile_created(
-                    keycloak_id=new_user.keycloak_id,
-                    user_id=new_user.id,
-                    username=new_user.username,
-                    email=new_user.email,
-                    first_name=new_user.first_name,
-                    last_name=new_user.last_name,
-                    roles=[data.role.value]
-                )
-                logger.info(f"User profile created event published for {new_user.id}")
-            except Exception as e:
-                logger.error(f"Failed to publish user profile created event: {e}")
-                # НЕ откатываем создание пользователя, только логируем ошибку
+            # Публикуем событие создания профиля
+            await self.event_service.publish_user_profile_created(
+                keycloak_id=new_user.keycloak_id,
+                user_id=new_user.id,
+                username=new_user.username,
+                email=new_user.email,
+                first_name=new_user.first_name,
+                last_name=new_user.last_name,
+                roles=[data.role.value]
+            )
+            logger.info(f"User profile created event published for {new_user.id}")
             
             return new_user
             
@@ -80,9 +76,10 @@ class UserService:
         self,
         user_id: int,
         user_data: UserBase,
-        current_user: dict
+        current_user: dict,
+        source_service: str = "api"
     ) -> User:
-        """Обновление пользователя с отправкой событий"""
+        """Обновление пользователя с защитой от циклических событий"""
         user = await self.get_user_by_id(user_id)
         
         # Проверяем права: либо свой профиль, либо админ
@@ -129,8 +126,8 @@ class UserService:
             await self.db.commit()
             await self.db.refresh(user)
             
-            # 2. Отправляем событие об обновлении профиля
-            try:
+            # 2. Публикуем событие только если обновление инициировано из API
+            if source_service == "api":
                 await self.event_service.publish_user_profile_updated(
                     keycloak_id=user.keycloak_id,
                     user_id=user.id,
@@ -143,9 +140,6 @@ class UserService:
                     }
                 )
                 logger.info(f"User profile update event published for {user.id}")
-            except Exception as e:
-                logger.error(f"Failed to publish user profile update event: {e}")
-                # НЕ откатываем изменения, только логируем
             
             # 3. Обновляем в Keycloak (синхронно, так как критично для аутентификации)
             try:
@@ -167,7 +161,7 @@ class UserService:
                 await self.db.rollback()
                 raise DatabaseException("User updated locally but failed in Keycloak")
             
-            logger.info(f"User {user_id} updated successfully in all systems (DB, Keycloak) with events")
+            logger.info(f"User {user_id} updated successfully in all systems (DB, Keycloak)")
             return user
             
         except Exception as e:
@@ -202,16 +196,13 @@ class UserService:
             await self.db.delete(user)
             await self.db.commit()
             
-            # 3. Отправляем событие об удалении пользователя (ТОЛЬКО ОДИН РАЗ)
+            # 3. Публикуем событие об удалении пользователя
             logger.info(f"[{deletion_id}] Publishing deletion event to auth-service")
-            try:
-                await self.event_service.publish_user_deleted(
-                    keycloak_id=user.keycloak_id,
-                    user_id=user.id
-                )
-            except Exception as e:
-                logger.error(f"[{deletion_id}] Failed to publish user deletion event: {e}")
-                # Не падаем, если событие не опубликовалось
+            await self.event_service.publish_user_deleted(
+                keycloak_id=user.keycloak_id,
+                user_id=user.id,
+                processed_by=["user-service"]  # Указываем, что user-service уже обработал
+            )
             
             logger.info(f"[{deletion_id}] User {user_id} deleted completely from all systems")
             return True
@@ -240,20 +231,14 @@ class UserService:
             await self.db.refresh(user)
             
             # 2. Отправляем событие об изменении статуса
-            try:
-                await self.event_service.publish_user_status_changed(
-                    keycloak_id=user.keycloak_id,
-                    user_id=user.id,
-                    is_active=new_status,
-                    reason="admin_action"
-                )
-                logger.info(f"User status change event published for {user.id}")
-            except Exception as e:
-                logger.error(f"Failed to publish user status change event: {e}")
-                # Откатываем локальное изменение
-                user.is_active = old_status
-                await self.db.commit()
-                raise DatabaseException("User status updated locally but failed to publish event")
+            await self.event_service.publish_user_status_changed(
+                keycloak_id=user.keycloak_id,
+                user_id=user.id,
+                is_active=new_status,
+                reason="admin_action",
+                processed_by=["user-service"]  # Указываем, что user-service уже обработал
+            )
+            logger.info(f"User status change event published for {user.id}")
             
             # 3. Обновляем статус в Keycloak (синхронно)
             try:
@@ -306,19 +291,14 @@ class UserService:
             await self.db.refresh(user)
             
             # 3. Отправляем событие об обновлении ролей
-            try:
-                await self.event_service.publish_user_roles_updated(
-                    keycloak_id=user.keycloak_id,
-                    user_id=user.id,
-                    roles=[role.value for role in roles_data.roles],
-                    old_roles=[role.value for role in old_roles]
-                )
-                logger.info(f"User roles update event published for {user.id}")
-            except Exception as e:
-                logger.error(f"Failed to publish user roles update event: {e}")
-                # Откатываем локальные изменения
-                await self.db.rollback()
-                raise DatabaseException("Roles updated locally but failed to publish event")
+            await self.event_service.publish_user_roles_updated(
+                keycloak_id=user.keycloak_id,
+                user_id=user.id,
+                roles=[role.value for role in roles_data.roles],
+                old_roles=[role.value for role in old_roles],
+                processed_by=["user-service"]  # Указываем, что user-service уже обработал
+            )
+            logger.info(f"User roles update event published for {user.id}")
             
             # 4. Обновляем роли в Keycloak (синхронно)
             try:
@@ -345,42 +325,6 @@ class UserService:
             return True
         except UserNotFoundException:
             return False
-
-    async def create_user_profile(self, data) -> User:
-        """Создание профиля пользователя (вызвано из auth-service через события)"""
-        # Проверяем уникальность
-        stmt = select(User).where(
-            (User.email == data.email) | (User.username == data.username)
-        )
-        result = await self.db.execute(stmt)
-        if result.scalar_one_or_none():
-            raise UserAlreadyExistsException("Email or username already exists")
-        
-        # Создаем пользователя
-        new_user = User(
-            keycloak_id=data.keycloak_id,
-            username=data.username,
-            email=data.email,
-            first_name=data.first_name,
-            last_name=data.last_name,
-        )
-        
-        # Добавляем роль
-        role_assignment = UserRoleAssignment(user=new_user, role=data.role)
-        
-        try:
-            self.db.add(new_user)
-            await self.db.commit()
-            await self.db.refresh(new_user)
-            
-            logger.info(f"User profile created: {new_user.id} with role {data.role}")
-            
-            return new_user
-            
-        except Exception as e:
-            await self.db.rollback()
-            logger.error(f"DB Error creating user profile: {e}")
-            raise DatabaseException("Failed to create user profile")
 
     async def get_user_by_id(self, user_id: int) -> User:
         """Получение пользователя по ID"""
@@ -463,3 +407,42 @@ class UserService:
         stmt = select(User).join(UserRoleAssignment).where(UserRoleAssignment.role == role)
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def update_user_from_event(
+        self,
+        keycloak_id: str,
+        updated_fields: Dict[str, Any],
+        source_service: str = "auth-service"
+    ) -> bool:
+        """Обновление пользователя из события"""
+        user = await self.get_user_by_keycloak_id(keycloak_id)
+        if not user:
+            logger.warning(f"User {keycloak_id} not found in user-service")
+            return False
+        
+        try:
+            # Обновляем только разрешенные поля
+            allowed_fields = ["email", "first_name", "last_name", "username"]
+            fields_to_update = {
+                k: v for k, v in updated_fields.items() 
+                if k in allowed_fields and v is not None
+            }
+            
+            if not fields_to_update:
+                logger.debug(f"No relevant fields to update for {keycloak_id}")
+                return True
+            
+            # Обновляем поля
+            for field, value in fields_to_update.items():
+                if field in ['email', 'username']:
+                    value = value.lower()
+                setattr(user, field, value)
+            
+            await self.db.commit()
+            logger.info(f"User {keycloak_id} updated from {source_service}: {list(fields_to_update.keys())}")
+            return True
+            
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Failed to update user {keycloak_id} from event: {e}")
+            return False

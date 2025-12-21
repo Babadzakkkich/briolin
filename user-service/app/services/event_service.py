@@ -24,10 +24,13 @@ class EventService:
         first_name: str,
         last_name: str,
         roles: List[str],
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        processed_by: Optional[list] = None
     ) -> bool:
         """Публикация события создания профиля пользователя в user-service"""
         try:
+            processed_list = processed_by or []
+            
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
                 event_type=EventType.USER_PROFILE_CREATED,
@@ -42,14 +45,11 @@ class EventService:
                     "last_name": last_name,
                     "roles": roles,
                     "is_active": True
-                }
+                },
+                processed_by=processed_list
             )
             
-            success = await self.publisher.publish(
-                exchange_name="briolin.events",
-                routing_key=EventType.USER_PROFILE_CREATED,
-                message=event.model_dump()
-            )
+            success = await self.publisher.publish_event(event)
             
             if success:
                 logger.info(f"Published USER_PROFILE_CREATED event for user: {username}")
@@ -66,10 +66,15 @@ class EventService:
         user_id: int,
         updated_fields: Dict[str, Any],
         old_values: Optional[Dict[str, Any]] = None,
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        processed_by: Optional[list] = None
     ) -> bool:
         """Публикация события обновления профиля пользователя"""
         try:
+            processed_list = processed_by or []
+            if "user-service" not in processed_list:
+                processed_list.append("user-service")
+            
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
                 event_type=EventType.USER_PROFILE_UPDATED,
@@ -80,14 +85,11 @@ class EventService:
                     "user_id": user_id,
                     "updated_fields": updated_fields,
                     "old_values": old_values or {}
-                }
+                },
+                processed_by=processed_list  # Теперь здесь есть user-service
             )
             
-            success = await self.publisher.publish(
-                exchange_name="briolin.events",
-                routing_key=EventType.USER_PROFILE_UPDATED,
-                message=event.model_dump()
-            )
+            success = await self.publisher.publish_event(event)
             
             if success:
                 logger.info(f"Published USER_PROFILE_UPDATED event for user: {keycloak_id}")
@@ -104,10 +106,13 @@ class EventService:
         user_id: int,
         is_active: bool,
         reason: Optional[str] = None,
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        processed_by: Optional[list] = None
     ) -> bool:
         """Публикация события изменения статуса пользователя"""
         try:
+            processed_list = processed_by or []
+            
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
                 event_type=EventType.USER_STATUS_CHANGED,
@@ -119,14 +124,11 @@ class EventService:
                     "is_active": is_active,
                     "reason": reason,
                     "timestamp": datetime.utcnow().isoformat()
-                }
+                },
+                processed_by=processed_list
             )
             
-            success = await self.publisher.publish(
-                exchange_name="briolin.events",
-                routing_key=EventType.USER_STATUS_CHANGED,
-                message=event.model_dump()
-            )
+            success = await self.publisher.publish_event(event)
             
             if success:
                 logger.info(f"Published USER_STATUS_CHANGED event for user: {keycloak_id}")
@@ -143,10 +145,13 @@ class EventService:
         user_id: int,
         roles: List[str],
         old_roles: Optional[List[str]] = None,
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        processed_by: Optional[list] = None
     ) -> bool:
         """Публикация события обновления ролей пользователя"""
         try:
+            processed_list = processed_by or []
+            
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
                 event_type=EventType.USER_ROLES_UPDATED,
@@ -157,14 +162,11 @@ class EventService:
                     "user_id": user_id,
                     "roles": roles,
                     "old_roles": old_roles or []
-                }
+                },
+                processed_by=processed_list
             )
             
-            success = await self.publisher.publish(
-                exchange_name="briolin.events",
-                routing_key=EventType.USER_ROLES_UPDATED,
-                message=event.model_dump()
-            )
+            success = await self.publisher.publish_event(event)
             
             if success:
                 logger.info(f"Published USER_ROLES_UPDATED event for user: {keycloak_id}")
@@ -179,10 +181,13 @@ class EventService:
         self,
         keycloak_id: str,
         user_id: Optional[int] = None,
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        processed_by: Optional[list] = None
     ) -> bool:
         """Публикация события удаления пользователя"""
         try:
+            processed_list = processed_by or []
+            
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
                 event_type=EventType.USER_DELETED,
@@ -192,14 +197,11 @@ class EventService:
                     "keycloak_id": keycloak_id,
                     "user_id": user_id,
                     "timestamp": datetime.utcnow().isoformat()
-                }
+                },
+                processed_by=processed_list
             )
             
-            success = await self.publisher.publish(
-                exchange_name="briolin.events",
-                routing_key=EventType.USER_DELETED,
-                message=event.model_dump()
-            )
+            success = await self.publisher.publish_event(event)
             
             if success:
                 logger.info(f"Published USER_DELETED event for user: {keycloak_id}")

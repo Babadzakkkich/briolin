@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Dict, Any, List, Callable
+from typing import Dict, Any, List, Callable, Optional
 
 from app.database.models import User
 from app.schemas.auth import UserRegister, UserLogin
@@ -198,8 +198,13 @@ class AuthService:
             "created_at": user.created_at
         }
         
-    async def update_user_in_auth_db(self, keycloak_id: str, update_data: dict) -> bool:
-        """Обновление пользователя в auth-db (вызывается из user-service через события)"""
+    async def update_user_in_auth_db(
+        self, 
+        keycloak_id: str, 
+        update_data: dict,
+        source_service: str = "user-service"
+    ) -> bool:
+        """Обновление пользователя в auth-db с проверкой циклических событий"""
         stmt = select(User).where(User.keycloak_id == keycloak_id)
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
@@ -219,21 +224,16 @@ class AuthService:
                 user.is_active = update_data['is_active']
             
             await self.db.commit()
-            logger.info(f"User {keycloak_id} updated in auth-db: {list(update_data.keys())}")
+            logger.info(f"User {keycloak_id} updated in auth-db from {source_service}: {list(update_data.keys())}")
             
-            # Отправляем событие об обновлении в auth-service
-            try:
-                await self.event_service.publish_user_updated(
-                    keycloak_id=keycloak_id,
-                    updated_fields=update_data,
-                    old_values=old_values
-                )
-                logger.info(f"User update event published for {keycloak_id}")
-            except Exception as e:
-                logger.error(f"Failed to publish user update event: {e}")
-                # Откатываем изменения
-                await self.db.rollback()
-                raise DatabaseException("Failed to publish user update event")
+            # Публикуем событие об обновлении, добавляя текущий сервис в processed_by
+            await self.event_service.publish_user_updated(
+                keycloak_id=keycloak_id,
+                updated_fields=update_data,
+                old_values=old_values,
+                processed_by=["auth-service"]  # Указываем, что auth-service уже обработал
+            )
+            logger.info(f"User update event published for {keycloak_id}")
             
             return True
             
@@ -243,23 +243,51 @@ class AuthService:
             raise DatabaseException("Failed to update user in auth-db")
 
     async def delete_user_from_auth_db(self, keycloak_id: str) -> bool:
-        """Удаление пользователя из auth-db (вызывается из user-service через события)"""
-        stmt = select(User).where(User.keycloak_id == keycloak_id)
-        result = await self.db.execute(stmt)
-        user = result.scalar_one_or_none()
-        
-        if not user:
-            logger.warning(f"User with keycloak_id {keycloak_id} not found in auth-db")
-            return False
-        
+        """Удаление пользователя из auth-db (только для внутреннего использования)"""
         try:
+            stmt = select(User).where(User.keycloak_id == keycloak_id)
+            result = await self.db.execute(stmt)
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                logger.warning(f"User {keycloak_id} not found in auth-db")
+                return False
+            
             await self.db.delete(user)
             await self.db.commit()
             logger.info(f"User {keycloak_id} deleted from auth-db")
             
-            return True
+            # Публикуем событие удаления, указывая что auth-service уже обработал
+            await self.event_service.publish_user_deleted(
+                keycloak_id=keycloak_id,
+                processed_by=["auth-service"]
+            )
+            logger.info(f"User deletion event published for {keycloak_id}")
             
+            return True
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Failed to delete user from auth-db: {e}")
-            raise DatabaseException("Failed to delete user from auth-db")
+            return False
+
+    async def update_user_email_in_keycloak(self, keycloak_id: str, email: str) -> bool:
+        """Обновление email пользователя в Keycloak"""
+        try:
+            self.kc.update_user_in_keycloak(keycloak_id, {"email": email})
+            logger.info(f"Email updated in Keycloak for user {keycloak_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update email in Keycloak for user {keycloak_id}: {e}")
+            return False
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Получение пользователя по email"""
+        stmt = select(User).where(User.email == email)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_user_by_keycloak_id(self, keycloak_id: str) -> Optional[User]:
+        """Получение пользователя по keycloak_id"""
+        stmt = select(User).where(User.keycloak_id == keycloak_id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()

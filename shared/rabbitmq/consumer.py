@@ -5,6 +5,7 @@ import aio_pika
 from typing import Dict, Any, Callable, Awaitable, Optional
 from contextlib import asynccontextmanager
 from .config import RabbitMQConfig
+from shared.events.schemas import EventType
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +43,10 @@ class RabbitMQConsumer:
     async def disconnect(self):
         """Закрытие соединения и отмена всех consumers"""
         async with self._lock:
-            # Отменяем всех consumers
             for queue_name, consumer_tag in self._consumers.items():
                 if consumer_tag:
                     await self.channel.basic_cancel(consumer_tag)
             
-            # Закрываем соединение
             if self._is_connected:
                 if self.channel:
                     await self.channel.close()
@@ -75,14 +74,12 @@ class RabbitMQConsumer:
         """Подписка на сообщения из RabbitMQ"""
         try:
             async with self.ensure_connection():
-                # Объявляем exchange
                 exchange = await self.channel.declare_exchange(
                     name=exchange_name,
                     type=aio_pika.ExchangeType.TOPIC,
                     durable=durable
                 )
                 
-                # Объявляем очередь
                 queue = await self.channel.declare_queue(
                     name=queue_name,
                     durable=durable,
@@ -92,29 +89,23 @@ class RabbitMQConsumer:
                     }
                 )
                 
-                # Привязываем очередь к exchange
                 await queue.bind(exchange, routing_key=routing_key)
                 
                 async def message_handler(message: aio_pika.IncomingMessage):
-                    """Обработчик входящих сообщений"""
                     processed = False
                     try:
-                        # Декодируем сообщение
                         body = json.loads(message.body.decode())
                         logger.debug(
                             f"Message received on {queue_name} [{routing_key}]: "
                             f"{body.get('event_type', 'unknown')}"
                         )
                         
-                        # Вызываем callback
                         success = await callback(body)
                         
                         if success:
-                            # Явно подтверждаем сообщение
                             await message.ack()
                             logger.debug(f"Message processed successfully: {body.get('event_type')}")
                         else:
-                            # Отказываемся от сообщения без повторной очереди
                             await message.nack(requeue=False)
                             logger.error(f"Message processing failed: {body.get('event_type')}")
                         
@@ -122,21 +113,18 @@ class RabbitMQConsumer:
                             
                     except json.JSONDecodeError as e:
                         logger.error(f"Failed to decode message: {e}")
-                        # Отклоняем некорректное сообщение
                         await message.reject(requeue=False)
                         processed = True
                     except Exception as e:
                         logger.error(f"Error processing message: {e}")
-                        # Если возникла ошибка, повторяем сообщение
                         if not processed:
                             await message.nack(requeue=True)
                         else:
                             logger.warning(f"Message already processed, ignoring error: {e}")
                 
-                # Начинаем потребление с ручным подтверждением
                 consumer_tag = await queue.consume(
                     message_handler,
-                    no_ack=auto_ack  # False для ручного подтверждения
+                    no_ack=auto_ack
                 )
                 self._consumers[queue_name] = consumer_tag
                 
@@ -151,15 +139,12 @@ class RabbitMQConsumer:
     
     async def consume_user_events(
         self,
-        event_type: str,
-        callback: Callable[[Dict[str, Any]], Awaitable[bool]],
-        routing_key_suffix: Optional[str] = None
+        event_type: EventType,
+        callback: Callable[[Dict[str, Any]], Awaitable[bool]]
     ):
-        """Подписка на события пользователей"""
-        queue_name = f"{self.service_name}.user.{event_type}"
-        routing_key = f"user.{event_type}"
-        if routing_key_suffix:
-            routing_key = f"{routing_key}.{routing_key_suffix}"
+        """Подписка на события пользователей с использованием Enum"""
+        queue_name = f"{self.service_name}.{event_type.value}"
+        routing_key = event_type.value
         
         logger.info(f"Subscribing to queue: {queue_name} with routing key: {routing_key}")
         
@@ -169,22 +154,3 @@ class RabbitMQConsumer:
             queue_name=queue_name,
             callback=callback
         )
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """Проверка здоровья подключения"""
-        try:
-            async with self.ensure_connection():
-                return {
-                    "status": "connected",
-                    "service": self.service_name,
-                    "host": self.config.host,
-                    "active_consumers": len(self._consumers),
-                    "channel_open": self.channel.is_open if self.channel else False
-                }
-        except Exception as e:
-            return {
-                "status": "disconnected",
-                "service": self.service_name,
-                "error": str(e),
-                "host": self.config.host
-            }
