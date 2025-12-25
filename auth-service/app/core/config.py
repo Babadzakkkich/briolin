@@ -1,10 +1,8 @@
-# APP/CORE/CONFIG.PY (auth-service)
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
 from shared.config import get_shared_config, KeycloakConfig, RabbitMQConfig
 
-# Делаем AuthKeycloakClientConfig BaseSettings
 class AuthKeycloakClientConfig(BaseSettings):
     """Конфигурация клиента Keycloak для auth-service (client_id и client_secret)"""
     model_config = SettingsConfigDict(
@@ -44,10 +42,11 @@ class Settings(BaseSettings):
         env_nested_delimiter="__",
         env_prefix="AUTH__",
         case_sensitive=False,
-        extra='allow'  # Разрешаем дополнительные поля
+        extra='allow'
     )
 
     app_name: str = "Briolin Auth Service"
+    service_name: str = "auth-service"  # Добавляем имя сервиса для событий
     debug: bool = Field(..., env="AUTH__DEBUG")
 
     # Используем AuthKeycloakClientConfig как BaseSettings

@@ -202,7 +202,8 @@ class AuthService:
         self, 
         keycloak_id: str, 
         update_data: dict,
-        source_service: str = "user-service"
+        source_service: str = "user-service",
+        correlation_id: str = None
     ) -> bool:
         """Обновление пользователя в auth-db с проверкой циклических событий"""
         stmt = select(User).where(User.keycloak_id == keycloak_id)
@@ -224,16 +225,11 @@ class AuthService:
                 user.is_active = update_data['is_active']
             
             await self.db.commit()
+            
             logger.info(f"User {keycloak_id} updated in auth-db from {source_service}: {list(update_data.keys())}")
             
-            # Публикуем событие об обновлении, добавляя текущий сервис в processed_by
-            await self.event_service.publish_user_updated(
-                keycloak_id=keycloak_id,
-                updated_fields=update_data,
-                old_values=old_values,
-                processed_by=["auth-service"]  # Указываем, что auth-service уже обработал
-            )
-            logger.info(f"User update event published for {keycloak_id}")
+            # НЕ публикуем событие здесь - это делает обработчик запросов
+            # Событие будет опубликовано после обновления Keycloak
             
             return True
             
@@ -242,7 +238,12 @@ class AuthService:
             logger.error(f"Failed to update user in auth-db: {e}")
             raise DatabaseException("Failed to update user in auth-db")
 
-    async def delete_user_from_auth_db(self, keycloak_id: str) -> bool:
+    async def delete_user_from_auth_db(
+        self, 
+        keycloak_id: str,
+        correlation_id: str = None,
+        source_service: str = "user-service"
+    ) -> bool:
         """Удаление пользователя из auth-db (только для внутреннего использования)"""
         try:
             stmt = select(User).where(User.keycloak_id == keycloak_id)
@@ -255,12 +256,14 @@ class AuthService:
             
             await self.db.delete(user)
             await self.db.commit()
-            logger.info(f"User {keycloak_id} deleted from auth-db")
+            logger.info(f"User {keycloak_id} deleted from auth-db (requested by {source_service})")
             
             # Публикуем событие удаления, указывая что auth-service уже обработал
             await self.event_service.publish_user_deleted(
                 keycloak_id=keycloak_id,
-                processed_by=["auth-service"]
+                user_id=user.id,
+                correlation_id=correlation_id,
+                source_service=source_service
             )
             logger.info(f"User deletion event published for {keycloak_id}")
             

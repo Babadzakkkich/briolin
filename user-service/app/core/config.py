@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Briolin User Service"
+    service_name: str = "user-service"  # Добавляем имя сервиса
     debug: bool = Field(False, env="USER__DEBUG")
 
     keycloak: KeycloakConfig = Field(default_factory=lambda: get_shared_config().keycloak)

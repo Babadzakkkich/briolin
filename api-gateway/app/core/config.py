@@ -1,4 +1,3 @@
-# APP/CORE/CONFIG.PY (api-gateway)
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
@@ -23,6 +22,7 @@ class GatewayConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = True
+    service_name: str = "api-gateway"
 
 class ServicesConfig(BaseSettings):
     model_config = SettingsConfigDict(
@@ -58,5 +58,9 @@ class Settings(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
+    
+    @property
+    def service_name(self) -> str:
+        return self.gateway.service_name
 
 settings = Settings()

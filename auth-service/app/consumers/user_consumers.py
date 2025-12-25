@@ -4,184 +4,305 @@ from shared.events.schemas import EventType
 from app.services.rabbitmq import rabbitmq_consumer
 from app.services.auth_service import AuthService
 from app.database.session import async_session_factory
+from app.core.config import settings
 from app.core.logger import logger
 
-async def handle_user_profile_created(event: Dict[str, Any]) -> bool:
-    """Обработка события создания профиля пользователя из user-service"""
+async def handle_user_profile_update_requested(event: Dict[str, Any]) -> bool:
+    """Обработка события запроса на обновление профиля пользователя из user-service"""
     try:
-        user_data = event.get("user_data", {})
-        keycloak_id = user_data.get("keycloak_id")
-        processed_by = event.get("processed_by", [])
-        
-        if not keycloak_id:
-            logger.error("Missing keycloak_id in user profile created event")
-            return False
+        # Преобразуем в BaseEvent для удобства
+        from shared.events.schemas import BaseEvent
+        base_event = BaseEvent(**event)
         
         # Проверяем, не обрабатывали ли мы уже это событие
-        if "auth-service" in processed_by:
-            logger.debug(f"Event already processed by auth-service for {keycloak_id}")
+        if base_event.is_processed_by(settings.service_name):
+            logger.debug(f"Event {base_event.event_id[:8]} already processed by auth-service")
             return True
         
-        logger.info(f"User profile created in user-service for {keycloak_id}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error handling user profile created event: {e}")
-        return False
-
-async def handle_user_profile_updated(event: Dict[str, Any]) -> bool:
-    """Обработка события обновления профиля пользователя из user-service"""
-    try:
         user_data = event.get("user_data", {})
         keycloak_id = user_data.get("keycloak_id")
         updated_fields = user_data.get("updated_fields", {})
-        source_service = event.get("source_service", "")
-        processed_by = event.get("processed_by", [])
+        correlation_id = base_event.correlation_id
+        source_service = base_event.source_service
         
         if not keycloak_id:
-            logger.error("Missing keycloak_id in user profile update event")
+            logger.error("Missing keycloak_id in user profile update request")
             return False
         
-        # Проверяем, не обрабатывали ли мы уже это событие
-        if "auth-service" in processed_by:
-            logger.debug(f"Event already processed by auth-service for {keycloak_id}")
-            return True
-        
-        logger.debug(f"Processing user profile update from {source_service} for {keycloak_id}: {updated_fields}")
+        logger.info(f"Processing profile update request for {keycloak_id} from {source_service}: {updated_fields}")
         
         async with async_session_factory() as session:
             from app.services.keycloak_client import KeycloakClient
             kc_client = KeycloakClient()
             auth_service = AuthService(session, kc_client)
             
-            # Определяем поля, которые нужно обновить в auth-db
+            # Определяем поля, которые нужно обновить в Keycloak
+            keycloak_update_fields = {}
+            if 'email' in updated_fields:
+                keycloak_update_fields['email'] = updated_fields['email']
+            if 'username' in updated_fields:
+                keycloak_update_fields['username'] = updated_fields['username']
+            if 'first_name' in updated_fields:
+                keycloak_update_fields['first_name'] = updated_fields['first_name']
+            if 'last_name' in updated_fields:
+                keycloak_update_fields['last_name'] = updated_fields['last_name']
+            
+            # Обновляем в Keycloak (только auth-service имеет право!)
+            if keycloak_update_fields:
+                try:
+                    kc_client.update_user_in_keycloak(keycloak_id, keycloak_update_fields)
+                    logger.info(f"User {keycloak_id} updated in Keycloak")
+                except Exception as e:
+                    logger.error(f"Failed to update user {keycloak_id} in Keycloak: {e}")
+                    return False
+            
+            # Определяем поля для обновления в auth-db
             auth_update_fields = {}
             if 'email' in updated_fields:
                 auth_update_fields['email'] = updated_fields['email']
             if 'is_active' in updated_fields:
                 auth_update_fields['is_active'] = updated_fields['is_active']
             
+            # Обновляем в auth-db
             if auth_update_fields:
                 success = await auth_service.update_user_in_auth_db(
                     keycloak_id=keycloak_id,
                     update_data=auth_update_fields,
-                    source_service=source_service
+                    source_service=source_service,
+                    correlation_id=correlation_id
                 )
                 
-                if success:
-                    logger.info(f"Updated user {keycloak_id} in auth-db from {source_service}")
-                else:
+                if not success:
                     logger.warning(f"User {keycloak_id} not found in auth-db")
-                
-                return success
-            else:
-                logger.debug(f"No auth-db updates needed for {keycloak_id}")
-                return True
+                    return False
             
-    except Exception as e:
-        logger.error(f"Error handling user profile update event: {e}")
-        return False
-
-async def handle_user_status_changed(event: Dict[str, Any]) -> bool:
-    """Обработка события изменения статуса пользователя из user-service"""
-    try:
-        user_data = event.get("user_data", {})
-        keycloak_id = user_data.get("keycloak_id")
-        is_active = user_data.get("is_active")
-        source_service = event.get("source_service", "")
-        processed_by = event.get("processed_by", [])
-        
-        if not keycloak_id or is_active is None:
-            logger.error("Missing keycloak_id or is_active in user status changed event")
-            return False
-        
-        # Проверяем, не обрабатывали ли мы уже это событие
-        if "auth-service" in processed_by:
-            logger.debug(f"Event already processed by auth-service for {keycloak_id}")
-            return True
-        
-        logger.debug(f"Processing user status change from {source_service} for {keycloak_id}: {is_active}")
-        
-        async with async_session_factory() as session:
-            from app.services.keycloak_client import KeycloakClient
-            kc_client = KeycloakClient()
-            auth_service = AuthService(session, kc_client)
-            
-            success = await auth_service.update_user_in_auth_db(
+            # Публикуем подтверждение обновления
+            await auth_service.event_service.publish_user_profile_updated(
                 keycloak_id=keycloak_id,
-                update_data={"is_active": is_active},
+                user_id=user_data.get("user_id"),
+                updated_fields=updated_fields,
+                old_values=user_data.get("old_values", {}),
+                correlation_id=correlation_id,
                 source_service=source_service
             )
             
-            if success:
-                logger.info(f"Updated user status in auth-db for {keycloak_id} from {source_service}: {is_active}")
-            else:
-                logger.warning(f"User {keycloak_id} not found in auth-db")
-            
-            return success
+            logger.info(f"Profile update for {keycloak_id} processed and confirmed")
+            return True
             
     except Exception as e:
-        logger.error(f"Error handling user status changed event: {e}")
+        logger.error(f"Error handling user profile update request: {e}", exc_info=True)
         return False
 
-async def handle_user_deleted(event: Dict[str, Any]) -> bool:
-    """Обработка события удаления пользователя из user-service"""
+async def handle_user_status_change_requested(event: Dict[str, Any]) -> bool:
+    """Обработка события запроса изменения статуса пользователя из user-service"""
     try:
-        user_data = event.get("user_data", {})
-        keycloak_id = user_data.get("keycloak_id")
-        source_service = event.get("source_service", "")
-        processed_by = event.get("processed_by", [])
-        
-        if not keycloak_id:
-            logger.error("Missing keycloak_id in user deletion event")
-            return False
+        from shared.events.schemas import BaseEvent
+        base_event = BaseEvent(**event)
         
         # Проверяем, не обрабатывали ли мы уже это событие
-        if "auth-service" in processed_by:
-            logger.debug(f"Event already processed by auth-service for {keycloak_id}")
+        if base_event.is_processed_by(settings.service_name):
+            logger.debug(f"Event {base_event.event_id[:8]} already processed by auth-service")
             return True
         
-        logger.info(f"Processing user deletion event from {source_service} for {keycloak_id}")
+        user_data = event.get("user_data", {})
+        keycloak_id = user_data.get("keycloak_id")
+        is_active = user_data.get("is_active")
+        correlation_id = base_event.correlation_id
+        source_service = base_event.source_service
+        
+        if not keycloak_id or is_active is None:
+            logger.error("Missing keycloak_id or is_active in user status change request")
+            return False
+        
+        logger.info(f"Processing status change request for {keycloak_id} from {source_service}: {is_active}")
         
         async with async_session_factory() as session:
             from app.services.keycloak_client import KeycloakClient
             kc_client = KeycloakClient()
             auth_service = AuthService(session, kc_client)
             
-            success = await auth_service.delete_user_from_auth_db(keycloak_id)
+            # Обновляем статус в Keycloak
+            try:
+                kc_client.update_user_status_in_keycloak(keycloak_id, is_active)
+            except Exception as e:
+                logger.error(f"Failed to update user status {keycloak_id} in Keycloak: {e}")
+                return False
             
-            if success:
-                logger.info(f"User {keycloak_id} deleted from auth-db (triggered by {source_service})")
-            else:
-                logger.warning(f"User {keycloak_id} not found in auth-db, already deleted")
+            # Обновляем статус в auth-db
+            success = await auth_service.update_user_in_auth_db(
+                keycloak_id=keycloak_id,
+                update_data={"is_active": is_active},
+                source_service=source_service,
+                correlation_id=correlation_id
+            )
             
-            return success
+            if not success:
+                logger.warning(f"User {keycloak_id} not found in auth-db")
+                return False
+            
+            # Публикуем подтверждение изменения статуса
+            await auth_service.event_service.publish_user_status_changed(
+                keycloak_id=keycloak_id,
+                user_id=user_data.get("user_id"),
+                is_active=is_active,
+                reason=user_data.get("reason"),
+                correlation_id=correlation_id,
+                source_service=source_service
+            )
+            
+            logger.info(f"Status change for {keycloak_id} processed and confirmed")
+            return True
             
     except Exception as e:
-        logger.error(f"Error handling user deletion event: {e}", exc_info=True)
+        logger.error(f"Error handling user status change request: {e}", exc_info=True)
+        return False
+
+async def handle_user_roles_update_requested(event: Dict[str, Any]) -> bool:
+    """Обработка события запроса обновления ролей пользователя из user-service"""
+    try:
+        from shared.events.schemas import BaseEvent
+        base_event = BaseEvent(**event)
+        
+        # Проверяем, не обрабатывали ли мы уже это событие
+        if base_event.is_processed_by(settings.service_name):
+            logger.debug(f"Event {base_event.event_id[:8]} already processed by auth-service")
+            return True
+        
+        user_data = event.get("user_data", {})
+        keycloak_id = user_data.get("keycloak_id")
+        roles = user_data.get("roles", [])
+        correlation_id = base_event.correlation_id
+        source_service = base_event.source_service
+        
+        if not keycloak_id:
+            logger.error("Missing keycloak_id in user roles update request")
+            return False
+        
+        logger.info(f"Processing roles update request for {keycloak_id} from {source_service}: {roles}")
+        
+        async with async_session_factory() as session:
+            from app.services.keycloak_client import KeycloakClient
+            kc_client = KeycloakClient()
+            auth_service = AuthService(session, kc_client)
+            
+            # Обновляем роли в Keycloak
+            try:
+                kc_client.update_user_roles_in_keycloak(keycloak_id, roles)
+                logger.info(f"User {keycloak_id} roles updated in Keycloak: {roles}")
+            except Exception as e:
+                logger.error(f"Failed to update user roles {keycloak_id} in Keycloak: {e}")
+                return False
+            
+            # Публикуем подтверждение обновления ролей
+            await auth_service.event_service.publish_user_roles_updated(
+                keycloak_id=keycloak_id,
+                user_id=user_data.get("user_id"),
+                roles=roles,
+                old_roles=user_data.get("old_roles", []),
+                correlation_id=correlation_id,
+                source_service=source_service
+            )
+            
+            logger.info(f"Roles update for {keycloak_id} processed and confirmed")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error handling user roles update request: {e}", exc_info=True)
+        return False
+
+async def handle_user_deletion_requested(event: Dict[str, Any]) -> bool:
+    """Обработка события запроса удаления пользователя из user-service"""
+    try:
+        from shared.events.schemas import BaseEvent
+        base_event = BaseEvent(**event)
+        
+        # Проверяем, не обрабатывали ли мы уже это событие
+        if base_event.is_processed_by(settings.service_name):
+            logger.debug(f"Event {base_event.event_id[:8]} already processed by auth-service")
+            return True
+        
+        user_data = event.get("user_data", {})
+        keycloak_id = user_data.get("keycloak_id")
+        correlation_id = base_event.correlation_id
+        source_service = base_event.source_service
+        
+        if not keycloak_id:
+            logger.error("Missing keycloak_id in user deletion request")
+            return False
+        
+        logger.info(f"Processing deletion request for {keycloak_id} from {source_service}")
+        
+        async with async_session_factory() as session:
+            from app.services.keycloak_client import KeycloakClient
+            kc_client = KeycloakClient()
+            auth_service = AuthService(session, kc_client)
+            
+            # Удаляем из Keycloak
+            try:
+                kc_client.delete_user_from_keycloak(keycloak_id)
+                logger.info(f"User {keycloak_id} deleted from Keycloak")
+            except Exception as e:
+                logger.error(f"Failed to delete user {keycloak_id} from Keycloak: {e}")
+                return False
+            
+            # Удаляем из auth-db - событие будет опубликовано внутри этого метода
+            success = await auth_service.delete_user_from_auth_db(
+                keycloak_id=keycloak_id,
+                correlation_id=correlation_id,
+                source_service=source_service
+            )
+            
+            if not success:
+                logger.warning(f"User {keycloak_id} not found in auth-db")
+                return False
+            
+            logger.info(f"Deletion for {keycloak_id} processed and confirmed")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error handling user deletion request: {e}", exc_info=True)
         return False
 
 async def register(consumer):
     """Регистрация consumers для событий от user-service"""
     try:
+        # Регистрируем обработчики для REQUEST событий
+        await consumer.consume_user_events(
+            event_type=EventType.USER_PROFILE_UPDATE_REQUESTED,
+            callback=handle_user_profile_update_requested
+        )
+        
+        await consumer.consume_user_events(
+            event_type=EventType.USER_STATUS_CHANGE_REQUESTED,
+            callback=handle_user_status_change_requested
+        )
+        
+        await consumer.consume_user_events(
+            event_type=EventType.USER_ROLES_UPDATE_REQUESTED,
+            callback=handle_user_roles_update_requested
+        )
+        
+        await consumer.consume_user_events(
+            event_type=EventType.USER_DELETION_REQUESTED,
+            callback=handle_user_deletion_requested
+        )
+        
+        # Также обрабатываем подтверждения от user-service (для завершенных операций)
+        async def handle_user_profile_created_ack(event: Dict[str, Any]) -> bool:
+            """Просто подтверждаем получение события создания профиля"""
+            from shared.events.schemas import BaseEvent
+            base_event = BaseEvent(**event)
+            
+            if base_event.is_processed_by(settings.service_name):
+                logger.debug(f"Event {base_event.event_id[:8]} already processed by auth-service")
+                return True
+            
+            logger.debug(f"Received USER_PROFILE_CREATED event from {base_event.source_service}")
+            return True
+        
         await consumer.consume_user_events(
             event_type=EventType.USER_PROFILE_CREATED,
-            callback=handle_user_profile_created
-        )
-        
-        await consumer.consume_user_events(
-            event_type=EventType.USER_PROFILE_UPDATED,
-            callback=handle_user_profile_updated
-        )
-        
-        await consumer.consume_user_events(
-            event_type=EventType.USER_STATUS_CHANGED,
-            callback=handle_user_status_changed
-        )
-        
-        await consumer.consume_user_events(
-            event_type=EventType.USER_DELETED,
-            callback=handle_user_deleted
+            callback=handle_user_profile_created_ack
         )
         
         logger.info("User event consumers registered successfully")

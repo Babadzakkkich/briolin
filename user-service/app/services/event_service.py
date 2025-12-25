@@ -1,4 +1,3 @@
-# user-service/app/services/event_service.py
 import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -15,6 +14,20 @@ class EventService:
     def __init__(self, publisher: RabbitMQPublisher):
         self.publisher = publisher
     
+    async def _publish_event(self, event: BaseEvent) -> bool:
+        """Универсальный метод публикации события"""
+        # Добавляем текущий сервис в processed_by
+        event.mark_as_processed(settings.service_name)
+        
+        success = await self.publisher.publish_event(event)
+        
+        if success:
+            logger.info(f"Published {event.event_type.value} event (ID: {event.event_id[:8]})")
+        else:
+            logger.error(f"Failed to publish {event.event_type.value} event")
+        
+        return success
+    
     async def publish_user_profile_created(
         self,
         keycloak_id: str,
@@ -24,17 +37,16 @@ class EventService:
         first_name: str,
         last_name: str,
         roles: List[str],
-        correlation_id: Optional[str] = None,
-        processed_by: Optional[list] = None
+        correlation_id: str = None
     ) -> bool:
         """Публикация события создания профиля пользователя в user-service"""
         try:
-            processed_list = processed_by or []
+            correlation_id = correlation_id or str(uuid.uuid4())
             
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
                 event_type=EventType.USER_PROFILE_CREATED,
-                source_service="user-service",
+                source_service=settings.service_name,
                 correlation_id=correlation_id,
                 user_data={
                     "keycloak_id": keycloak_id,
@@ -45,171 +57,133 @@ class EventService:
                     "last_name": last_name,
                     "roles": roles,
                     "is_active": True
-                },
-                processed_by=processed_list
+                }
             )
             
-            success = await self.publisher.publish_event(event)
-            
-            if success:
-                logger.info(f"Published USER_PROFILE_CREATED event for user: {username}")
-            
-            return success
+            return await self._publish_event(event)
             
         except Exception as e:
             logger.error(f"Error publishing USER_PROFILE_CREATED event: {e}")
             return False
     
-    async def publish_user_profile_updated(
+    async def publish_user_profile_update_requested(
         self,
         keycloak_id: str,
         user_id: int,
         updated_fields: Dict[str, Any],
         old_values: Optional[Dict[str, Any]] = None,
-        correlation_id: Optional[str] = None,
-        processed_by: Optional[list] = None
+        correlation_id: str = None
     ) -> bool:
-        """Публикация события обновления профиля пользователя"""
+        """Публикация события запроса обновления профиля пользователя"""
         try:
-            processed_list = processed_by or []
-            if "user-service" not in processed_list:
-                processed_list.append("user-service")
+            correlation_id = correlation_id or str(uuid.uuid4())
             
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
-                event_type=EventType.USER_PROFILE_UPDATED,
-                source_service="user-service",
+                event_type=EventType.USER_PROFILE_UPDATE_REQUESTED,
+                source_service=settings.service_name,
                 correlation_id=correlation_id,
                 user_data={
                     "keycloak_id": keycloak_id,
                     "user_id": user_id,
                     "updated_fields": updated_fields,
                     "old_values": old_values or {}
-                },
-                processed_by=processed_list  # Теперь здесь есть user-service
+                }
             )
             
-            success = await self.publisher.publish_event(event)
-            
-            if success:
-                logger.info(f"Published USER_PROFILE_UPDATED event for user: {keycloak_id}")
-            
-            return success
+            return await self._publish_event(event)
             
         except Exception as e:
-            logger.error(f"Error publishing USER_PROFILE_UPDATED event: {e}")
+            logger.error(f"Error publishing USER_PROFILE_UPDATE_REQUESTED event: {e}")
             return False
     
-    async def publish_user_status_changed(
+    async def publish_user_status_change_requested(
         self,
         keycloak_id: str,
         user_id: int,
         is_active: bool,
         reason: Optional[str] = None,
-        correlation_id: Optional[str] = None,
-        processed_by: Optional[list] = None
+        correlation_id: str = None
     ) -> bool:
-        """Публикация события изменения статуса пользователя"""
+        """Публикация события запроса изменения статуса пользователя"""
         try:
-            processed_list = processed_by or []
+            correlation_id = correlation_id or str(uuid.uuid4())
             
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
-                event_type=EventType.USER_STATUS_CHANGED,
-                source_service="user-service",
+                event_type=EventType.USER_STATUS_CHANGE_REQUESTED,
+                source_service=settings.service_name,
                 correlation_id=correlation_id,
                 user_data={
                     "keycloak_id": keycloak_id,
                     "user_id": user_id,
                     "is_active": is_active,
-                    "reason": reason,
-                    "timestamp": datetime.utcnow().isoformat()
-                },
-                processed_by=processed_list
+                    "reason": reason
+                }
             )
             
-            success = await self.publisher.publish_event(event)
-            
-            if success:
-                logger.info(f"Published USER_STATUS_CHANGED event for user: {keycloak_id}")
-            
-            return success
+            return await self._publish_event(event)
             
         except Exception as e:
-            logger.error(f"Error publishing USER_STATUS_CHANGED event: {e}")
+            logger.error(f"Error publishing USER_STATUS_CHANGE_REQUESTED event: {e}")
             return False
     
-    async def publish_user_roles_updated(
+    async def publish_user_roles_update_requested(
         self,
         keycloak_id: str,
         user_id: int,
         roles: List[str],
         old_roles: Optional[List[str]] = None,
-        correlation_id: Optional[str] = None,
-        processed_by: Optional[list] = None
+        correlation_id: str = None
     ) -> bool:
-        """Публикация события обновления ролей пользователя"""
+        """Публикация события запроса обновления ролей пользователя"""
         try:
-            processed_list = processed_by or []
+            correlation_id = correlation_id or str(uuid.uuid4())
             
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
-                event_type=EventType.USER_ROLES_UPDATED,
-                source_service="user-service",
+                event_type=EventType.USER_ROLES_UPDATE_REQUESTED,
+                source_service=settings.service_name,
                 correlation_id=correlation_id,
                 user_data={
                     "keycloak_id": keycloak_id,
                     "user_id": user_id,
                     "roles": roles,
                     "old_roles": old_roles or []
-                },
-                processed_by=processed_list
+                }
             )
             
-            success = await self.publisher.publish_event(event)
-            
-            if success:
-                logger.info(f"Published USER_ROLES_UPDATED event for user: {keycloak_id}")
-            
-            return success
+            return await self._publish_event(event)
             
         except Exception as e:
-            logger.error(f"Error publishing USER_ROLES_UPDATED event: {e}")
+            logger.error(f"Error publishing USER_ROLES_UPDATE_REQUESTED event: {e}")
             return False
     
-    async def publish_user_deleted(
+    async def publish_user_deletion_requested(
         self,
         keycloak_id: str,
         user_id: Optional[int] = None,
-        correlation_id: Optional[str] = None,
-        processed_by: Optional[list] = None
+        correlation_id: str = None
     ) -> bool:
-        """Публикация события удаления пользователя"""
+        """Публикация события запроса удаления пользователя"""
         try:
-            processed_list = processed_by or []
+            correlation_id = correlation_id or str(uuid.uuid4())
             
             event = BaseEvent(
                 event_id=str(uuid.uuid4()),
-                event_type=EventType.USER_DELETED,
-                source_service="user-service",
+                event_type=EventType.USER_DELETION_REQUESTED,
+                source_service=settings.service_name,
                 correlation_id=correlation_id,
                 user_data={
                     "keycloak_id": keycloak_id,
-                    "user_id": user_id,
-                    "timestamp": datetime.utcnow().isoformat()
-                },
-                processed_by=processed_list
+                    "user_id": user_id
+                }
             )
             
-            success = await self.publisher.publish_event(event)
-            
-            if success:
-                logger.info(f"Published USER_DELETED event for user: {keycloak_id}")
-            
-            return success
+            return await self._publish_event(event)
             
         except Exception as e:
-            logger.error(f"Error publishing USER_DELETED event: {e}")
+            logger.error(f"Error publishing USER_DELETION_REQUESTED event: {e}")
             return False
 
 
