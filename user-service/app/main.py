@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 
 from app.core.config import settings
 from app.core.logger import logger
@@ -11,6 +12,18 @@ from app.core.exception_handlers import user_exception_handler, global_exception
 from app.api.v1 import router as api_router
 from app.services.rabbitmq import rabbitmq_publisher, rabbitmq_consumer
 from app.consumers import register_consumers
+from app.services.event_waiter import get_event_waiter
+
+async def cleanup_old_waiters_periodically():
+    """Периодическая очистка старых ожиданий событий"""
+    while True:
+        try:
+            event_waiter = get_event_waiter()
+            await event_waiter.cleanup_old_waiters()
+            await asyncio.sleep(60)  # Проверяем каждую минуту
+        except Exception as e:
+            logger.error(f"Error in cleanup_old_waiters_periodically: {e}")
+            await asyncio.sleep(60)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,6 +32,9 @@ async def lifespan(app: FastAPI):
     # Инициализация БД
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Запускаем фоновую задачу очистки
+    cleanup_task = asyncio.create_task(cleanup_old_waiters_periodically())
     
     # Подключение к RabbitMQ
     try:
@@ -39,6 +55,13 @@ async def lifespan(app: FastAPI):
     yield
     
     logger.info("Shutting down User Service...")
+    
+    # Отменяем фоновую задачу
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
     
     # Отключение от RabbitMQ
     try:
@@ -72,21 +95,3 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
-@app.get("/health/rabbitmq")
-async def rabbitmq_health():
-    """Проверка состояния RabbitMQ"""
-    try:
-        publisher_status = await rabbitmq_publisher.health_check()
-        consumer_status = await rabbitmq_consumer.health_check()
-        
-        return {
-            "publisher": publisher_status,
-            "consumer": consumer_status,
-            "overall": "healthy" if publisher_status.get("status") == "connected" else "unhealthy"
-        }
-    except Exception as e:
-        return {
-            "error": str(e),
-            "overall": "unhealthy"
-        }

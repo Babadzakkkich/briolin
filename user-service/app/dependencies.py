@@ -6,6 +6,7 @@ from shared.auth.dependencies import get_current_user, get_current_active_user, 
 from app.database.session import async_session_factory
 from app.services.keycloak_client import KeycloakClient
 from app.services.user_service import UserService
+from app.services.event_waiter import get_event_waiter
 
 _keycloak_client = None
 
@@ -33,5 +34,6 @@ __all__ = [
     'get_current_user',
     'get_current_active_user',
     'require_role',
-    'require_any_role'
+    'require_any_role',
+    'get_event_waiter'
 ]

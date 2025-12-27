@@ -1,15 +1,19 @@
 from keycloak import KeycloakOpenID, KeycloakAdmin
 from keycloak.exceptions import KeycloakError, KeycloakPostError, KeycloakAuthenticationError
-from typing import List, Callable, Dict, Any, Tuple
+from typing import List, Callable, Dict, Any, Tuple, Optional
+import logging
 
 from app.core.config import settings
 from app.core.logger import logger
 from app.core.exceptions import (
     KeycloakConnectionError, 
     InvalidCredentialsException,
-    InvalidTokenException
+    InvalidTokenException,
+    UserAlreadyExistsException
 )
 from shared.schemas.shared import UserRole
+
+logger = logging.getLogger(__name__)
 
 class KeycloakClient:
     def __init__(self):
@@ -54,15 +58,31 @@ class KeycloakClient:
         password: str, 
         first_name: str, 
         last_name: str,
-        role: UserRole = UserRole.USER
+        role: str  # Изменено: принимаем строку, а не UserRole
     ) -> Tuple[str, List[Callable[[], None]]]:
         """
         Создает пользователя в Keycloak и возвращает tuple:
         (user_id, список компенсирующих действий)
         """
         compensation_actions: List[Callable[[], None]] = []
+        user_id = None
         
         try:
+            # Проверяем, существует ли пользователь с таким email или username
+            try:
+                existing_user_by_email = self.admin.get_user_by_email(email)
+                if existing_user_by_email:
+                    raise UserAlreadyExistsException(f"User with email {email} already exists in Keycloak")
+            except Exception:
+                pass  # Если пользователь не найден - это нормально
+            
+            try:
+                existing_user_by_username = self.admin.get_user_by_username(username)
+                if existing_user_by_username:
+                    raise UserAlreadyExistsException(f"User with username {username} already exists in Keycloak")
+            except Exception:
+                pass  # Если пользователь не найден - это нормально
+            
             # 1. Создание пользователя
             user_payload = {
                 "email": email,
@@ -76,31 +96,36 @@ class KeycloakClient:
             
             self.admin.create_user(user_payload)
             
-            # Компенсирующее действие для создания пользователя
-            def compensate_create_user():
-                try:
-                    logger.warning(f"Compensating: deleting user {username} from Keycloak")
-                    self.admin.delete_user(username)
-                except Exception as e:
-                    logger.error(f"Failed to compensate user deletion: {e}")
-            
-            compensation_actions.append(compensate_create_user)
-            
-            # 2. Получение ID пользователя
+            # Получаем ID созданного пользователя
             user_id = self.admin.get_user_id(username)
             if not user_id:
                 raise KeycloakError("User created but ID not found")
             
-            # 3. НАЗНАЧЕНИЕ REALM ROLE
+            # Компенсирующее действие для создания пользователя
+            def compensate_create_user():
+                try:
+                    logger.warning(f"Compensating: deleting user {user_id} from Keycloak")
+                    if user_id:
+                        self.admin.delete_user(user_id)
+                except Exception as e:
+                    # Если пользователь уже удален (404), это не ошибка
+                    if "404" in str(e) and "User not found" in str(e):
+                        logger.debug(f"User {user_id} already deleted, skipping compensation")
+                    else:
+                        logger.error(f"Failed to compensate user deletion: {e}")
+            
+            compensation_actions.append(compensate_create_user)
+            
+            # 2. НАЗНАЧЕНИЕ REALM ROLE
             try:
-                realm_role = self.admin.get_realm_role(role.value)
+                realm_role = self.admin.get_realm_role(role)
             except:
                 # Если роль не существует, создаем ее
                 self.admin.create_realm_role({
-                    'name': role.value,
-                    'description': f'{role.value} role'
+                    'name': role,
+                    'description': f'{role} role'
                 })
-                realm_role = self.admin.get_realm_role(role.value)
+                realm_role = self.admin.get_realm_role(role)
             
             # Назначаем realm role пользователю
             self.admin.assign_realm_roles(user_id=user_id, roles=[realm_role])
@@ -108,24 +133,27 @@ class KeycloakClient:
             # Компенсирующее действие для назначения роли
             def compensate_role_assignment():
                 try:
-                    logger.warning(f"Compensating: removing realm role {role.value} from user {user_id}")
-                    self.admin.delete_realm_roles_of_user(
-                        user_id=user_id,
-                        roles=[realm_role]
-                    )
+                    logger.warning(f"Compensating: removing realm role {role} from user {user_id}")
+                    if user_id:
+                        self.admin.delete_realm_roles_of_user(
+                            user_id=user_id,
+                            roles=[realm_role]
+                        )
                 except Exception as e:
                     logger.error(f"Failed to compensate role removal: {e}")
             
             compensation_actions.append(compensate_role_assignment)
             
-            logger.info(f"User created in Keycloak: {user_id} with role {role.value}")
+            logger.info(f"User created in Keycloak: {user_id} with role {role}")
             return user_id, compensation_actions
             
+        except UserAlreadyExistsException:
+            raise  # Пробрасываем дальше
         except Exception as e:
             # Если произошла ошибка, выполняем компенсацию
             logger.error(f"Keycloak create_user failed: {e}")
             self._execute_compensation(compensation_actions)
-            raise
+            raise KeycloakConnectionError(f"Failed to create user in Keycloak: {str(e)}")
 
     def _execute_compensation(self, compensation_actions: List[Callable[[], None]]) -> None:
         """Выполняет компенсирующие действия в обратном порядке"""
@@ -133,12 +161,24 @@ class KeycloakClient:
             try:
                 action()
             except Exception as e:
-                # Если пользователь уже удален (404), это не ошибка
-                if "404" in str(e) and "User not found" in str(e):
-                    logger.debug(f"User already deleted during compensation, skipping")
-                else:
-                    logger.error(f"Compensation action failed: {e}")
+                # Логируем ошибку, но продолжаем выполнение других компенсаций
+                logger.error(f"Compensation action failed: {e}")
 
+    def delete_user_from_keycloak(self, user_id: str) -> bool:
+        """Удаление пользователя из Keycloak"""
+        try:
+            self.admin.delete_user(user_id)
+            logger.info(f"User {user_id} deleted from Keycloak")
+            return True
+        except Exception as e:
+            # Если пользователь уже удален (404), это не ошибка
+            if "404" in str(e) and "User not found" in str(e):
+                logger.debug(f"User {user_id} already deleted from Keycloak")
+                return True
+            logger.error(f"Failed to delete user {user_id} from Keycloak: {e}")
+            return False
+
+    # Остальные методы остаются без изменений...
     def get_token(self, username: str, password: str) -> Dict[str, Any]:
         """Синхронный метод получения токена"""
         try:
@@ -246,22 +286,12 @@ class KeycloakClient:
         except Exception as e:
             logger.error(f"Failed to update user roles {keycloak_id} in Keycloak: {e}")
             raise KeycloakConnectionError(f"Failed to update user roles in Keycloak: {str(e)}")
-    
-    def delete_user_from_keycloak(self, keycloak_id: str) -> None:
-        """Удаление пользователя из Keycloak"""
-        try:
-            self.admin.delete_user(keycloak_id)
-            logger.info(f"User {keycloak_id} deleted from Keycloak")
-        except Exception as e:
-            logger.error(f"Failed to delete user {keycloak_id} from Keycloak: {e}")
-            raise KeycloakConnectionError(f"Failed to delete user from Keycloak: {str(e)}")
 
     def refresh_token(self, refresh_token: str) -> Dict[str, Any]:
         """Обновление токена"""
         try:
             return self.oidc.refresh_token(refresh_token)
         except KeycloakPostError as e:
-            # Проверяем тип ошибки
             error_message = str(e).lower()
             if e.response_code == 400 and "invalid_grant" in error_message:
                 if "token is not active" in error_message or "token not active" in error_message:
@@ -319,3 +349,23 @@ class KeycloakClient:
         except Exception as e:
             logger.error(f"Failed to get user roles from Keycloak: {e}")
             return []
+    
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Получение пользователя по email"""
+        try:
+            return self.admin.get_user_by_email(email)
+        except Exception as e:
+            if "404" in str(e) and "User not found" in str(e):
+                return None
+            logger.error(f"Failed to get user by email {email}: {e}")
+            return None
+    
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """Получение пользователя по username"""
+        try:
+            return self.admin.get_user_by_username(username)
+        except Exception as e:
+            if "404" in str(e) and "User not found" in str(e):
+                return None
+            logger.error(f"Failed to get user by username {username}: {e}")
+            return None

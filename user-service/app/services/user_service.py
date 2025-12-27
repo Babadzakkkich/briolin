@@ -1,20 +1,22 @@
 import uuid
+import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_, func
-from typing import Any, Dict, Optional, List, Tuple
+from sqlalchemy import func, select, delete, or_
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.database.models import User, UserRoleAssignment
 from shared.schemas.shared import UserRole
 from app.schemas.user import UserBase, UserRolesUpdate
 from app.services.keycloak_client import KeycloakClient
 from app.services.event_service import get_event_service
+from app.services.event_waiter import get_event_waiter
+from app.services.saga_service import get_user_saga_service
 from app.core.exceptions import (
     UserAlreadyExistsException, 
     UserNotFoundException,
     DatabaseException,
     ValidationException,
-    PermissionDeniedException,
-    KeycloakConnectionError
+    PermissionDeniedException
 )
 from app.core.logger import logger
 
@@ -24,54 +26,47 @@ class UserService:
         self.db = db
         self.kc = kc_client
         self.event_service = get_event_service()
+        self.event_waiter = get_event_waiter()
+        self.saga_service = get_user_saga_service()
 
     async def create_user_profile(self, data) -> User:
-        """Создание профиля пользователя (вызвано из auth-service через события)"""
-        # Проверяем уникальность
-        stmt = select(User).where(
-            (User.email == data.email) | (User.username == data.username)
-        )
-        result = await self.db.execute(stmt)
-        if result.scalar_one_or_none():
-            raise UserAlreadyExistsException("Email or username already exists")
-        
-        # Создаем пользователя
-        new_user = User(
+        """Создание профиля пользователя через SAGA транзакцию"""
+        # Запускаем SAGA транзакцию
+        saga_result = await self.saga_service.execute_profile_creation_saga(
             keycloak_id=data.keycloak_id,
-            username=data.username,
             email=data.email,
+            username=data.username,
             first_name=data.first_name,
             last_name=data.last_name,
+            role=data.role.value
         )
         
-        # Добавляем роль
-        role_assignment = UserRoleAssignment(user=new_user, role=data.role)
+        saga_id = saga_result["saga_id"]
         
-        try:
-            self.db.add(new_user)
-            await self.db.commit()
-            await self.db.refresh(new_user)
+        # Ждем завершения SAGA
+        for _ in range(30):
+            await asyncio.sleep(1)
+            status = await self.saga_service.saga_orchestrator.get_saga_status(saga_id)
             
-            logger.info(f"User profile created: {new_user.id} with role {data.role}")
+            if status["status"] in ["completed", "compensated", "failed"]:
+                break
+        
+        final_status = await self.saga_service.saga_orchestrator.get_saga_status(saga_id)
+        
+        if final_status["status"] == "completed":
+            # Получаем ID пользователя из результатов SAGA
+            user_id = final_status["results"]["create_user_profile"]["result"]["user_id"]
             
-            # Публикуем событие создания профиля
-            await self.event_service.publish_user_profile_created(
-                keycloak_id=new_user.keycloak_id,
-                user_id=new_user.id,
-                username=new_user.username,
-                email=new_user.email,
-                first_name=new_user.first_name,
-                last_name=new_user.last_name,
-                roles=[data.role.value]
-            )
-            logger.info(f"User profile created event published for {new_user.id}")
+            # Получаем пользователя из БД
+            user = await self.get_user_by_id(user_id)
             
-            return new_user
+            logger.info(f"User profile created via SAGA: {user.id}")
+            return user
             
-        except Exception as e:
-            await self.db.rollback()
-            logger.error(f"DB Error creating user profile: {e}")
-            raise DatabaseException("Failed to create user profile")
+        elif final_status["status"] == "compensated":
+            raise DatabaseException("User profile creation failed and was compensated")
+        else:
+            raise DatabaseException(f"User profile creation failed: {final_status.get('error')}")
 
     async def update_user(
         self,
@@ -80,10 +75,10 @@ class UserService:
         current_user: dict,
         source_service: str = "api"
     ) -> User:
-        """Обновление пользователя с гибридным подходом"""
+        """Обновление пользователя с ожиданием подтверждения от auth-service"""
         user = await self.get_user_by_id(user_id)
         
-        # Проверяем права: либо свой профиль, либо админ
+        # Проверяем права
         is_self = user_id == current_user["id"]
         is_admin = UserRole.ADMIN in current_user["roles"]
         
@@ -101,7 +96,7 @@ class UserService:
             if field in update_data:
                 old_values[field] = getattr(user, field)
         
-        # Проверяем уникальность email и username
+        # Проверяем уникальность
         if 'email' in update_data or 'username' in update_data:
             conditions = []
             if 'email' in update_data and update_data['email'].lower() != user.email:
@@ -115,48 +110,47 @@ class UserService:
                 if result.scalar_one_or_none():
                     raise UserAlreadyExistsException("Email or username already taken")
         
-        # Если обновление инициировано из API, используем гибридный подход
         if source_service == "api":
-            try:
-                # 1. Сначала обновляем локальную БД
-                for field, value in update_data.items():
-                    if field in ['email', 'username']:
-                        value = value.lower()
-                    setattr(user, field, value)
-                
-                await self.db.commit()
-                await self.db.refresh(user)
-                
-                # 2. Отправляем запрос на обновление в auth-service через RabbitMQ
-                correlation_id = str(uuid.uuid4())
-                logger.info(f"Requesting profile update for user {user_id} (correlation: {correlation_id})")
-                
-                success = await self.event_service.publish_user_profile_update_requested(
-                    keycloak_id=user.keycloak_id,
-                    user_id=user.id,
-                    updated_fields=update_data,
-                    old_values=old_values,
-                    correlation_id=correlation_id
-                )
-                
-                if not success:
-                    # Если не удалось опубликовать событие, откатываем изменения
-                    await self.db.rollback()
-                    # Восстанавливаем объект из базы
-                    await self.db.refresh(user)
-                    logger.error(f"Failed to send update request to auth-service for user {user_id}")
-                    raise DatabaseException("Failed to send update request to auth-service")
-                
-                logger.info(f"User {user_id} updated locally, request sent to auth-service")
-                return user
-                
-            except Exception as e:
-                await self.db.rollback()
-                logger.error(f"Failed to update user {user_id}: {e}")
-                raise DatabaseException("Failed to update user")
+            # Генерируем correlation_id для отслеживания
+            correlation_id = str(uuid.uuid4())
+            
+            # 1. Отправляем запрос на обновление в auth-service
+            success = await self.event_service.publish_user_profile_update_requested(
+                keycloak_id=user.keycloak_id,
+                user_id=user.id,
+                updated_fields=update_data,
+                old_values=old_values,
+                correlation_id=correlation_id
+            )
+            
+            if not success:
+                raise DatabaseException("Failed to send update request to auth-service")
+            
+            logger.info(f"Sent update request for user {user_id} with correlation {correlation_id}")
+            
+            # 2. Ждем подтверждения от auth-service через EventWaiter
+            result = await self.event_waiter.wait_for_event(correlation_id, timeout=30)
+            
+            if not result:
+                raise DatabaseException("Timeout waiting for update confirmation from auth-service")
+            
+            if result.get("status") != "success":
+                error_msg = result.get("error", "Unknown error from auth-service")
+                raise DatabaseException(f"Update failed in auth-service: {error_msg}")
+            
+            # 3. Обновляем локальную БД (уже должно быть сделано в обработчике события)
+            # Но для надежности обновляем еще раз
+            await self.update_user_from_event(
+                keycloak_id=user.keycloak_id,
+                updated_fields=update_data,
+                source_service="self"
+            )
+            
+            # 4. Возвращаем обновленного пользователя
+            return await self.get_user_by_id(user_id)
         
-        # Если источник события - auth-service (подтверждение), обновляем локально
         elif source_service == "auth-service":
+            # Это вызов из обработчика событий
             try:
                 # Обновляем локальную БД
                 for field, value in update_data.items():
@@ -175,56 +169,53 @@ class UserService:
                 logger.error(f"Failed to update user {user_id} locally: {e}")
                 raise DatabaseException("Failed to update user locally")
         
-        # Для обновлений из других источников
         else:
             raise ValidationException(f"Unknown source service: {source_service}")
-        
-        return user
 
     async def toggle_user_status(self, user_id: int, current_user: dict) -> User:
-        """Переключение статуса активности пользователя с гибридным подходом"""
+        """Переключение статуса активности пользователя с ожиданием подтверждения"""
         user = await self.get_user_by_id(user_id)
         
         if UserRole.ADMIN not in current_user["roles"]:
             raise PermissionDeniedException("Not enough permissions")
         
-        # Сохраняем старое значение для возможного отката
-        old_status = user.is_active
-        new_status = not old_status
+        # Генерируем correlation_id
+        correlation_id = str(uuid.uuid4())
+        new_status = not user.is_active
         
-        try:
-            # 1. Обновляем в локальной БД user-service
-            user.is_active = new_status
-            await self.db.commit()
-            await self.db.refresh(user)
-            
-            # 2. Публикуем запрос на обновление статуса в Keycloak через auth-service
-            correlation_id = str(uuid.uuid4())
-            logger.info(f"Requesting status change for user {user_id} to {new_status} (correlation: {correlation_id})")
-            
-            success = await self.event_service.publish_user_status_change_requested(
-                keycloak_id=user.keycloak_id,
-                user_id=user.id,
-                is_active=new_status,
-                reason="admin_action",
-                correlation_id=correlation_id
-            )
-            
-            if not success:
-                # Если не удалось опубликовать событие, откатываем изменения
-                await self.db.rollback()
-                # Восстанавливаем объект из базы
-                await self.db.refresh(user)
-                logger.error(f"Failed to send status change request to auth-service for user {user_id}")
-                raise DatabaseException("Failed to send status change request to auth-service")
-            
-            logger.info(f"User {user_id} status changed locally to {new_status}, request sent to auth-service")
-            return user
-            
-        except Exception as e:
-            await self.db.rollback()
-            logger.error(f"Failed to toggle user status {user_id}: {e}")
-            raise DatabaseException("Failed to change user status")
+        # 1. Отправляем запрос на обновление статуса в auth-service
+        success = await self.event_service.publish_user_status_change_requested(
+            keycloak_id=user.keycloak_id,
+            user_id=user.id,
+            is_active=new_status,
+            reason="admin_action",
+            correlation_id=correlation_id
+        )
+        
+        if not success:
+            raise DatabaseException("Failed to send status change request to auth-service")
+        
+        logger.info(f"Sent status change request for user {user_id} with correlation {correlation_id}")
+        
+        # 2. Ждем подтверждения от auth-service
+        result = await self.event_waiter.wait_for_event(correlation_id, timeout=30)
+        
+        if not result:
+            raise DatabaseException("Timeout waiting for status change confirmation from auth-service")
+        
+        if result.get("status") != "success":
+            error_msg = result.get("error", "Unknown error from auth-service")
+            raise DatabaseException(f"Status change failed in auth-service: {error_msg}")
+        
+        # 3. Обновляем локальную БД (уже должно быть сделано в обработчике события)
+        await self.update_user_from_event(
+            keycloak_id=user.keycloak_id,
+            updated_fields={"is_active": new_status},
+            source_service="self"
+        )
+        
+        # 4. Возвращаем обновленного пользователя
+        return await self.get_user_by_id(user_id)
 
     async def update_user_roles(
         self,
@@ -232,7 +223,7 @@ class UserService:
         roles_data: UserRolesUpdate,
         current_user: dict
     ) -> User:
-        """Обновление ролей пользователя с гибридным подходом"""
+        """Обновление ролей пользователя с ожиданием подтверждения"""
         user = await self.get_user_by_id(user_id)
         
         if UserRole.ADMIN not in current_user["roles"]:
@@ -242,90 +233,112 @@ class UserService:
         old_roles = [role.value for role in user.roles]
         new_roles = [role.value for role in roles_data.roles]
         
-        try:
-            # 1. Обновляем роли в локальной БД user-service
-            # Удаляем старые роли
-            await self.db.execute(
-                delete(UserRoleAssignment).where(UserRoleAssignment.user_id == user_id)
+        # Генерируем correlation_id
+        correlation_id = str(uuid.uuid4())
+        
+        # 1. Отправляем запрос на обновление ролей в auth-service
+        success = await self.event_service.publish_user_roles_update_requested(
+            keycloak_id=user.keycloak_id,
+            user_id=user.id,
+            roles=new_roles,
+            old_roles=old_roles,
+            correlation_id=correlation_id
+        )
+        
+        if not success:
+            raise DatabaseException("Failed to send roles update request to auth-service")
+        
+        logger.info(f"Sent roles update request for user {user_id} with correlation {correlation_id}")
+        
+        # 2. Ждем подтверждения от auth-service
+        result = await self.event_waiter.wait_for_event(correlation_id, timeout=30)
+        
+        if not result:
+            raise DatabaseException("Timeout waiting for roles update confirmation from auth-service")
+        
+        if result.get("status") != "success":
+            error_msg = result.get("error", "Unknown error from auth-service")
+            raise DatabaseException(f"Roles update failed in auth-service: {error_msg}")
+        
+        # 3. Обновляем локальную БД
+        await self.db.execute(
+            delete(UserRoleAssignment).where(UserRoleAssignment.user_id == user_id)
+        )
+        
+        for role in roles_data.roles:
+            role_assignment = UserRoleAssignment(
+                user_id=user_id,
+                role=role
             )
-            
-            # Добавляем новые роли
-            for role in roles_data.roles:
-                role_assignment = UserRoleAssignment(
-                    user_id=user_id,
-                    role=role
-                )
-                self.db.add(role_assignment)
-            
+            self.db.add(role_assignment)
+        
+        try:
             await self.db.commit()
             await self.db.refresh(user)
+            logger.info(f"User {user_id} roles updated locally after confirmation")
             
-            # 2. Отправляем запрос на обновление ролей в auth-service
-            correlation_id = str(uuid.uuid4())
-            logger.info(f"Requesting roles update for user {user_id} (correlation: {correlation_id})")
-            
-            success = await self.event_service.publish_user_roles_update_requested(
-                keycloak_id=user.keycloak_id,
-                user_id=user.id,
-                roles=new_roles,
-                old_roles=old_roles,
-                correlation_id=correlation_id
-            )
-            
-            if not success:
-                # Если не удалось опубликовать событие, откатываем изменения
-                await self.db.rollback()
-                # Восстанавливаем объект из базы
-                await self.db.refresh(user)
-                logger.error(f"Failed to send roles update request to auth-service for user {user_id}")
-                raise DatabaseException("Failed to send roles update request to auth-service")
-            
-            logger.info(f"User {user_id} roles updated locally, request sent to auth-service")
             return user
-            
         except Exception as e:
             await self.db.rollback()
-            logger.error(f"Failed to update roles for user {user_id}: {e}")
-            raise DatabaseException("Failed to update user roles")
+            logger.error(f"Failed to update user roles locally: {e}")
+            raise DatabaseException("Failed to update user roles locally")
 
     async def delete_user(self, user_id: int, current_user: dict) -> bool:
-        """Удаление пользователя с гибридным подходом"""
+        """Удаление пользователя с ожиданием подтверждения"""
         if UserRole.ADMIN not in current_user["roles"]:
             raise PermissionDeniedException("Not enough permissions")
         
         user = await self.get_user_by_id(user_id)
         
-        try:
-            # 1. Удаляем пользователя из локальной БД user-service
-            await self.db.delete(user)
-            await self.db.commit()
-            
-            # 2. Отправляем запрос на удаление в auth-service
-            correlation_id = str(uuid.uuid4())
-            logger.info(f"Requesting deletion for user {user_id} (correlation: {correlation_id})")
-            
-            success = await self.event_service.publish_user_deletion_requested(
-                keycloak_id=user.keycloak_id,
-                user_id=user.id,
-                correlation_id=correlation_id
-            )
-            
-            if not success:
-                # Если не удалось опубликовать событие, откатываем изменения
-                # Но удаление нельзя откатить так просто - это необратимая операция
-                # Поэтому здесь нужно вернуть ошибку, но пользователь уже удален локально
-                logger.error(f"Failed to send deletion request to auth-service, but user {user_id} already deleted locally")
-                # Пользователь уже удален, возвращаем успех для клиента
-                # Но логируем проблему
+        # Генерируем correlation_id
+        correlation_id = str(uuid.uuid4())
+        
+        # 1. Отправляем запрос на удаление в auth-service
+        success = await self.event_service.publish_user_deletion_requested(
+            keycloak_id=user.keycloak_id,
+            user_id=user.id,
+            correlation_id=correlation_id
+        )
+        
+        if not success:
+            raise DatabaseException("Failed to send deletion request to auth-service")
+        
+        logger.info(f"Sent deletion request for user {user_id} with correlation {correlation_id}")
+        
+        # 2. НЕ УДАЛЯЕМ пользователя локально здесь - дождемся подтверждения
+        # Вместо этого просто регистрируем ожидание
+        
+        # 3. Ждем подтверждения от auth-service
+        result = await self.event_waiter.wait_for_event(correlation_id, timeout=30)
+        
+        if not result:
+            raise DatabaseException("Timeout waiting for deletion confirmation from auth-service")
+        
+        if result.get("status") != "success":
+            error_msg = result.get("error", "Unknown error from auth-service")
+            raise DatabaseException(f"Deletion failed in auth-service: {error_msg}")
+        
+        # 4. После подтверждения проверяем, не был ли пользователь уже удален обработчиком события
+        # Если не был - удаляем здесь
+        user_still_exists = await self.check_user_exists(user_id)
+        
+        if user_still_exists:
+            try:
+                # Получаем пользователя снова (объект мог быть отсоединен)
+                user_to_delete = await self.get_user_by_id(user_id)
+                await self.db.delete(user_to_delete)
+                await self.db.commit()
+                
+                logger.info(f"User {user_id} deleted locally after confirmation")
                 return True
-            
-            logger.info(f"User {user_id} deleted locally, request sent to auth-service")
+                
+            except Exception as e:
+                await self.db.rollback()
+                logger.error(f"Failed to delete user {user_id} locally: {e}")
+                raise DatabaseException("Failed to delete user locally")
+        else:
+            logger.info(f"User {user_id} was already deleted by event handler")
             return True
-            
-        except Exception as e:
-            await self.db.rollback()
-            logger.error(f"Failed to delete user {user_id}: {e}")
-            raise DatabaseException("Failed to delete user")
 
     async def update_user_from_event(
         self,
@@ -372,6 +385,7 @@ class UserService:
                 setattr(user, field, value)
             
             await self.db.commit()
+            await self.db.refresh(user)  # Обновляем объект после коммита
             logger.info(f"User {keycloak_id} updated from {source_service} confirmation: {list(fields_to_update.keys())}")
             return True
             

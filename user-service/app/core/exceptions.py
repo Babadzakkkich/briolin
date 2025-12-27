@@ -33,3 +33,8 @@ class PermissionDeniedException(UserServiceException):
 class InternalAuthException(UserServiceException):
     def __init__(self, message: str = "Internal authentication failed"):
         super().__init__(message=message, status_code=401)
+        
+class ConsistencyTimeoutException(UserServiceException):
+    """Не удалось получить подтверждение консистентности вовремя"""
+    def __init__(self, message: str = "Consistency confirmation timeout"):
+        super().__init__(message=message, status_code=202)  # 202 Accepted

@@ -76,16 +76,6 @@ async def handle_user_profile_update_requested(event: Dict[str, Any]) -> bool:
                     logger.warning(f"User {keycloak_id} not found in auth-db")
                     return False
             
-            # Публикуем подтверждение обновления
-            await auth_service.event_service.publish_user_profile_updated(
-                keycloak_id=keycloak_id,
-                user_id=user_data.get("user_id"),
-                updated_fields=updated_fields,
-                old_values=user_data.get("old_values", {}),
-                correlation_id=correlation_id,
-                source_service=source_service
-            )
-            
             logger.info(f"Profile update for {keycloak_id} processed and confirmed")
             return True
             
@@ -239,11 +229,14 @@ async def handle_user_deletion_requested(event: Dict[str, Any]) -> bool:
             
             # Удаляем из Keycloak
             try:
-                kc_client.delete_user_from_keycloak(keycloak_id)
-                logger.info(f"User {keycloak_id} deleted from Keycloak")
+                success = kc_client.delete_user_from_keycloak(keycloak_id)
+                if success:
+                    logger.info(f"User {keycloak_id} deleted from Keycloak")
+                else:
+                    logger.warning(f"User {keycloak_id} not found in Keycloak or already deleted")
             except Exception as e:
                 logger.error(f"Failed to delete user {keycloak_id} from Keycloak: {e}")
-                return False
+                # Продолжаем даже если удаление из Keycloak не удалось
             
             # Удаляем из auth-db - событие будет опубликовано внутри этого метода
             success = await auth_service.delete_user_from_auth_db(
@@ -253,8 +246,9 @@ async def handle_user_deletion_requested(event: Dict[str, Any]) -> bool:
             )
             
             if not success:
-                logger.warning(f"User {keycloak_id} not found in auth-db")
-                return False
+                logger.warning(f"User {keycloak_id} not found in auth-db or already deleted")
+                # Возвращаем True, так как пользователь уже удален
+                return True
             
             logger.info(f"Deletion for {keycloak_id} processed and confirmed")
             return True
