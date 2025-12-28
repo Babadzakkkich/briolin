@@ -1,3 +1,4 @@
+# APP/SERVICES/KEYCLOAK_CLIENT.PY (api-gateway)
 from keycloak import KeycloakOpenID
 from keycloak.exceptions import KeycloakError
 from typing import Dict, Any
@@ -10,11 +11,19 @@ from app.core.logger import logger
 
 class KeycloakClient:
     def __init__(self):
+        # Используем общую конфигурацию Keycloak
+        server_url = settings.keycloak.server_url
+        realm = settings.keycloak.realm
+        
+        # Используем специфичные для api-gateway настройки клиента
+        client_id = settings.gateway_keycloak.client_id
+        client_secret = settings.gateway_keycloak.client_secret
+        
         self.oidc = KeycloakOpenID(
-            server_url=settings.keycloak.server_url,
-            client_id=settings.gateway_keycloak.client_id,
-            realm_name=settings.keycloak.realm,
-            client_secret_key=settings.gateway_keycloak.client_secret,
+            server_url=server_url,
+            client_id=client_id,
+            realm_name=realm,
+            client_secret_key=client_secret,
         )
     
     def validate_token(self, token: str) -> Dict[str, Any]:

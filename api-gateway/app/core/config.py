@@ -1,19 +1,10 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+from shared.config import get_shared_config, KeycloakConfig
 
-
-class KeycloakConfig(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_nested_delimiter="__",
-        env_prefix="AUTH__KEYCLOAK__",
-        case_sensitive=False,
-    )
-    server_url: str
-    realm: str
-
-
-class GatewayKeycloakConfig(BaseSettings):
+class GatewayKeycloakClientConfig(BaseSettings):
+    """Конфигурация клиента Keycloak для api-gateway"""
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
         env_prefix="GATEWAY__KEYCLOAK__",
@@ -21,7 +12,6 @@ class GatewayKeycloakConfig(BaseSettings):
     )
     client_id: str
     client_secret: str
-
 
 class GatewayConfig(BaseSettings):
     model_config = SettingsConfigDict(
@@ -32,7 +22,7 @@ class GatewayConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = True
-
+    service_name: str = "api-gateway"
 
 class ServicesConfig(BaseSettings):
     model_config = SettingsConfigDict(
@@ -41,7 +31,7 @@ class ServicesConfig(BaseSettings):
         case_sensitive=False,
     )
     auth: str
-
+    user: str
 
 class CacheConfig(BaseSettings):
     model_config = SettingsConfigDict(
@@ -50,9 +40,8 @@ class CacheConfig(BaseSettings):
         case_sensitive=False,
     )
     redis_url: Optional[str] = "redis://redis:6379/0"
-    user_cache_ttl: int = 60  # 1 минута для данных пользователя
-    token_cache_ttl_buffer: int = 30  # 30 секунд буфер для TTL токенов
-
+    user_cache_ttl: int = 60
+    token_cache_ttl_buffer: int = 30
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -62,10 +51,16 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8"
     )
     
-    keycloak: KeycloakConfig = Field(default_factory=KeycloakConfig)
-    gateway_keycloak: GatewayKeycloakConfig = Field(default_factory=GatewayKeycloakConfig)
+    # Используем общую конфигурацию Keycloak
+    keycloak: KeycloakConfig = Field(default_factory=lambda: get_shared_config().keycloak)
+    # Плюс специфичные для api-gateway настройки клиента
+    gateway_keycloak: GatewayKeycloakClientConfig = Field(default_factory=GatewayKeycloakClientConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
+    
+    @property
+    def service_name(self) -> str:
+        return self.gateway.service_name
 
 settings = Settings()

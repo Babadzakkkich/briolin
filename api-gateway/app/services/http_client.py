@@ -8,37 +8,48 @@ from app.core.config import settings
 from app.core.exceptions import ServiceUnavailableException
 from app.core.logger import logger
 
-
 class HTTPClient:
     """
-    Обновленный HTTP клиент для проксирования запросов
-    Теперь передает внутренние JWT токены
+    Универсальный HTTP клиент для проксирования запросов к микросервисам
     """
     
     def __init__(self):
         self.timeout = httpx.Timeout(30.0)
         self.auth_service_url = settings.services.auth
+        self.user_service_url = settings.services.user
+    
+    def _get_service_url(self, path: str) -> str:
+        """Определяет URL сервиса по пути"""
+        if path.startswith("/api/v1/auth"):
+            return self.auth_service_url
+        elif path.startswith("/api/v1/users"):
+            return self.user_service_url
+        elif path.startswith("/api/v1/internal/users"):
+            return self.user_service_url
+        else:
+            # По умолчанию auth-service
+            return self.auth_service_url
     
     async def proxy_request(
         self,
         request: Request,
         path_override: Optional[str] = None
     ) -> httpx.Response:
-        """Проксирование запроса к auth-service с внутренним токеном"""
+        """Проксирование запроса к микросервису с внутренним токеном"""
         
-        # Определяем путь
         path = path_override if path_override else request.url.path
+        service_url = self._get_service_url(path)
         
-        # Формируем URL для auth-service
-        target_url = urljoin(self.auth_service_url.rstrip("/") + "/", path.lstrip("/"))
+        # Формируем URL для целевого сервиса
+        target_url = urljoin(service_url.rstrip("/") + "/", path.lstrip("/"))
         
         # Формируем заголовки
         headers = {}
         
-        # Копируем оригинальные заголовки (кроме Authorization и host)
+        # Копируем оригинальные заголовки (кроме host и content-length)
         for header_name, header_value in request.headers.items():
             header_name_lower = header_name.lower()
-            if header_name_lower not in ['host', 'content-length', 'authorization']:
+            if header_name_lower not in ['host', 'content-length']:
                 headers[header_name] = header_value
         
         # Передаем внутренний токен если есть
@@ -49,8 +60,6 @@ class HTTPClient:
             headers["x-internal-token"] = internal_token
             headers["x-token-signature"] = signature
             logger.debug(f"Proxying with internal token: {internal_token[:30]}...")
-        else:
-            logger.warning("No internal token found for proxying")
         
         # Получаем тело запроса
         body = None
@@ -58,7 +67,6 @@ class HTTPClient:
             body_bytes = await request.body()
             if body_bytes:
                 try:
-                    # Пробуем преобразовать в JSON для логгирования
                     body_json = json.loads(body_bytes.decode())
                     logger.debug(f"Request body: {body_json}")
                     body = body_bytes
@@ -77,15 +85,14 @@ class HTTPClient:
                     params=request.query_params
                 )
                 
-                logger.debug(f"Proxied to auth-service: {response.status_code}")
+                logger.debug(f"Proxied to service: {response.status_code}")
                 return response
                 
         except httpx.ConnectError:
-            logger.error(f"Cannot connect to auth-service at {self.auth_service_url}")
-            raise ServiceUnavailableException("auth-service")
+            logger.error(f"Cannot connect to service at {service_url}")
+            raise ServiceUnavailableException("service")
         except Exception as e:
             logger.error(f"Error proxying request: {e}")
-            raise ServiceUnavailableException("auth-service")
-
+            raise ServiceUnavailableException("service")
 
 http_client = HTTPClient()

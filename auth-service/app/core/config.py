@@ -1,13 +1,18 @@
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
+from shared.config import get_shared_config, KeycloakConfig, RabbitMQConfig
 
-class KeycloakConfig(BaseModel):
-    server_url: str = Field(..., env="AUTH__KEYCLOAK__SERVER_URL")
-    realm: str = Field(..., env="AUTH__KEYCLOAK__REALM")
-    client_id: str = Field(..., env="AUTH__KEYCLOAK__CLIENT_ID")
-    client_secret: str = Field(..., env="AUTH__KEYCLOAK__CLIENT_SECRET")
+class AuthKeycloakClientConfig(BaseSettings):
+    """Конфигурация клиента Keycloak для auth-service (client_id и client_secret)"""
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="AUTH__KEYCLOAK__",
+        case_sensitive=False,
+    )
     
+    client_id: str
+    client_secret: str
     default_role: str = "user"
 
 class DatabaseConfig(BaseModel):
@@ -29,17 +34,31 @@ class DatabaseConfig(BaseModel):
             f"@{self.host}:{self.port}/{self.name}"
         )
 
+class UserServiceConfig(BaseModel):
+    url: str = Field(..., env="AUTH__USER_SERVICE__URL")
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
         env_prefix="AUTH__",
         case_sensitive=False,
+        extra='allow'
     )
 
     app_name: str = "Briolin Auth Service"
+    service_name: str = "auth-service"  # Добавляем имя сервиса для событий
     debug: bool = Field(..., env="AUTH__DEBUG")
 
-    keycloak: KeycloakConfig = Field(...)
+    # Используем AuthKeycloakClientConfig как BaseSettings
+    keycloak_client: AuthKeycloakClientConfig = Field(default_factory=AuthKeycloakClientConfig)
     db: DatabaseConfig = Field(...)
+    user_service: UserServiceConfig = Field(...)
+    
+    @property
+    def keycloak(self) -> KeycloakConfig:
+        return get_shared_config().keycloak
+    @property
+    def rabbitmq(self) -> RabbitMQConfig:
+        return get_shared_config().rabbitmq
 
 settings = Settings()

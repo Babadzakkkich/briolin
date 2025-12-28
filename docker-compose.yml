@@ -70,6 +70,25 @@ services:
       timeout: 5s
       retries: 5
 
+  user-postgres:
+    image: postgres:17-alpine
+    container_name: user-postgres
+    environment:
+      POSTGRES_USER: ${USER__DB__USER}
+      POSTGRES_PASSWORD: ${USER__DB__PASSWORD}
+      POSTGRES_DB: ${USER__DB__NAME}
+    ports:
+      - "5435:5432"
+    env_file: 
+      - .env
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${USER__DB__USER} -d ${USER__DB__NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: briolin-redis
@@ -107,6 +126,25 @@ services:
       timeout: 10s
       retries: 3
 
+  rabbitmq:
+    image: rabbitmq:4.2.2-management-alpine
+    container_name: briolin-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   auth-service:
     build: 
       context: .
@@ -114,12 +152,33 @@ services:
     container_name: auth-service
     ports:
       - "8001:8001"
-    env_file: 
-      - .env 
+    env_file:
+      - .env
     depends_on:
       auth-postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - briolin-network
+
+  user-service:
+    build: 
+      context: .
+      dockerfile: user-service/Dockerfile
+    container_name: user-service
+    ports:
+      - "8002:8002"
+    env_file: 
+      - .env 
+    depends_on:
+      user-postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     volumes:
       - ./shared:/app/shared:ro
@@ -138,6 +197,8 @@ services:
     depends_on:
       auth-service:
         condition: service_started
+      user-service:
+        condition: service_started
       redis:
         condition: service_healthy
     volumes:
@@ -148,14 +209,14 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 3m
       timeout: 10s
-      retries: 3
+      retries: 1
       start_period: 40s
 
 volumes:
   keycloak-postgres-data:
-  auth-postgres-data:
   redis-data:
   redis-insight-data:
+  rabbitmq-data:
 
 networks:
   briolin-network:

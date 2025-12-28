@@ -96,21 +96,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
         user_details = await auth_service_client.get_user_details(keycloak_id)
         
         if not user_details:
-            logger.error(f"User {keycloak_id} not found in auth service")
+            logger.error(f"User {keycloak_id} not found in services")
             raise AuthenticationException("User not found")
         
         # Создаем данные пользователя
         internal_user_data = {
             "keycloak_id": keycloak_id,
-            "id": user_details.get("id"),
-            "username": token_info.get("preferred_username", ""),
-            "email": token_info.get("email", ""),
-            "first_name": token_info.get("given_name", ""),
-            "last_name": token_info.get("family_name", ""),
-            "roles": user_details.get("roles", []),
+            "id": user_details.get("id"),  # ID из auth-service
+            "username": token_info.get("preferred_username", user_details.get("username", "")),
+            "email": token_info.get("email", user_details.get("email", "")),
+            "roles": user_details.get("roles", []),  # Роли из user-service
             "is_active": user_details.get("is_active", True),
             "authenticated_at": datetime.utcnow().isoformat()
         }
+        
+        # Проверяем, что роли есть
+        if not internal_user_data["roles"]:
+            logger.warning(f"User {keycloak_id} has no roles assigned")
         
         # Создаем токен и подпись
         internal_token = jwt_manager.create_internal_token(internal_user_data)
