@@ -81,8 +81,6 @@ class UserSagaService:
         keycloak_id: str,
         email: str,
         username: str,
-        first_name: str,
-        last_name: str,
         role: str
     ) -> Dict[str, Any]:
         async def create_in_user_db(context: Dict[str, Any]) -> Dict[str, Any]:
@@ -96,8 +94,6 @@ class UserSagaService:
                         keycloak_id=keycloak_id,
                         username=username,
                         email=email,
-                        first_name=first_name,
-                        last_name=last_name,
                     )
                     session.add(new_user)
                     await session.commit()
@@ -144,8 +140,6 @@ class UserSagaService:
             "keycloak_id": keycloak_id,
             "email": email,
             "username": username,
-            "first_name": first_name,
-            "last_name": last_name,
             "role": role
         }
 

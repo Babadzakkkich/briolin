@@ -34,8 +34,6 @@ class EventService:
         user_id: int,
         username: str,
         email: str,
-        first_name: str,
-        last_name: str,
         roles: List[str],
         correlation_id: str = None
     ) -> bool:
@@ -53,8 +51,6 @@ class EventService:
                     "user_id": user_id,
                     "username": username,
                     "email": email,
-                    "first_name": first_name,
-                    "last_name": last_name,
                     "roles": roles,
                     "is_active": True
                 }
@@ -191,6 +187,7 @@ class EventService:
 _event_service = None
 
 def get_event_service() -> EventService:
+    """Получение экземпляра EventService (синглтон)"""
     global _event_service
     if _event_service is None:
         from app.services.rabbitmq import rabbitmq_publisher

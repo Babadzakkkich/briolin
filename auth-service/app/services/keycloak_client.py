@@ -56,8 +56,6 @@ class KeycloakClient:
         email: str, 
         username: str, 
         password: str, 
-        first_name: str, 
-        last_name: str,
         role: str  # Изменено: принимаем строку, а не UserRole
     ) -> Tuple[str, List[Callable[[], None]]]:
         """
@@ -83,15 +81,12 @@ class KeycloakClient:
             except Exception:
                 pass  # Если пользователь не найден - это нормально
             
-            # 1. Создание пользователя
             user_payload = {
                 "email": email,
                 "username": username,
-                "firstName": first_name,
-                "lastName": last_name,
                 "enabled": True,
                 "emailVerified": False,
-                "credentials": [{"value": password, "type": "password", "temporary": False}]
+                "credentials": [{"value": password, "type": "password", "temporary": False}],
             }
             
             self.admin.create_user(user_payload)
@@ -178,7 +173,6 @@ class KeycloakClient:
             logger.error(f"Failed to delete user {user_id} from Keycloak: {e}")
             return False
 
-    # Остальные методы остаются без изменений...
     def get_token(self, username: str, password: str) -> Dict[str, Any]:
         """Синхронный метод получения токена"""
         try:
@@ -189,6 +183,10 @@ class KeycloakClient:
                 error_message = str(e).lower()
                 if "invalid_grant" in error_message and ("invalid user credentials" in error_message or "user not found" in error_message):
                     raise InvalidCredentialsException("Invalid username or password")
+                elif "account is not fully set up" in error_message:
+                    # Это ошибка возникает, если пользователь создан с пустыми обязательными полями
+                    logger.error(f"Keycloak account setup error: {e}")
+                    raise KeycloakConnectionError("User account is not fully configured. Please contact administrator.")
                 else:
                     logger.error(f"Keycloak authentication error: {e}")
                     raise InvalidTokenException("Authentication failed")
@@ -207,12 +205,6 @@ class KeycloakClient:
             if 'email' in user_data:
                 kc_data['email'] = user_data['email']
                 kc_data['emailVerified'] = False
-            if 'first_name' in user_data:
-                kc_data['firstName'] = user_data['first_name']
-            if 'last_name' in user_data:
-                kc_data['lastName'] = user_data['last_name']
-            if 'username' in user_data:
-                kc_data['username'] = user_data['username']
             
             # Обновляем основные данные пользователя
             if kc_data:

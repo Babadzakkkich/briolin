@@ -22,8 +22,6 @@ async def create_user_profile(
             keycloak_id=user.keycloak_id,
             username=user.username,
             email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
             roles=user.roles,
             is_active=user.is_active,
             created_at=user.created_at
@@ -48,8 +46,6 @@ async def get_user_by_keycloak_id(
         keycloak_id=user.keycloak_id,
         username=user.username,
         email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
         roles=user.roles,
         is_active=user.is_active,
         created_at=user.created_at

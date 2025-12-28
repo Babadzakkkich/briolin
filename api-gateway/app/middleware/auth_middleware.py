@@ -105,8 +105,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "id": user_details.get("id"),  # ID из auth-service
             "username": token_info.get("preferred_username", user_details.get("username", "")),
             "email": token_info.get("email", user_details.get("email", "")),
-            "first_name": user_details.get("first_name", token_info.get("given_name", "")),
-            "last_name": user_details.get("last_name", token_info.get("family_name", "")),
             "roles": user_details.get("roles", []),  # Роли из user-service
             "is_active": user_details.get("is_active", True),
             "authenticated_at": datetime.utcnow().isoformat()

@@ -31,7 +31,7 @@ async def handle_user_registered(event: Dict[str, Any]) -> bool:
         
         logger.debug(f"Processing user registration event from {source_service}: {user_data}")
         
-        required_fields = ["keycloak_id", "email", "username", "first_name", "last_name", "role"]
+        required_fields = ["keycloak_id", "email", "username", "role"]
         for field in required_fields:
             if field not in user_data:
                 logger.error(f"Missing required field {field} in user registration event")
@@ -47,8 +47,6 @@ async def handle_user_registered(event: Dict[str, Any]) -> bool:
                 keycloak_id=user_data["keycloak_id"],
                 email=user_data["email"],
                 username=user_data["username"],
-                first_name=user_data["first_name"],
-                last_name=user_data["last_name"],
                 role=UserRole(user_data["role"])
             )
             

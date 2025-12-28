@@ -124,8 +124,6 @@ class AuthSagaService:
         email: str,
         username: str,
         password: str,
-        first_name: str,
-        last_name: str,
         role: str
     ) -> Dict[str, Any]:
         kc_client = KeycloakClient()
@@ -150,8 +148,6 @@ class AuthSagaService:
                     email=email,
                     username=username,
                     password=password,
-                    first_name=first_name,
-                    last_name=last_name,
                     role=role
                 )
                 return {
@@ -208,8 +204,6 @@ class AuthSagaService:
         initial_context = {
             "email": email,
             "username": username,
-            "first_name": first_name,
-            "last_name": last_name,
             "role": role
         }
 

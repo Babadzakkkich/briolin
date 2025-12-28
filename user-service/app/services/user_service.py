@@ -36,8 +36,6 @@ class UserService:
             keycloak_id=data.keycloak_id,
             email=data.email,
             username=data.username,
-            first_name=data.first_name,
-            last_name=data.last_name,
             role=data.role.value
         )
         
@@ -92,7 +90,7 @@ class UserService:
         old_values = {}
         update_data = user_data.model_dump(exclude_unset=True)
         
-        for field in ['email', 'username', 'first_name', 'last_name']:
+        for field in ['email', 'username']:
             if field in update_data:
                 old_values[field] = getattr(user, field)
         
@@ -354,7 +352,7 @@ class UserService:
         
         try:
             # Обновляем только разрешенные поля
-            allowed_fields = ["email", "first_name", "last_name", "username", "is_active"]
+            allowed_fields = ["email", "username", "is_active"]
             fields_to_update = {
                 k: v for k, v in updated_fields.items() 
                 if k in allowed_fields and v is not None
@@ -425,8 +423,6 @@ class UserService:
             "keycloak_id": user.keycloak_id,
             "username": user.username,
             "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
             "roles": user.roles,
             "is_active": user.is_active,
             "created_at": user.created_at
@@ -445,9 +441,7 @@ class UserService:
             query = query.where(
                 or_(
                     User.username.ilike(search_term),
-                    User.email.ilike(search_term),
-                    User.first_name.ilike(search_term),
-                    User.last_name.ilike(search_term)
+                    User.email.ilike(search_term)
                 )
             )
         

@@ -6,8 +6,6 @@ from shared.schemas.shared import UserRole
 class UserBase(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[EmailStr] = None
-    first_name: Optional[str] = Field(None, min_length=1, max_length=50)
-    last_name: Optional[str] = Field(None, min_length=1, max_length=50)
 
 class UserPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -16,8 +14,6 @@ class UserPublic(BaseModel):
     keycloak_id: str
     username: str
     email: EmailStr
-    first_name: str
-    last_name: str
     is_active: bool
     roles: List[UserRole]
     created_at: datetime
@@ -38,8 +34,6 @@ class UserMeResponse(BaseModel):
     keycloak_id: str
     username: str
     email: str
-    first_name: str
-    last_name: str
     roles: List[UserRole]
     is_active: bool
     created_at: datetime
