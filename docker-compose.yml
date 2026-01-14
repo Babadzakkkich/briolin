@@ -89,6 +89,25 @@ services:
       timeout: 5s
       retries: 5
 
+  profile-postgres:
+    image: postgres:17-alpine
+    container_name: profile-postgres
+    environment:
+      POSTGRES_USER: ${PROFILE__DB__USER}
+      POSTGRES_PASSWORD: ${PROFILE__DB__PASSWORD}
+      POSTGRES_DB: ${PROFILE__DB__NAME}
+    ports:
+      - "5436:5432"
+    env_file: 
+      - .env
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PROFILE__DB__USER} -d ${PROFILE__DB__NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: briolin-redis
@@ -185,6 +204,27 @@ services:
     networks:
       - briolin-network
 
+  profile-service:
+    build: 
+      context: .
+      dockerfile: profile-service/Dockerfile
+    container_name: profile-service
+    ports:
+      - "8003:8003"
+    env_file:
+      - .env
+    depends_on:
+      profile-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - briolin-network
+
   api-gateway:
     build: 
       context: .
@@ -198,6 +238,8 @@ services:
       auth-service:
         condition: service_started
       user-service:
+        condition: service_started
+      profile-service:
         condition: service_started
       redis:
         condition: service_healthy

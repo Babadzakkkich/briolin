@@ -6,6 +6,7 @@ from app.services.auth_service import AuthService
 from app.database.session import async_session_factory
 from app.core.config import settings
 from app.core.logger import logger
+from app.services.keycloak_client import KeycloakClient
 
 async def handle_user_profile_update_requested(event: Dict[str, Any]) -> bool:
     """Обработка события запроса на обновление профиля пользователя из user-service"""
