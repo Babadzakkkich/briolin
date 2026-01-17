@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
-from sqlalchemy.orm import selectinload  # ДОБАВЛЕНО
+from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -17,11 +17,12 @@ from app.core.exceptions import (
     TestTimeLimitExceededException,
     DatabaseException
 )
-from app.database.models import TestSession, TestResult, UserTestStatistics, TestStatus, PersonalityType
+from app.database.models import TestSession, TestResult, TestStatus
 from app.database.session import mongo
 from app.services.test_generator import get_test_generator
 from app.services.scoring_service import get_scoring_service
-from app.database.mongo_models import PersonalityDimension, TestTemplate, Question
+from app.services.event_service import get_testing_event_service
+from app.database.mongo_models import Question
 
 
 class TestingService:
@@ -31,6 +32,7 @@ class TestingService:
         self.db = db
         self.test_generator = get_test_generator()
         self.scoring_service = get_scoring_service()
+        self.event_service = get_testing_event_service()
     
     async def start_new_test(self, keycloak_id: str) -> Dict[str, Any]:
         """Начало нового теста для пользователя"""
@@ -62,25 +64,21 @@ class TestingService:
         await self.db.commit()
         await self.db.refresh(test_session)
         
-        # Обновляем статистику пользователя
-        await self._update_user_statistics(keycloak_id, test_taken=True)
+        logger.info(f"Test session started for user {keycloak_id}: {test_session.id}")
         
-        # Формируем вопросы для отправки клиенту (без правильных ответов)
+        # Формируем вопросы для отправки клиенту (без баллов)
         questions_for_client = []
         for question in questions:
             question_dict = question.dict()
             
-            # Убираем sensitive данные
             if "options" in question_dict:
                 for option in question_dict["options"]:
-                    if "score_impact" in option:
-                        del option["score_impact"]
+                    if "score" in option:
+                        del option["score"]
                     if "is_correct" in option:
                         del option["is_correct"]
             
             questions_for_client.append(question_dict)
-        
-        logger.info(f"Test session started for user {keycloak_id}: {test_session.id}")
         
         return {
             "session_id": str(test_session.id),
@@ -103,16 +101,13 @@ class TestingService:
     ) -> Dict[str, Any]:
         """Сохранение ответа на вопрос"""
         
-        # Получаем сессию теста
         test_session = await self._get_test_session(session_id, keycloak_id)
         
-        # Проверяем, что тест еще активен
         if test_session.status != TestStatus.IN_PROGRESS:
             raise TestAlreadyCompletedException(
                 f"Test session {session_id} is already {test_session.status}"
             )
         
-        # Проверяем время
         if test_session.is_expired():
             test_session.status = TestStatus.EXPIRED
             await self.db.commit()
@@ -120,36 +115,29 @@ class TestingService:
                 f"Test session {session_id} has expired"
             )
         
-        # Проверяем, что вопрос есть в тесте
         if question_id not in test_session.questions_order:
             raise TestNotFoundException(
                 f"Question {question_id} not found in test session {session_id}"
             )
         
-        # ОБНОВЛЯЕМ объект test_session из базы
         await self.db.refresh(test_session)
         
-        # Инициализируем user_answers если None
         if test_session.user_answers is None:
             test_session.user_answers = {}
         
-        # Преобразуем JSON в dict если необходимо
         if isinstance(test_session.user_answers, str):
             test_session.user_answers = json.loads(test_session.user_answers)
         
-        # Сохраняем ответ
         test_session.user_answers[question_id] = answer
-        
-        # Уведомляем SQLAlchemy об изменении JSON поля
         flag_modified(test_session, "user_answers")
         
-        # Обновляем объект в базе
         await self.db.commit()
-        # ОБЯЗАТЕЛЬНО обновляем объект после commit
         await self.db.refresh(test_session)
         
-        logger.info(f"Answer saved for question {question_id} in session {session_id}. "
-                   f"Total answered: {len(test_session.user_answers)}")
+        logger.info(
+            f"Answer saved for question {question_id} in session {session_id}. "
+            f"Total answered: {len(test_session.user_answers)}"
+        )
         
         return {
             "session_id": str(session_id),
@@ -166,16 +154,12 @@ class TestingService:
     ) -> Dict[str, Any]:
         """Завершение теста и подсчет результатов"""
         
-        # ИСПРАВЛЕНО: Загружаем сессию с результатом сразу
         test_session = await self._get_test_session_with_result(session_id, keycloak_id)
         
-        # Проверяем статус
         if test_session.status == TestStatus.COMPLETED:
-            # ИСПРАВЛЕНО: Проверяем, что result загружен
             if hasattr(test_session, 'result') and test_session.result:
                 return await self._format_existing_results(test_session)
             else:
-                # Пересчитываем результаты (должно быть редким случаем)
                 return await self._calculate_and_save_results(test_session)
         
         if test_session.status != TestStatus.IN_PROGRESS:
@@ -183,87 +167,38 @@ class TestingService:
                 f"Test session {session_id} is {test_session.status}"
             )
         
-        # Преобразуем user_answers из JSON если необходимо
         user_answers = test_session.user_answers
         if isinstance(user_answers, str):
             user_answers = json.loads(user_answers)
         elif user_answers is None:
             user_answers = {}
         
-        # Проверяем, что ответил на все вопросы
         answered_count = len(user_answers) if user_answers else 0
         total_questions = len(test_session.questions_order) if test_session.questions_order else 0
         
         logger.info(f"Test completion: {answered_count}/{total_questions} questions answered")
         
-        # Получаем шаблон теста
-        template_data = await mongo.test_templates.find_one(
-            {"id": test_session.test_template_id}
-        )
-        if not template_data:
-            raise TestNotFoundException(f"Template {test_session.test_template_id} not found")
-        
-        template = TestTemplate(**template_data)
-        
-        # Получаем вопросы
         questions = await self.test_generator.get_questions_by_ids(test_session.questions_order)
         
-        # Подсчитываем баллы
-        scores = await self.scoring_service.calculate_scores(
+        scoring_result = await self.scoring_service.calculate_total_score(
             questions, user_answers
         )
         
-        logger.info(f"Scores calculated: {scores}")
+        logger.info(
+            f"Test scored: {scoring_result['percentage']}% - "
+            f"{'PASSED' if scoring_result['passed'] else 'FAILED'}"
+        )
         
-        # Определяем типы личности
-        try:
-            primary, secondary = await self.scoring_service.determine_personality_types(scores)
-            logger.info(f"Personality types determined: primary={primary}, secondary={secondary}")
-        except Exception as e:
-            logger.error(f"Error determining personality types: {e}")
-            # Устанавливаем дефолтные значения
-            primary = PersonalityType.ROMANTIC
-            secondary = PersonalityType.ADVENTURER
-        
-        # Создаем результат теста
         test_result = TestResult(
             session_id=test_session.id,
             keycloak_id=keycloak_id,
-            romantic_score=float(scores.get(PersonalityDimension.ROMANTIC, 0.0)),
-            adventurer_score=float(scores.get(PersonalityDimension.ADVENTURER, 0.0)),
-            intellectual_score=float(scores.get(PersonalityDimension.INTELLECTUAL, 0.0)),
-            caregiver_score=float(scores.get(PersonalityDimension.CAREGIVER, 0.0)),
-            leader_score=float(scores.get(PersonalityDimension.LEADER, 0.0)),
-            free_spirit_score=float(scores.get(PersonalityDimension.FREE_SPIRIT, 0.0)),
-            primary_personality=primary,
-            secondary_personality=secondary,
-            total_score=float(sum(scores.values())),
-            max_possible_score=float(len(questions) * 3 * 10),
-            percentage=float(min(100, (sum(scores.values()) / (len(questions) * 3 * 10)) * 100) if questions else 0)
+            total_score=scoring_result["total_score"],
+            max_possible_score=scoring_result["max_possible_score"],
+            percentage=scoring_result["percentage"],
+            passed=scoring_result["passed"]
         )
         
-        # Генерируем интерпретацию
-        try:
-            test_result.interpretation = await self.scoring_service.generate_interpretation(
-                scores, primary, secondary, template.personality_descriptions
-            )
-        except Exception as e:
-            logger.error(f"Error generating interpretation: {e}")
-            test_result.interpretation = "Интерпретация результатов недоступна."
-        
-        # Генерируем рекомендации
-        try:
-            test_result.recommendations = await self.scoring_service.generate_recommendations(
-                primary, secondary, template.recommendations
-            )
-        except Exception as e:
-            logger.error(f"Error generating recommendations: {e}")
-            test_result.recommendations = "Рекомендации недоступны."
-        
-        # Сохраняем результат
         self.db.add(test_result)
-        
-        # Обновляем сессию
         test_session.status = TestStatus.COMPLETED
         test_session.completed_at = datetime.utcnow()
         
@@ -271,12 +206,20 @@ class TestingService:
         await self.db.refresh(test_session)
         await self.db.refresh(test_result)
         
-        # Обновляем статистику пользователя
-        await self._update_user_statistics(
-            keycloak_id,
-            test_completed=True,
-            primary_personality=primary
-        )
+        # Публикуем событие о завершении теста
+        try:
+            await self.event_service.publish_test_completed(
+                keycloak_id=keycloak_id,
+                session_id=str(session_id),
+                results={
+                    "total_score": test_result.total_score,
+                    "percentage": test_result.percentage,
+                    "passed": test_result.passed
+                }
+            )
+            logger.info(f"Test completion event published for {keycloak_id}")
+        except Exception as e:
+            logger.error(f"Failed to publish test completion event: {e}")
         
         logger.info(f"Test completed for user {keycloak_id}: session {session_id}")
         
@@ -289,7 +232,6 @@ class TestingService:
     ) -> Dict[str, Any]:
         """Получение результатов теста"""
         
-        # ИСПРАВЛЕНО: Загружаем сразу с результатом
         test_session = await self._get_test_session_with_result(session_id, keycloak_id)
         
         if test_session.status != TestStatus.COMPLETED or not test_session.result:
@@ -305,7 +247,6 @@ class TestingService:
     ) -> Dict[str, Any]:
         """Получение истории тестов пользователя"""
         
-        # ИСПРАВЛЕНО: Загружаем сразу с результатами
         query = select(TestSession).options(
             selectinload(TestSession.result)
         ).where(
@@ -326,21 +267,13 @@ class TestingService:
         history = []
         for session in sessions:
             if session.result:
-                # ИСПРАВЛЕНО: Безопасное получение значений Enum
-                primary = session.result.primary_personality
-                secondary = session.result.secondary_personality
-                
-                primary_str = primary.value if isinstance(primary, PersonalityType) else str(primary)
-                secondary_str = secondary.value if isinstance(secondary, PersonalityType) else str(secondary)
-                
                 history.append({
                     "session_id": str(session.id),
-                    "test_name": "Personality Test",
+                    "test_name": "Dating Readiness Test",
                     "completed_at": session.completed_at.isoformat(),
-                    "primary_personality": primary_str,
-                    "secondary_personality": secondary_str,
                     "total_score": session.result.total_score,
-                    "percentage": session.result.percentage
+                    "percentage": session.result.percentage,
+                    "passed": session.result.passed
                 })
         
         return {
@@ -356,41 +289,40 @@ class TestingService:
     ) -> Dict[str, Any]:
         """Получение статистики пользователя по тестам"""
         
-        query = select(UserTestStatistics).where(
-            UserTestStatistics.keycloak_id == keycloak_id
+        query = select(TestSession).options(
+            selectinload(TestSession.result)
+        ).where(
+            TestSession.keycloak_id == keycloak_id,
+            TestSession.status == TestStatus.COMPLETED
         )
+        
         result = await self.db.execute(query)
-        stats = result.scalar_one_or_none()
+        sessions = result.scalars().all()
         
-        if not stats:
-            # Создаем начальную статистику
-            stats = UserTestStatistics(keycloak_id=keycloak_id)
-            self.db.add(stats)
-            await self.db.commit()
-            await self.db.refresh(stats)
+        total_tests_taken = len(sessions)
+        total_tests_completed = len(sessions)
         
-        # Исправление: защита от None
-        def safe_get(attr):
-            value = getattr(stats, attr, 0)
-            return value if value is not None else 0
-        
-        # ИСПРАВЛЕНО: Конвертируем Enum в строки для JSON сериализации
-        distribution = stats.get_primary_personality_distribution()
-        distribution_dict = {}
-        for key, value in distribution.items():
-            key_str = key.value if isinstance(key, PersonalityType) else str(key)
-            distribution_dict[key_str] = value
+        if total_tests_completed > 0:
+            total_percentage = sum(
+                session.result.percentage for session in sessions if session.result
+            )
+            average_score = round(total_percentage / total_tests_completed, 2)
+            
+            last_test_date = max(
+                (session.completed_at for session in sessions if session.completed_at),
+                default=None
+            )
+        else:
+            average_score = 0.0
+            last_test_date = None
         
         return {
-            "total_tests_taken": safe_get("total_tests_taken"),
-            "total_tests_completed": safe_get("total_tests_completed"),
-            "average_score": stats.average_score if stats.average_score is not None else 0.0,
-            "personality_distribution": distribution_dict,
-            "last_test_date": stats.last_test_date.isoformat() if stats.last_test_date else None,
-            "updated_at": stats.updated_at.isoformat() if stats.updated_at else None
+            "total_tests_taken": total_tests_taken,
+            "total_tests_completed": total_tests_completed,
+            "average_score": average_score,
+            "last_test_date": last_test_date.isoformat() if last_test_date else None
         }
     
-    # ИСПРАВЛЕНО: Новый метод, который сразу загружает сессию с результатом
     async def _get_test_session_with_result(
         self,
         session_id: uuid.UUID,
@@ -444,93 +376,27 @@ class TestingService:
         result = await self.db.execute(query)
         return result.scalar() or 0
     
-    async def _update_user_statistics(
-        self,
-        keycloak_id: str,
-        test_taken: bool = False,
-        test_completed: bool = False,
-        primary_personality: Optional[PersonalityType] = None
-    ):
-        """Обновление статистики пользователя"""
-        query = select(UserTestStatistics).where(
-            UserTestStatistics.keycloak_id == keycloak_id
-        )
-        result = await self.db.execute(query)
-        stats = result.scalar_one_or_none()
-        
-        if not stats:
-            stats = UserTestStatistics(keycloak_id=keycloak_id)
-            self.db.add(stats)
-        
-        # Исправление: защита от None
-        if test_taken:
-            current = stats.total_tests_taken
-            if current is None:
-                current = 0
-            stats.total_tests_taken = current + 1
-        
-        if test_completed:
-            current = stats.total_tests_completed
-            if current is None:
-                current = 0
-            stats.total_tests_completed = current + 1
-        
-        if primary_personality:
-            # Обновляем счетчик для основного типа личности
-            def safe_increment(current_value):
-                return (current_value or 0) + 1
-            
-            # ИСПРАВЛЕНО: Приводим к строке если это Enum
-            personality_str = primary_personality.value if isinstance(primary_personality, PersonalityType) else str(primary_personality)
-            
-            if personality_str == PersonalityType.ROMANTIC.value:
-                stats.primary_romantic_count = safe_increment(stats.primary_romantic_count)
-            elif personality_str == PersonalityType.ADVENTURER.value:
-                stats.primary_adventurer_count = safe_increment(stats.primary_adventurer_count)
-            elif personality_str == PersonalityType.INTELLECTUAL.value:
-                stats.primary_intellectual_count = safe_increment(stats.primary_intellectual_count)
-            elif personality_str == PersonalityType.CAREGIVER.value:
-                stats.primary_caregiver_count = safe_increment(stats.primary_caregiver_count)
-            elif personality_str == PersonalityType.LEADER.value:
-                stats.primary_leader_count = safe_increment(stats.primary_leader_count)
-            elif personality_str == PersonalityType.FREE_SPIRIT.value:
-                stats.primary_free_spirit_count = safe_increment(stats.primary_free_spirit_count)
-        
-        if test_completed:
-            stats.last_test_date = datetime.utcnow()
-        
-        await self.db.commit()
-    
     async def _format_results(
         self,
         test_session: TestSession,
         test_result: TestResult
     ) -> Dict[str, Any]:
         """Форматирование результатов для ответа"""
-        # ИСПРАВЛЕНО: Безопасное получение значений Enum
-        primary = test_result.primary_personality
-        secondary = test_result.secondary_personality
-        
-        primary_str = primary.value if isinstance(primary, PersonalityType) else str(primary)
-        secondary_str = secondary.value if isinstance(secondary, PersonalityType) else str(secondary)
-        
         return {
             "session_id": str(test_session.id),
-            "status": test_session.status.value if isinstance(test_session.status, TestStatus) else str(test_session.status),
+            "status": test_session.status.value if isinstance(
+                test_session.status, TestStatus
+            ) else str(test_session.status),
             "completed_at": test_session.completed_at.isoformat(),
             "time_spent_minutes": (
                 (test_session.completed_at - test_session.started_at).total_seconds() / 60
                 if test_session.completed_at and test_session.started_at else None
             ),
             "results": {
-                "primary_personality": primary_str,
-                "secondary_personality": secondary_str,
-                "personality_scores": test_result.personality_scores,
                 "total_score": test_result.total_score,
                 "max_possible_score": test_result.max_possible_score,
                 "percentage": test_result.percentage,
-                "interpretation": test_result.interpretation,
-                "recommendations": test_result.recommendations
+                "passed": test_result.passed
             },
             "summary": {
                 "questions_total": len(test_session.questions_order) if test_session.questions_order else 0,
@@ -544,9 +410,7 @@ class TestingService:
     
     async def _format_existing_results(self, test_session: TestSession) -> Dict[str, Any]:
         """Форматирование существующих результатов"""
-        # ИСПРАВЛЕНО: Убеждаемся, что result загружен
         if not test_session.result:
-            # Если result не загружен, подгружаем его
             await self.db.refresh(test_session, ['result'])
         
         return await self._format_results(test_session, test_session.result)

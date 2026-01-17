@@ -32,9 +32,6 @@ class TestingEventService:
                     "session_id": session_id,
                     "test_template_id": test_template_id,
                     "started_at": datetime.utcnow().isoformat()
-                },
-                metadata={
-                    "service": "testing-service"
                 }
             )
             
@@ -69,17 +66,16 @@ class TestingEventService:
                     "session_id": session_id,
                     "results": results,
                     "completed_at": datetime.utcnow().isoformat()
-                },
-                metadata={
-                    "service": "testing-service",
-                    "has_personality_results": True
                 }
             )
             
             success = await self.publisher.publish_event(event)
             
             if success:
-                logger.info(f"Published TEST_COMPLETED event for session {session_id}")
+                logger.info(
+                    f"Published TEST_COMPLETED event for session {session_id} - "
+                    f"Passed: {results.get('passed')}, Score: {results.get('percentage')}%"
+                )
             else:
                 logger.error(f"Failed to publish TEST_COMPLETED event")
             
@@ -90,7 +86,6 @@ class TestingEventService:
             return False
 
 
-# Глобальный экземпляр
 _testing_event_service = None
 
 def get_testing_event_service() -> TestingEventService:

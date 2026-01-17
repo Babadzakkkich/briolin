@@ -102,11 +102,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Создаем данные пользователя
         internal_user_data = {
             "keycloak_id": keycloak_id,
-            "id": user_details.get("id"),  # ID из auth-service
+            "id": user_details.get("id"),
             "username": token_info.get("preferred_username", user_details.get("username", "")),
             "email": token_info.get("email", user_details.get("email", "")),
-            "roles": user_details.get("roles", []),  # Роли из user-service
+            "roles": user_details.get("roles", []),
             "is_active": user_details.get("is_active", True),
+            "is_test_passed": user_details.get("is_test_passed", False),
             "authenticated_at": datetime.utcnow().isoformat()
         }
         

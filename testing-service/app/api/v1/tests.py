@@ -16,7 +16,7 @@ from app.schemas.test import (
     TestCompleteResponse,
     TestResultsResponse,
     TestHistoryResponse,
-    UserStatisticsResponse,
+    UserTestStatistics,
     AdminQuestionResponse,
     ErrorResponse
 )
@@ -167,7 +167,7 @@ async def get_test_history(
 
 @router.get(
     "/statistics",
-    response_model=UserStatisticsResponse,
+    response_model=UserTestStatistics,
     responses={401: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
 )
 async def get_user_statistics(

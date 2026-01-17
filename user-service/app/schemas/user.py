@@ -15,6 +15,7 @@ class UserPublic(BaseModel):
     username: str
     email: EmailStr
     is_active: bool
+    is_test_passed: bool
     roles: List[UserRole]
     created_at: datetime
 
@@ -36,4 +37,5 @@ class UserMeResponse(BaseModel):
     email: str
     roles: List[UserRole]
     is_active: bool
+    is_test_passed: bool
     created_at: datetime

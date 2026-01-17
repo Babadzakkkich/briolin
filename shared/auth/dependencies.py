@@ -5,11 +5,7 @@ from .jwt import jwt_manager
 
 
 async def get_current_user(request: Request) -> Dict[str, Any]:
-    """
-    Получение текущего пользователя из внутреннего JWT токена
-    Используется во ВСЕХ сервисах
-    """
-    # Проверяем заголовок с внутренним токеном
+    """Получение текущего пользователя из внутреннего JWT токена"""
     internal_token = request.headers.get("x-internal-token")
     if not internal_token:
         raise HTTPException(
@@ -17,10 +13,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
             detail="Missing internal authentication token"
         )
     
-    # Декодируем и валидируем токен
     payload = jwt_manager.decode_internal_token(internal_token)
-    
-    # Возвращаем информацию о пользователе
     user_data = payload.get("user", {})
     if not user_data:
         raise HTTPException(status_code=401, detail="Invalid user data in token")
@@ -31,18 +24,14 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
 async def get_current_active_user(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """
-    Проверка, что пользователь активен
-    """
+    """Проверка, что пользователь активен"""
     if not current_user.get("is_active", True):
         raise HTTPException(status_code=403, detail="User is not active")
     return current_user
 
 
 def require_role(role: str):
-    """
-    Декоратор для проверки роли пользователя
-    """
+    """Декоратор для проверки роли пользователя"""
     async def role_checker(current_user: Dict[str, Any] = Depends(get_current_user)):
         user_roles = current_user.get("roles", [])
         if role not in user_roles:
@@ -55,9 +44,7 @@ def require_role(role: str):
 
 
 def require_any_role(roles: list[str]):
-    """
-    Декоратор для проверки любой из указанных ролей
-    """
+    """Декоратор для проверки любой из указанных ролей"""
     async def role_checker(current_user: Dict[str, Any] = Depends(get_current_user)):
         user_roles = current_user.get("roles", [])
         if not any(role in user_roles for role in roles):
@@ -67,3 +54,17 @@ def require_any_role(roles: list[str]):
             )
         return current_user
     return role_checker
+
+
+def require_test_passed():
+    """
+    Декоратор для проверки, что пользователь прошел тест
+    """
+    async def test_checker(current_user: Dict[str, Any] = Depends(get_current_user)):
+        if not current_user.get("is_test_passed", False):
+            raise HTTPException(
+                status_code=403,
+                detail="Test not passed. Please complete the test first."
+            )
+        return current_user
+    return test_checker

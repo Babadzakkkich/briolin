@@ -425,6 +425,7 @@ class UserService:
             "email": user.email,
             "roles": user.roles,
             "is_active": user.is_active,
+            "is_test_passed": user.is_test_passed,
             "created_at": user.created_at
         }
 
