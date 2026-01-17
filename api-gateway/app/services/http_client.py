@@ -18,6 +18,7 @@ class HTTPClient:
         self.auth_service_url = settings.services.auth
         self.user_service_url = settings.services.user
         self.profile_service_url = settings.services.profile
+        self.testing_service_url = settings.services.testing  # ДОБАВЛЕНО
     
     def _get_service_url(self, path: str) -> str:
         """Определяет URL сервиса по пути"""
@@ -27,10 +28,14 @@ class HTTPClient:
             return self.user_service_url
         elif path.startswith("/api/v1/profiles"):
             return self.profile_service_url
+        elif path.startswith("/api/v1/tests"):  # ДОБАВЛЕНО
+            return self.testing_service_url
         elif path.startswith("/api/v1/internal/users"):
             return self.user_service_url
         elif path.startswith("/api/v1/internal/profiles"):
             return self.profile_service_url
+        elif path.startswith("/api/v1/internal/tests"):  # ДОБАВЛЕНО
+            return self.testing_service_url
         else:
             # По умолчанию auth-service
             return self.auth_service_url

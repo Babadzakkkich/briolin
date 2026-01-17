@@ -33,6 +33,7 @@ class ServicesConfig(BaseSettings):
     auth: str
     user: str
     profile: str
+    testing: str
 
 class CacheConfig(BaseSettings):
     model_config = SettingsConfigDict(
