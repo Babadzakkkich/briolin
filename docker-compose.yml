@@ -107,6 +107,38 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  
+  testing-postgres:
+    image: postgres:17-alpine
+    container_name: testing-postgres
+    environment:
+      POSTGRES_USER: ${TESTING__DB__USER}
+      POSTGRES_PASSWORD: ${TESTING__DB__PASSWORD}
+      POSTGRES_DB: ${TESTING__DB__NAME}
+    ports:
+      - "5437:5432"
+    env_file: 
+      - .env
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TESTING__DB__USER} -d ${TESTING__DB__NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  testing-mongo:
+    image: mongo:8.0
+    container_name: testing-mongo
+    ports:
+      - "27017:27017"
+    networks:
+      - briolin-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -220,6 +252,27 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_started
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - briolin-network
+
+  testing-service:
+    build: 
+      context: .
+      dockerfile: testing-service/Dockerfile
+    container_name: testing-service
+    ports:
+      - "8004:8004"
+    env_file:
+      - .env
+    depends_on:
+      testing-postgres:
+        condition: service_healthy
+      testing-mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./shared:/app/shared:ro
     networks:

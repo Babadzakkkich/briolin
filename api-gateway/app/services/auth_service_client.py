@@ -100,8 +100,8 @@ class AuthServiceClient:
                         
                         # Объединяем данные
                         combined_data = {
-                            **auth_data,  # id, keycloak_id, email, is_active, created_at
-                            **user_data   # username, first_name, last_name, roles
+                            **auth_data,
+                            **user_data
                         }
                         
                         await self._set_to_cache(cache_key, combined_data, settings.cache.user_cache_ttl)

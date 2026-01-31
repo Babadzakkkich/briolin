@@ -15,4 +15,5 @@ class UserProfileResponse(BaseModel):
     email: EmailStr
     roles: List[UserRole]
     is_active: bool
+    is_test_passed: bool
     created_at: datetime

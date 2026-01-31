@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Optional
 
 from app.services.profile_service import ProfileService
 from app.schemas.profile import (
-    FullProfileCreate, FullProfileUpdate, 
+    FullProfileCreate, FullProfileUpdate,
     FullProfileResponse, BasicProfileResponse
 )
-from app.dependencies import get_profile_service, get_current_user
+from app.dependencies import get_profile_service, get_current_user, require_test_passed
 from app.core.logger import logger
 
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/profiles", tags=["Profiles"])
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_profile(
     profile_data: FullProfileCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_test_passed()),  # ИЗМЕНЕНО
     service: ProfileService = Depends(get_profile_service)
 ):
     """Создание полного профиля (basic + detailed)"""

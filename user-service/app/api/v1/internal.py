@@ -13,9 +13,6 @@ async def create_user_profile(
     data: UserProfileCreate,
     service: UserService = Depends(get_user_service)
 ):
-    """
-    Внутренний эндпоинт для создания профиля пользователя из auth-service
-    """
     try:
         user = await service.create_user_profile(data)
         return UserProfileResponse(
@@ -24,6 +21,7 @@ async def create_user_profile(
             email=user.email,
             roles=user.roles,
             is_active=user.is_active,
+            is_test_passed=user.is_test_passed,
             created_at=user.created_at
         )
     except Exception as e:
@@ -35,9 +33,6 @@ async def get_user_by_keycloak_id(
     keycloak_id: str,
     service: UserService = Depends(get_user_service)
 ):
-    """
-    Внутренний эндпоинт для получения пользователя по Keycloak ID
-    """
     user = await service.get_user_by_keycloak_id(keycloak_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -48,5 +43,6 @@ async def get_user_by_keycloak_id(
         email=user.email,
         roles=user.roles,
         is_active=user.is_active,
+        is_test_passed=user.is_test_passed,
         created_at=user.created_at
     )

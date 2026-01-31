@@ -24,6 +24,10 @@ class EventType(str, Enum):
     # События удаления
     USER_DELETION_REQUESTED = "user.deletion_requested"  # Запрос удаления
     USER_DELETED = "user.deleted"  # Подтверждение удаления
+    
+    TEST_STARTED = "test.started"
+    TEST_COMPLETED = "test.completed"
+    TEST_RESULTS_UPDATED = "test.results_updated"
 
 class BaseEvent(BaseModel):
     """Базовый класс для всех событий"""
