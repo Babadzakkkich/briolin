@@ -140,6 +140,38 @@ services:
       timeout: 5s
       retries: 5
 
+  chat-postgres:
+    image: postgres:17-alpine
+    container_name: chat-postgres
+    environment:
+      POSTGRES_USER: ${CHAT__DB__USER}
+      POSTGRES_PASSWORD: ${CHAT__DB__PASSWORD}
+      POSTGRES_DB: ${CHAT__DB__NAME}
+    ports:
+      - "5438:5432"
+    env_file: 
+      - .env
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CHAT__DB__USER} -d ${CHAT__DB__NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    
+  chat-mongo:
+    image: mongo:8.0
+    container_name: chat-mongo
+    ports:
+      - "27018:27017"
+    networks:
+      - briolin-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: briolin-redis
@@ -277,6 +309,35 @@ services:
       - ./shared:/app/shared:ro
     networks:
       - briolin-network
+    
+  chat-service:
+    build: 
+      context: .
+      dockerfile: chat-service/Dockerfile
+    container_name: chat-service
+    ports:
+      - "8005:8005"
+      - "9000:9000"
+    env_file:
+      - .env
+    depends_on:
+      chat-postgres:
+        condition: service_healthy
+      chat-mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   api-gateway:
     build: 

@@ -25,6 +25,7 @@ PUBLIC_ENDPOINTS = [
     re.compile(r'^/docs.*$'),
     re.compile(r'^/redoc.*$'),
     re.compile(r'^/openapi\.json$'),
+    re.compile(r'^/ws.*$'),
 ]
 
 

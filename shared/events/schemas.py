@@ -28,6 +28,17 @@ class EventType(str, Enum):
     TEST_STARTED = "test.started"
     TEST_COMPLETED = "test.completed"
     TEST_RESULTS_UPDATED = "test.results_updated"
+    
+    # События чатов
+    CHAT_CREATED = "chat.created"
+    CHAT_UPDATED = "chat.updated"
+    CHAT_DELETED = "chat.deleted"
+    MESSAGE_SENT = "message.sent"
+    MESSAGE_DELIVERED = "message.delivered"
+    MESSAGE_READ = "message.read"
+    USER_TYPING = "user.typing"
+    USER_ONLINE = "user.online"
+    USER_OFFLINE = "user.offline"
 
 class BaseEvent(BaseModel):
     """Базовый класс для всех событий"""
