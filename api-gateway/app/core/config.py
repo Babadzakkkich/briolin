@@ -35,6 +35,7 @@ class ServicesConfig(BaseSettings):
     profile: str
     testing: str
     chat: str
+    chat_ws: str 
 
 class CacheConfig(BaseSettings):
     model_config = SettingsConfigDict(

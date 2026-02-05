@@ -145,6 +145,7 @@ class ConnectionManager:
                 for connection_id in list(self.user_connections[keycloak_id]):
                     if connection_id in self.active_connections:
                         try:
+                            # ИСПРАВЛЕНО: Используем send_json вместо json.dumps + send_text
                             await self.active_connections[connection_id].send_json(message)
                         except Exception as e:
                             logger.error(f"Failed to send message to {connection_id[:8]}: {e}")
@@ -160,6 +161,7 @@ class ConnectionManager:
                         user_id = self.connection_users[connection_id]
                         if user_id != exclude_user and connection_id in self.active_connections:
                             try:
+                                # ИСПРАВЛЕНО: Используем send_json вместо json.dumps + send_text
                                 await self.active_connections[connection_id].send_json(message)
                             except Exception as e:
                                 logger.error(f"Failed to broadcast to {connection_id[:8]}: {e}")
@@ -182,8 +184,9 @@ class ConnectionManager:
             timestamp=datetime.utcnow()
         )
         
+        # ИСПРАВЛЕНО: Используем mode='json' для сериализации
         await self.broadcast_to_chat(
-            message.model_dump(),
+            message.model_dump(mode='json'),
             str(chat_id),
             exclude_user=user_id
         )
@@ -205,8 +208,9 @@ class ConnectionManager:
             timestamp=datetime.utcnow()
         )
         
+        # ИСПРАВЛЕНО: Используем mode='json' для сериализации UUID и datetime
         await self.broadcast_to_chat(
-            message.model_dump(),
+            message.model_dump(mode='json'),
             str(chat_id),
             exclude_user=user_id
         )

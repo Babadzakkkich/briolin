@@ -3,7 +3,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 import uuid
-from shared.schemas.shared import UserRole
 
 class ChatType(str, Enum):
     DIRECT = "direct"
@@ -90,8 +89,9 @@ class MessageListResponse(BaseModel):
     page: int
     size: int
 
+# ИСПРАВЛЕНО: Расширенный список типов для WebSocket
 class WebSocketMessage(BaseModel):
-    type: str = Field(..., pattern="^(message|typing|read_receipt|chat_update|error)$")
+    type: str = Field(..., pattern="^(message|typing|read_receipt|chat_update|error|connection_established|subscribed|ping|pong)$")
     chat_id: Optional[uuid.UUID] = None
     message: Optional[Dict[str, Any]] = None
     sender_id: Optional[str] = None

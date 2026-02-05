@@ -23,6 +23,11 @@ class HTTPClient:
     
     def _get_service_url(self, path: str) -> str:
         """Определяет URL сервиса по пути"""
+        # WebSocket эндпоинты теперь обрабатываются в API Gateway
+        if path.startswith("/ws"):
+            # Это не должно вызываться для WebSocket, но на всякий случай
+            raise ValueError("WebSocket requests should not use HTTP client")
+        
         if path.startswith("/api/v1/auth"):
             return self.auth_service_url
         elif path.startswith("/api/v1/users"):
@@ -39,8 +44,6 @@ class HTTPClient:
             return self.profile_service_url
         elif path.startswith("/api/v1/internal/tests"):
             return self.testing_service_url
-        elif path.startswith("/ws"):
-            return self.chat_service_url.replace("http", "ws").replace("8005", "9000")
         else:
             # По умолчанию auth-service
             return self.auth_service_url
@@ -53,6 +56,11 @@ class HTTPClient:
         """Проксирование запроса к микросервису с внутренним токеном"""
         
         path = path_override if path_override else request.url.path
+        
+        # Проверяем, что это не WebSocket
+        if path.startswith("/ws"):
+            raise ValueError("Cannot proxy WebSocket through HTTP client. Use WebSocket proxy instead.")
+        
         service_url = self._get_service_url(path)
         
         # Формируем URL для целевого сервиса

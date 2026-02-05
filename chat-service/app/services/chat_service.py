@@ -47,7 +47,6 @@ class ChatService:
                 "keycloak_id": keycloak_id
             }
         # Fallback если user-service недоступен — используем keycloak_id как username
-        # Это позволит системе работать даже при недоступности user-service
         logger.warning(f"Using fallback for user {keycloak_id}: user-service unavailable")
         return {
             "username": keycloak_id,
@@ -328,7 +327,7 @@ class ChatService:
             
             # Отправляем событие об удалении чата
             await self._notify_chat_event(
-                chat_id,  # Важно: отправляем событие ДО коммита или используем ID из переменной
+                chat_id,
                 "chat_deleted",
                 {"chat_id": chat_id_str, "deleted_by": keycloak_id, "permanent": True}
             )
@@ -399,10 +398,11 @@ class ChatService:
             )
             
             # Отправляем сообщение через WebSocket
+            # ИСПРАВЛЕНО: Используем mode='json' для сериализации UUID и datetime
             ws_message = {
                 "type": "message",
                 "chat_id": str(chat_id),
-                "message": message_response.model_dump(),
+                "message": message_response.model_dump(mode='json'),
                 "sender_id": sender_keycloak_id,
                 "timestamp": datetime.utcnow().isoformat()
             }
@@ -818,10 +818,11 @@ class ChatService:
             timestamp=datetime.utcnow()
         )
         
+        # ИСПРАВЛЕНО: Используем mode='json' для сериализации UUID и datetime
         ws_message = {
             "type": "chat_update",
             "chat_id": str(chat_id),
-            "event": event.model_dump(),
+            "event": event.model_dump(mode='json'),
             "timestamp": datetime.utcnow().isoformat()
         }
         
@@ -854,6 +855,7 @@ class ChatService:
             mongo_db = await self._get_mongo_db()
             collection = mongo_db.messages
             
+            # ИСПРАВЛЕНО: Используем model_dump(mode='json') для правильной сериализации
             mongo_doc = {
                 "message_id": str(message.id),
                 "chat_id": str(message.chat_id),
@@ -861,8 +863,8 @@ class ChatService:
                 "sender_name": message.sender_username,
                 "content": message.content,
                 "message_type": message.message_type,
-                "created_at": message.created_at,
-                "updated_at": message.updated_at
+                "created_at": message.model_dump(mode='json')['created_at'],
+                "updated_at": message.model_dump(mode='json')['updated_at']
             }
             
             await collection.insert_one(mongo_doc)

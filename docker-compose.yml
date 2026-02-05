@@ -317,7 +317,6 @@ services:
     container_name: chat-service
     ports:
       - "8005:8005"
-      - "9000:9000"
     env_file:
       - .env
     depends_on:

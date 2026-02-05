@@ -36,12 +36,14 @@ async def websocket_endpoint(
     
     try:
         # Отправляем приветственное сообщение
+        # ИСПРАВЛЕНО: Используем model_dump_json() для правильной сериализации datetime
         welcome_message = WebSocketMessage(
             type="connection_established",
             message={"connection_id": connection_id, "user_id": keycloak_id},
             timestamp=datetime.utcnow()
         )
-        await websocket.send_json(welcome_message.model_dump())
+        # Используем model_dump_json() вместо model_dump() + json.dumps()
+        await websocket.send_json(welcome_message.model_dump(mode='json'))
         
         # Основной цикл обработки сообщений
         while True:
@@ -61,7 +63,8 @@ async def websocket_endpoint(
                     type="ping",
                     timestamp=datetime.utcnow()
                 )
-                await websocket.send_json(ping_message.model_dump())
+                # ИСПРАВЛЕНО: mode='json' для сериализации datetime
+                await websocket.send_json(ping_message.model_dump(mode='json'))
                 
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON from {keycloak_id}")
@@ -70,7 +73,7 @@ async def websocket_endpoint(
                     message={"error": "Invalid JSON format"},
                     timestamp=datetime.utcnow()
                 )
-                await websocket.send_json(error_message.model_dump())
+                await websocket.send_json(error_message.model_dump(mode='json'))
                 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {keycloak_id}")
@@ -97,8 +100,9 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
                 message={"chat_id": chat_id, "status": "subscribed"},
                 timestamp=datetime.utcnow()
             )
+            # ИСПРАВЛЕНО
             await websocket_manager.send_personal_message(
-                response.model_dump(),
+                response.model_dump(mode='json'),
                 keycloak_id
             )
     
@@ -128,7 +132,7 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
                 message_uuid = uuid.UUID(message_id)
                 await websocket_manager.send_read_receipt(
                     chat_id, keycloak_id, message_uuid
-                )
+            )
             except ValueError:
                 logger.warning(f"Invalid message ID: {message_id}")
     
@@ -138,8 +142,9 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
             type="pong",
             timestamp=datetime.utcnow()
         )
+        # ИСПРАВЛЕНО
         await websocket_manager.send_personal_message(
-            pong_message.model_dump(),
+            pong_message.model_dump(mode='json'),
             keycloak_id
         )
     
@@ -150,7 +155,8 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
             message={"error": f"Unknown message type: {message_type}"},
             timestamp=datetime.utcnow()
         )
+        # ИСПРАВЛЕНО
         await websocket_manager.send_personal_message(
-            error_message.model_dump(),
+            error_message.model_dump(mode='json'),
             keycloak_id
         )
