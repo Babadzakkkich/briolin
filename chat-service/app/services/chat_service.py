@@ -1,5 +1,6 @@
 import uuid
 import asyncio
+import json
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from app.database.postgres.models import Chat, ChatParticipant, Message, ChatTyp
 from app.database.mongo.session import get_mongo_db
 from app.services.websocket_manager import websocket_manager
 from app.services.user_service_client import get_user_service_client
+from app.services.profile_service_client import get_profile_service_client
 from app.core.exceptions import (
     ChatNotFoundException,
     MessageNotFoundException,
@@ -31,6 +33,7 @@ class ChatService:
         self.db = db
         self.mongo_db = None
         self.user_client = get_user_service_client()
+        self.profile_client = get_profile_service_client()
     
     async def _get_mongo_db(self):
         """Ленивая инициализация MongoDB"""
@@ -39,19 +42,60 @@ class ChatService:
         return self.mongo_db
     
     async def _get_user_info(self, keycloak_id: str) -> Dict[str, str]:
-        """Получение информации о пользователе из user-service"""
+        """Получение информации о пользователе из user-service (fallback)"""
         user_data = await self.user_client.get_user_by_keycloak_id(keycloak_id)
         if user_data:
             return {
                 "username": user_data.get("username", keycloak_id),
                 "keycloak_id": keycloak_id
             }
-        # Fallback если user-service недоступен — используем keycloak_id как username
+        # Fallback если user-service недоступен
         logger.warning(f"Using fallback for user {keycloak_id}: user-service unavailable")
         return {
             "username": keycloak_id,
             "keycloak_id": keycloak_id
         }
+    
+    async def _get_profile_info(self, keycloak_id: str) -> Dict[str, Any]:
+        """
+        Получение полной информации о профиле из profile-service.
+        Возвращает display_name (first_name + last_name) и avatar_url.
+        """
+        profile = await self.profile_client.get_profile_by_keycloak_id(keycloak_id)
+        
+        if profile and "basic" in profile:
+            basic = profile["basic"]
+            first_name = basic.get("first_name", "")
+            last_name = basic.get("last_name", "")
+            
+            display_name = f"{first_name} {last_name}".strip()
+            if not display_name:
+                display_name = keycloak_id[:8]
+            
+            return {
+                "display_name": display_name,
+                "first_name": first_name,
+                "last_name": last_name,
+                "avatar_url": basic.get("avatar_url"),
+                "keycloak_id": keycloak_id,
+                "username": basic.get("username")  # Добавьте если есть в ответе
+            }
+        
+        # Fallback на user-service если profile недоступен
+        logger.warning(f"Profile not found for {keycloak_id}, using fallback")
+        user_info = await self._get_user_info(keycloak_id)
+        return {
+            "display_name": user_info.get("username", keycloak_id[:8]),
+            "first_name": "",
+            "last_name": "",
+            "avatar_url": None,
+            "keycloak_id": keycloak_id,
+            "username": user_info.get("username", keycloak_id[:8])  # Исправлено: берем username из user-service
+        }
+    
+    async def _get_display_name(self, keycloak_id: str) -> str:
+        """Быстрое получение только отображаемого имени"""
+        return await self.profile_client.get_display_name(keycloak_id)
     
     async def _check_chat_permission(self, chat_id: uuid.UUID, keycloak_id: str) -> Chat:
         """Проверка доступа пользователя к чату"""
@@ -80,75 +124,133 @@ class ChatService:
         
         return chat
     
-    async def create_chat(self, chat_data: ChatCreate, creator_keycloak_id: str, creator_username: str) -> ChatResponse:
+    async def _get_or_create_direct_chat(
+        self,
+        creator_keycloak_id: str,
+        other_user_id: str
+    ) -> Optional[Chat]:
+        """
+        Проверяет существование личного чата между двумя пользователями.
+        Возвращает существующий чат или None если не найден.
+        """
+        stmt = (
+            select(Chat)
+            .join(ChatParticipant, Chat.id == ChatParticipant.chat_id)
+            .where(
+                Chat.type == ChatType.DIRECT,
+                ChatParticipant.keycloak_id.in_([creator_keycloak_id, other_user_id]),
+                ChatParticipant.left_at.is_(None)
+            )
+            .group_by(Chat.id)
+            .having(func.count(ChatParticipant.id) == 2)
+        )
+        
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    async def _generate_direct_chat_name(
+        self,
+        for_user_keycloak_id: str,
+        partner_keycloak_id: str
+    ) -> Tuple[str, Optional[str]]:
+        """
+        Генерирует название чата и аватарку для личного чата.
+        Для пользователя for_user_keycloak_id генерируем имя на основе профиля partner_keycloak_id.
+        """
+        partner_profile = await self._get_profile_info(partner_keycloak_id)
+        
+        name = partner_profile["display_name"]
+        avatar_url = partner_profile["avatar_url"]
+        
+        return name, avatar_url
+    
+    async def create_chat(
+        self,
+        chat_data: ChatCreate,
+        creator_keycloak_id: str,
+        creator_username: str
+    ) -> ChatResponse:
         """Создание нового чата"""
         try:
-            # Проверяем валидность данных
             if chat_data.type == ChatType.DIRECT and len(chat_data.participant_ids) != 1:
                 raise ValidationException("Direct chat must have exactly one other participant")
             
             if chat_data.type == ChatType.GROUP and len(chat_data.participant_ids) < 1:
                 raise ValidationException("Group chat must have at least one other participant")
             
-            # Проверяем, не существует ли уже такой же чат
+            # Для личного чата проверяем существование
+            other_user_id = None
             if chat_data.type == ChatType.DIRECT:
-                # Для direct чата проверяем существующий чат между пользователями
                 other_user_id = chat_data.participant_ids[0]
                 
-                stmt = (
-                    select(Chat)
-                    .join(ChatParticipant, Chat.id == ChatParticipant.chat_id)
-                    .where(
-                        Chat.type == ChatType.DIRECT,
-                        ChatParticipant.keycloak_id.in_([creator_keycloak_id, other_user_id]),
-                        ChatParticipant.left_at.is_(None)
-                    )
-                    .group_by(Chat.id)
-                    .having(func.count(ChatParticipant.id) == 2)
+                existing_chat = await self._get_or_create_direct_chat(
+                    creator_keycloak_id,
+                    other_user_id
                 )
                 
-                result = await self.db.execute(stmt)
-                existing_chat = result.scalar_one_or_none()
-                
                 if existing_chat:
-                    # Возвращаем существующий чат
+                    logger.info(f"Returning existing direct chat: {existing_chat.id}")
                     return await self._format_chat_response(existing_chat, creator_keycloak_id)
             
-            # Получаем информацию о всех участниках из user-service
-            # Создатель
-            creator_info = {
-                "keycloak_id": creator_keycloak_id,
-                "username": creator_username
-            }
+            # Получаем профили всех участников
+            all_participant_ids = [creator_keycloak_id] + chat_data.participant_ids
+            unique_participant_ids = list(dict.fromkeys(all_participant_ids))
             
-            # Другие участники
-            participants_info = [creator_info]
-            for participant_id in chat_data.participant_ids:
-                if participant_id != creator_keycloak_id:
-                    user_info = await self._get_user_info(participant_id)
-                    participants_info.append({
-                        "keycloak_id": participant_id,
-                        "username": user_info["username"]
-                    })
+            participants_profiles = {}
+            for pid in unique_participant_ids:
+                profile = await self._get_profile_info(pid)
+                participants_profiles[pid] = profile
+                logger.debug(f"Profile for {pid}: display_name={profile.get('display_name')}, username={profile.get('username')}")
             
-            # Создаем новый чат
+            # Создаем чат
             new_chat = Chat(
                 id=uuid.uuid4(),
                 type=chat_data.type,
-                name=chat_data.name,
-                description=chat_data.description
+                status=ChatStatus.ACTIVE
             )
+            
+            if chat_data.type == ChatType.DIRECT:
+                # Для direct чата: название = имя собеседника (относительно создателя)
+                # Но в БД сохраняем имя собеседника для создателя как название чата
+                other_profile = participants_profiles[other_user_id]
+                
+                new_chat.name = other_profile["display_name"]  # Имя собеседника (для создателя)
+                new_chat.avatar_url = other_profile["avatar_url"]
+                
+                new_chat.direct_chat_partner_mapping = json.dumps({
+                    creator_keycloak_id: other_user_id,
+                    other_user_id: creator_keycloak_id
+                })
+            else:
+                new_chat.name = chat_data.name
+                new_chat.description = chat_data.description
+                new_chat.avatar_url = chat_data.avatar_url
             
             self.db.add(new_chat)
             
-            # Добавляем всех участников
-            for p_info in participants_info:
-                is_admin = (p_info["keycloak_id"] == creator_keycloak_id)
+            # Добавляем участников
+            for pid in unique_participant_ids:
+                is_admin = (pid == creator_keycloak_id)
+                
+                # КАЖДЫЙ участник видит СВОЁ имя в display_name
+                # Название чата (name) уже содержит имя собеседника для direct чатов
+                profile = participants_profiles[pid]
+                display_name = profile["display_name"]  # СВОЁ имя
+                avatar_url = profile["avatar_url"]  # СВОЯ аватарка
+                
+                # Получаем username (fallback на user-service если нет в профиле)
+                username = profile.get("username")
+                if not username or username == pid:
+                    user_info = await self._get_user_info(pid)
+                    username = user_info.get("username", pid[:8])
+                
                 participant = ChatParticipant(
                     chat_id=new_chat.id,
-                    keycloak_id=p_info["keycloak_id"],
-                    username=p_info["username"],
-                    is_admin=is_admin
+                    keycloak_id=pid,
+                    display_name=display_name,  # СВОЁ имя
+                    username=username,
+                    is_admin=is_admin,
+                    avatar_url=avatar_url  # СВОЯ аватарка
                 )
                 self.db.add(participant)
             
@@ -157,11 +259,15 @@ class ChatService:
             
             logger.info(f"Chat created: {new_chat.id} by {creator_keycloak_id}")
             
-            # Отправляем событие о создании чата
             await self._notify_chat_event(
                 new_chat.id,
                 "chat_created",
-                {"chat_id": str(new_chat.id), "creator_id": creator_keycloak_id}
+                {
+                    "chat_id": str(new_chat.id),
+                    "creator_id": creator_keycloak_id,
+                    "type": chat_data.type.value,
+                    "participants": list(unique_participant_ids)
+                }
             )
             
             return await self._format_chat_response(new_chat, creator_keycloak_id)
@@ -309,17 +415,15 @@ class ChatService:
             # Получаем ID чата для события перед удалением
             chat_id_str = str(chat_id)
             
-            # Удаляем все связанные сообщения из MongoDB (для полнотекстового поиска)
+            # Удаляем все связанные сообщения из MongoDB
             try:
                 mongo_db = await self._get_mongo_db()
                 await mongo_db.messages.delete_many({"chat_id": chat_id_str})
                 logger.debug(f"Deleted messages from MongoDB for chat {chat_id_str}")
             except Exception as e:
                 logger.warning(f"Failed to delete messages from MongoDB: {e}")
-                # Продолжаем даже если MongoDB недоступна
             
-            # Каскадное удаление чата (SQLAlchemy удалит participants и messages из PostgreSQL
-            # благодаря cascade="all, delete-orphan" в моделях)
+            # Каскадное удаление чата
             await self.db.delete(chat)
             await self.db.commit()
             
@@ -344,7 +448,7 @@ class ChatService:
         chat_id: uuid.UUID,
         message_data: MessageCreate,
         sender_keycloak_id: str,
-        sender_username: str
+        sender_username: str  # Теперь используется как fallback
     ) -> MessageResponse:
         """Отправка сообщения в чат"""
         # Проверяем rate limiting
@@ -355,12 +459,16 @@ class ChatService:
         chat = await self._check_chat_permission(chat_id, sender_keycloak_id)
         
         try:
+            # Получаем отображаемое имя отправителя из profile-service
+            sender_display_name = await self._get_display_name(sender_keycloak_id)
+            
             # Создаем сообщение
             new_message = Message(
                 id=uuid.uuid4(),
                 chat_id=chat_id,
                 sender_keycloak_id=sender_keycloak_id,
-                sender_username=sender_username,
+                sender_display_name=sender_display_name,
+                sender_username=sender_username,  # Fallback
                 content=message_data.content,
                 message_type=message_data.message_type,
                 reply_to_id=message_data.reply_to_id,
@@ -385,6 +493,7 @@ class ChatService:
                 id=new_message.id,
                 chat_id=new_message.chat_id,
                 sender_keycloak_id=new_message.sender_keycloak_id,
+                sender_display_name=new_message.sender_display_name,
                 sender_username=new_message.sender_username,
                 content=new_message.content,
                 message_type=new_message.message_type,
@@ -398,7 +507,6 @@ class ChatService:
             )
             
             # Отправляем сообщение через WebSocket
-            # ИСПРАВЛЕНО: Используем mode='json' для сериализации UUID и datetime
             ws_message = {
                 "type": "message",
                 "chat_id": str(chat_id),
@@ -473,6 +581,7 @@ class ChatService:
                     id=message.id,
                     chat_id=message.chat_id,
                     sender_keycloak_id=message.sender_keycloak_id,
+                    sender_display_name=message.sender_display_name,
                     sender_username=message.sender_username,
                     content=message.content,
                     message_type=message.message_type,
@@ -601,15 +710,17 @@ class ChatService:
             if existing_participant:
                 raise ValidationException("User is already a participant")
             
-            # Получаем информацию о новом участнике из user-service
-            user_info = await self._get_user_info(new_user_id)
+            # Получаем информацию о новом участнике из profile-service
+            new_user_profile = await self._get_profile_info(new_user_id)
             
             # Добавляем участника
             new_participant = ChatParticipant(
                 chat_id=chat_id,
                 keycloak_id=new_user_id,
-                username=user_info["username"],
-                is_admin=False
+                display_name=new_user_profile["display_name"],
+                username=new_user_profile.get("username", new_user_id),
+                is_admin=False,
+                avatar_url=new_user_profile.get("avatar_url")
             )
             
             self.db.add(new_participant)
@@ -621,7 +732,12 @@ class ChatService:
             await self._notify_chat_event(
                 chat_id,
                 "user_joined",
-                {"chat_id": str(chat_id), "user_id": new_user_id, "added_by": keycloak_id}
+                {
+                    "chat_id": str(chat_id),
+                    "user_id": new_user_id,
+                    "added_by": keycloak_id,
+                    "display_name": new_user_profile["display_name"]
+                }
             )
             
             return True
@@ -673,7 +789,11 @@ class ChatService:
             await self._notify_chat_event(
                 chat_id,
                 "user_left",
-                {"chat_id": str(chat_id), "user_id": user_to_remove_id, "removed_by": keycloak_id}
+                {
+                    "chat_id": str(chat_id),
+                    "user_id": user_to_remove_id,
+                    "removed_by": keycloak_id
+                }
             )
             
             return True
@@ -728,6 +848,7 @@ class ChatService:
                         id=message.id,
                         chat_id=message.chat_id,
                         sender_keycloak_id=message.sender_keycloak_id,
+                        sender_display_name=message.sender_display_name,
                         sender_username=message.sender_username,
                         content=message.content,
                         message_type=message.message_type,
@@ -748,7 +869,7 @@ class ChatService:
             raise DatabaseException("Failed to search messages")
     
     async def _format_chat_response(self, chat: Chat, keycloak_id: str) -> ChatResponse:
-        """Форматирование ответа чата"""
+        """Форматирование ответа чата с персонализацией для текущего пользователя"""
         # Получаем последнее сообщение
         stmt = (
             select(Message)
@@ -779,29 +900,72 @@ class ChatService:
                 "id": str(last_message.id),
                 "content": last_message.content,
                 "sender_id": last_message.sender_keycloak_id,
-                "sender_name": last_message.sender_username,
+                "sender_display_name": last_message.sender_display_name,
                 "created_at": last_message.created_at.isoformat(),
                 "type": last_message.message_type
             }
         
         # Форматируем участников
         participants = []
-        for participant in chat.participants:
-            if participant.left_at is None:
-                participants.append({
-                    "keycloak_id": participant.keycloak_id,
-                    "username": participant.username,
-                    "is_admin": participant.is_admin,
-                    "notifications_enabled": participant.notifications_enabled
-                })
+        chat_name = chat.name
+        chat_avatar = chat.avatar_url
+        
+        if chat.type == ChatType.DIRECT:
+            # Для direct чата: название = имя собеседника (динамически)
+            partner_id = None
+            
+            # Парсим partner_mapping
+            if chat.direct_chat_partner_mapping:
+                try:
+                    mapping = json.loads(chat.direct_chat_partner_mapping)
+                    partner_id = mapping.get(keycloak_id)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Если не нашли в mapping, ищем вручную
+            if not partner_id:
+                for p in chat.participants:
+                    if p.keycloak_id != keycloak_id and p.left_at is None:
+                        partner_id = p.keycloak_id
+                        break
+            
+            # Получаем профиль собеседника для названия чата
+            if partner_id:
+                partner_profile = await self._get_profile_info(partner_id)
+                chat_name = partner_profile["display_name"]
+                chat_avatar = partner_profile["avatar_url"]
+            
+            # Формируем список участников (каждый со своим именем)
+            for p in chat.participants:
+                if p.left_at is None:
+                    participants.append({
+                        "keycloak_id": p.keycloak_id,
+                        "display_name": p.display_name,  # СВОЁ имя
+                        "username": p.username,
+                        "is_admin": p.is_admin,
+                        "notifications_enabled": p.notifications_enabled,
+                        "avatar_url": p.avatar_url
+                    })
+        else:
+            # GROUP чат
+            for p in chat.participants:
+                if p.left_at is None:
+                    participants.append({
+                        "keycloak_id": p.keycloak_id,
+                        "display_name": p.display_name,
+                        "username": p.username,
+                        "is_admin": p.is_admin,
+                        "notifications_enabled": p.notifications_enabled,
+                        "avatar_url": p.avatar_url
+                    })
         
         return ChatResponse(
             id=chat.id,
             type=chat.type,
             status=chat.status,
-            name=chat.name,
+            name=chat_name,
             description=chat.description,
-            avatar_url=chat.avatar_url,
+            avatar_url=chat_avatar,
             participants=participants,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
@@ -818,7 +982,6 @@ class ChatService:
             timestamp=datetime.utcnow()
         )
         
-        # ИСПРАВЛЕНО: Используем mode='json' для сериализации UUID и datetime
         ws_message = {
             "type": "chat_update",
             "chat_id": str(chat_id),
@@ -855,16 +1018,16 @@ class ChatService:
             mongo_db = await self._get_mongo_db()
             collection = mongo_db.messages
             
-            # ИСПРАВЛЕНО: Используем model_dump(mode='json') для правильной сериализации
             mongo_doc = {
                 "message_id": str(message.id),
                 "chat_id": str(message.chat_id),
                 "sender_id": message.sender_keycloak_id,
-                "sender_name": message.sender_username,
+                "sender_display_name": message.sender_display_name,
+                "sender_username": message.sender_username,
                 "content": message.content,
                 "message_type": message.message_type,
-                "created_at": message.model_dump(mode='json')['created_at'],
-                "updated_at": message.model_dump(mode='json')['updated_at']
+                "created_at": message.created_at,
+                "updated_at": message.updated_at
             }
             
             await collection.insert_one(mongo_doc)

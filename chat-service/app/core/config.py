@@ -42,10 +42,6 @@ class WebSocketConfig(BaseModel):
     message_rate_limit: int = Field(10, env="CHAT__MESSAGE_RATE_LIMIT")
     message_rate_window: int = Field(60, env="CHAT__MESSAGE_RATE_WINDOW")
 
-class UserServiceConfig(BaseModel):
-    """Конфигурация для подключения к user-service"""
-    url: str = Field(..., env="CHAT__USER_SERVICE__URL")
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
@@ -65,6 +61,9 @@ class Settings(BaseSettings):
     mongo: MongoConfig = Field(...)
     redis: RedisConfig = Field(...)
     websocket: WebSocketConfig = Field(...)
-    user_service: UserServiceConfig = Field(default_factory=UserServiceConfig)
+    
+    # URL сервисов
+    user_service_url: str = Field("http://user-service:8002", env="CHAT__USER_SERVICE__URL")
+    profile_service_url: str = Field("http://profile-service:8003", env="CHAT__PROFILE_SERVICE__URL")
 
 settings = Settings()

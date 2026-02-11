@@ -18,6 +18,12 @@ class ChatStatus(str, enum.Enum):
     ARCHIVED = "archived"
     BLOCKED = "blocked"
 
+class MessageStatus(str, enum.Enum):
+    SENT = "sent"
+    DELIVERED = "delivered"
+    READ = "read"
+    FAILED = "failed"
+
 class Chat(Base):
     __tablename__ = "chats"
     
@@ -31,10 +37,16 @@ class Chat(Base):
         onupdate=datetime.utcnow
     )
     
-    # Для групповых чатов
+    # Для групповых чатов - задаётся создателем
+    # Для личных чатов - auto-generated (имя собеседника)
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    
+    # Для личных чатов: храним ID собеседника для каждого пользователя
+    # Формат: JSON с mapping {keycloak_id: partner_keycloak_id}
+    # Используется для быстрого определения "кому какое имя показывать"
+    direct_chat_partner_mapping: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Связи
     participants: Mapped[List["ChatParticipant"]] = relationship(
@@ -61,11 +73,20 @@ class ChatParticipant(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     chat_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("chats.id", ondelete='CASCADE'))
     keycloak_id: Mapped[str] = mapped_column(String, index=True)
-    username: Mapped[str] = mapped_column(String)
+    
+    # Отображаемое имя (first_name + last_name из profile-service)
+    display_name: Mapped[str] = mapped_column(String)
+    
+    # Username оставляем для совместимости и fallback
+    username: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     left_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    # Аватарка участника (для личных чатов - аватарка собеседника)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     
     # Связи
     chat: Mapped["Chat"] = relationship("Chat", back_populates="participants")
@@ -75,19 +96,19 @@ class ChatParticipant(Base):
         Index('idx_chat_participants_chat', 'chat_id', 'keycloak_id'),
     )
 
-class MessageStatus(str, enum.Enum):
-    SENT = "sent"
-    DELIVERED = "delivered"
-    READ = "read"
-    FAILED = "failed"
-
 class Message(Base):
     __tablename__ = "messages"
     
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     chat_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("chats.id", ondelete='CASCADE'))
     sender_keycloak_id: Mapped[str] = mapped_column(String, index=True)
-    sender_username: Mapped[str] = mapped_column(String)
+    
+    # Отображаемое имя отправителя (first_name + last_name)
+    sender_display_name: Mapped[str] = mapped_column(String)
+    
+    # Username для совместимости
+    sender_username: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    
     content: Mapped[str] = mapped_column(Text)
     message_type: Mapped[str] = mapped_column(String, default="text")  # text, image, file, etc.
     status: Mapped[MessageStatus] = mapped_column(Enum(MessageStatus), default=MessageStatus.SENT)

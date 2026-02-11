@@ -55,9 +55,9 @@ services:
     image: postgres:17-alpine
     container_name: auth-postgres
     environment:
-      POSTGRES_USER: ${AUTH_DB_USER}
-      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
-      POSTGRES_DB: ${AUTH_DB_NAME}
+      POSTGRES_USER: ${AUTH__DB__USER}
+      POSTGRES_PASSWORD: ${AUTH__DB__PASSWORD}
+      POSTGRES_DB: ${AUTH__DB__NAME}
     ports:
       - "5434:5432"
     env_file: 
@@ -65,7 +65,7 @@ services:
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH__DB__USER} -d ${AUTH__DB__NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -144,9 +144,9 @@ services:
     image: postgres:17-alpine
     container_name: chat-postgres
     environment:
-      POSTGRES_USER: ${CHAT__DB__USER}
-      POSTGRES_PASSWORD: ${CHAT__DB__PASSWORD}
-      POSTGRES_DB: ${CHAT__DB__NAME}
+      POSTGRES_USER: ${CHAT__POSTGRES__USER}
+      POSTGRES_PASSWORD: ${CHAT__POSTGRES__PASSWORD}
+      POSTGRES_DB: ${CHAT__POSTGRES__NAME}
     ports:
       - "5438:5432"
     env_file: 
@@ -154,7 +154,7 @@ services:
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CHAT__DB__USER} -d ${CHAT__DB__NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${CHAT__POSTGRES__USER} -d ${CHAT__POSTGRES__NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5

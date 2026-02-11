@@ -19,15 +19,15 @@ async def websocket_endpoint(
     token: Optional[str] = Query(None),
     user_data: Optional[dict] = Depends(get_current_user_ws)
 ):
-    """WebSocket endpoint для реального времени"""
+    """WebSocket endpoint для реального времени с поддержкой display_name"""
     if not user_data:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     
     keycloak_id = user_data.get("keycloak_id")
-    username = user_data.get("username")
+    display_name = user_data.get("display_name", keycloak_id[:8])
     
-    if not keycloak_id or not username:
+    if not keycloak_id:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     
@@ -36,13 +36,15 @@ async def websocket_endpoint(
     
     try:
         # Отправляем приветственное сообщение
-        # ИСПРАВЛЕНО: Используем model_dump_json() для правильной сериализации datetime
         welcome_message = WebSocketMessage(
             type="connection_established",
-            message={"connection_id": connection_id, "user_id": keycloak_id},
+            message={
+                "connection_id": connection_id,
+                "user_id": keycloak_id,
+                "display_name": display_name
+            },
             timestamp=datetime.utcnow()
         )
-        # Используем model_dump_json() вместо model_dump() + json.dumps()
         await websocket.send_json(welcome_message.model_dump(mode='json'))
         
         # Основной цикл обработки сообщений
@@ -55,7 +57,7 @@ async def websocket_endpoint(
                 )
                 
                 # Обрабатываем сообщение
-                await _handle_websocket_message(data, keycloak_id, username, connection_id)
+                await _handle_websocket_message(data, keycloak_id, display_name, connection_id)
                 
             except asyncio.TimeoutError:
                 # Проверка keep-alive
@@ -63,7 +65,6 @@ async def websocket_endpoint(
                     type="ping",
                     timestamp=datetime.utcnow()
                 )
-                # ИСПРАВЛЕНО: mode='json' для сериализации datetime
                 await websocket.send_json(ping_message.model_dump(mode='json'))
                 
             except json.JSONDecodeError:
@@ -83,7 +84,7 @@ async def websocket_endpoint(
         # Отключаем пользователя
         await websocket_manager.disconnect(connection_id)
 
-async def _handle_websocket_message(data: dict, keycloak_id: str, username: str, connection_id: str):
+async def _handle_websocket_message(data: dict, keycloak_id: str, display_name: str, connection_id: str):
     """Обработка входящих WebSocket сообщений"""
     message_type = data.get("type")
     
@@ -100,7 +101,6 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
                 message={"chat_id": chat_id, "status": "subscribed"},
                 timestamp=datetime.utcnow()
             )
-            # ИСПРАВЛЕНО
             await websocket_manager.send_personal_message(
                 response.model_dump(mode='json'),
                 keycloak_id
@@ -113,13 +113,13 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
             await websocket_manager.unsubscribe_from_chat(connection_id, chat_id)
     
     elif message_type == "typing":
-        # Индикатор набора текста
+        # Индикатор набора текста (display_name уже получен при подключении)
         chat_id = data.get("chat_id")
         is_typing = data.get("is_typing", False)
         
         if chat_id:
             await websocket_manager.send_typing_indicator(
-                chat_id, keycloak_id, username, is_typing
+                chat_id, keycloak_id, is_typing
             )
     
     elif message_type == "read_receipt":
@@ -132,7 +132,7 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
                 message_uuid = uuid.UUID(message_id)
                 await websocket_manager.send_read_receipt(
                     chat_id, keycloak_id, message_uuid
-            )
+                )
             except ValueError:
                 logger.warning(f"Invalid message ID: {message_id}")
     
@@ -142,7 +142,6 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
             type="pong",
             timestamp=datetime.utcnow()
         )
-        # ИСПРАВЛЕНО
         await websocket_manager.send_personal_message(
             pong_message.model_dump(mode='json'),
             keycloak_id
@@ -155,7 +154,6 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, username: str,
             message={"error": f"Unknown message type: {message_type}"},
             timestamp=datetime.utcnow()
         )
-        # ИСПРАВЛЕНО
         await websocket_manager.send_personal_message(
             error_message.model_dump(mode='json'),
             keycloak_id

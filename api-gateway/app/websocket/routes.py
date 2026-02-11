@@ -16,12 +16,13 @@ async def websocket_endpoint(
     token: Optional[str] = Query(None, description="Keycloak access token"),
 ):
     """
-    WebSocket эндпоинт для чатов.
+    WebSocket эндпоинт для чатов с поддержкой display_name.
     
     Принимает Keycloak токен в query параметре ?token= или 
     в заголовке Authorization (обрабатывается middleware).
     
     Проксирует соединение к chat-service:9000/ws с internal JWT токеном.
+    В ответах теперь используется display_name (first_name + last_name) вместо username.
     """
     await websocket.accept()
     
@@ -109,7 +110,11 @@ async def websocket_endpoint(
     )
 
 
-@router.get("/ws/stats")
+@router.get(
+    "/ws/stats",
+    summary="Статистика WebSocket",
+    description="Возвращает статистику WebSocket соединений для мониторинга."
+)
 async def get_websocket_stats():
     """
     Получить статистику WebSocket соединений (для мониторинга)

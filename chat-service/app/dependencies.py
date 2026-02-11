@@ -7,6 +7,7 @@ from shared.auth.dependencies import get_current_user as shared_get_current_user
 from app.database.postgres.session import async_session_factory
 from app.services.chat_service import ChatService
 from app.core.logger import logger
+from app.services.profile_service_client import get_profile_service_client
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Зависимость для получения сессии БД"""
@@ -34,6 +35,16 @@ async def get_current_user_ws(
         if not user_data:
             logger.warning("No user data in token for WebSocket")
             return None
+        
+        # Обогащаем данные пользователя display_name из profile-service
+        try:
+            profile_client = get_profile_service_client()
+            keycloak_id = user_data.get("keycloak_id")
+            if keycloak_id:
+                display_name = await profile_client.get_display_name(keycloak_id)
+                user_data["display_name"] = display_name
+        except Exception as e:
+            logger.warning(f"Failed to get display_name for WebSocket user: {e}")
         
         return user_data
         

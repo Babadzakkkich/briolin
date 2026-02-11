@@ -228,28 +228,32 @@ class ProfileService:
             error_msg = final_status.get("error", "Unknown error")
             raise DatabaseException(f"Profile deletion failed: {error_msg}")
 
+    async def get_full_profile_by_keycloak_id(self, keycloak_id: str) -> Dict[str, Any]:
+        """Публичный метод для получения полного профиля (используется другими сервисами)"""
+        return await self._get_full_profile_by_keycloak_id(keycloak_id)
+    
     async def delete_profiles_by_keycloak_id(self, keycloak_id: str) -> bool:
-        """Удаление профилей по событию из auth-service (внутренний метод)"""
-        try:
-            async with async_session_factory() as session:
-                stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
-                result = await session.execute(stmt)
-                profile = result.scalar_one_or_none()
-                
-                if not profile:
-                    logger.warning(f"No profiles found for user {keycloak_id}")
+            """Удаление профилей по событию из auth-service (внутренний метод)"""
+            try:
+                async with async_session_factory() as session:
+                    stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
+                    result = await session.execute(stmt)
+                    profile = result.scalar_one_or_none()
+                    
+                    if not profile:
+                        logger.warning(f"No profiles found for user {keycloak_id}")
+                        return True
+                    
+                    # Удаляем каскадно (detailed удалится автоматически)
+                    await session.delete(profile)
+                    await session.commit()
+                    
+                    logger.info(f"Profiles deleted for user {keycloak_id} by event")
                     return True
-                
-                # Удаляем каскадно (detailed удалится автоматически)
-                await session.delete(profile)
-                await session.commit()
-                
-                logger.info(f"Profiles deleted for user {keycloak_id} by event")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Failed to delete profiles by keycloak_id: {e}")
-            return False
+                    
+            except Exception as e:
+                logger.error(f"Failed to delete profiles by keycloak_id: {e}")
+                return False
 
     async def update_online_status(self, keycloak_id: str, online: bool) -> bool:
         """Обновление онлайн статуса пользователя"""

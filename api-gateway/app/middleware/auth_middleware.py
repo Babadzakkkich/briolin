@@ -221,11 +221,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Обрабатывает HTTP запросы и WebSocket upgrade запросы.
         """
         path = request.url.path
+        method = request.method
+
+        if method == "OPTIONS":
+            logger.debug(f"Preflight request: {path}")
+            return await call_next(request)
+
         is_public = self._is_public_endpoint(path)
         is_websocket = self._is_websocket_endpoint(path)
 
         # Логируем каждый запрос
-        logger.info(f"Incoming request: {request.method} {path}")
+        logger.info(f"Incoming request: {method} {path}")
         if logger.isEnabledFor(logging.DEBUG):
             auth_headers = {}
             for key, value in request.headers.items():
@@ -266,10 +272,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             token_info = keycloak_client.introspect_token(token)
             keycloak_id = token_info.get("sub")
             logger.debug(f"Keycloak ID: {keycloak_id[:8]}...")
-            
+
             # 2. Извлекаем существующий токен из заголовков
             existing_token, existing_signature = await self._extract_existing_token(request)
-            
+
             # 3. Используем lock для предотвращения race condition
             lock = await self._get_lock(keycloak_id)
             async with lock:
@@ -280,34 +286,31 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     existing_token=existing_token,
                     existing_signature=existing_signature
                 )
-            
-            # 5. Сохраняем данные в request.state
-            request.state.user = user_data
-            request.state.internal_token = internal_token
-            request.state.token_signature = signature
-            
-            # 6. Обновляем заголовки запроса
-            new_headers = []
-            for key, value in request.scope["headers"]:
-                key_lower = key.lower()
-                if key_lower not in [b"authorization", b"x-internal-token", b"x-token-signature"]:
-                    new_headers.append((key, value))
-            
-            new_headers.append((b"x-internal-token", internal_token.encode()))
-            new_headers.append((b"x-token-signature", signature.encode()))
-            
-            request.scope["headers"] = new_headers
-            
-            # 7. Логируем результат аутентификации
-            token_info = jwt_manager.get_token_info(internal_token)
-            time_left = token_info.get("time_left_seconds", 0)
-            
-            logger.info(
-                f"Authenticated user: {user_data['username']} "
-                f"(roles: {user_data['roles']}, "
-                f"token expires in: {time_left:.0f}s)"
-            )
-            
+
+                # 5. Сохраняем данные в request.state
+                request.state.user = user_data
+                request.state.internal_token = internal_token
+                request.state.token_signature = signature
+
+                # 6. Обновляем заголовки запроса
+                new_headers = []
+                for key, value in request.scope["headers"]:
+                    key_lower = key.lower()
+                    if key_lower not in [b"authorization", b"x-internal-token", b"x-token-signature"]:
+                        new_headers.append((key, value))
+                new_headers.append((b"x-internal-token", internal_token.encode()))
+                new_headers.append((b"x-token-signature", signature.encode()))
+                request.scope["headers"] = new_headers
+
+                # 7. Логируем результат аутентификации
+                token_info = jwt_manager.get_token_info(internal_token)
+                time_left = token_info.get("time_left_seconds", 0)
+                logger.info(
+                    f"Authenticated user: {user_data['username']} "
+                    f"(roles: {user_data['roles']}, "
+                    f"token expires in: {time_left:.0f}s)"
+                )
+
             return await call_next(request)
 
         except AuthenticationException as e:

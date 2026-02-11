@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.logger import logger
 from app.core.exceptions import WebSocketException, RateLimitException
 from app.schemas.chat import WebSocketMessage, TypingIndicator, ReadReceipt
+from app.services.profile_service_client import get_profile_service_client
 
 class ConnectionManager:
     """Менеджер WebSocket соединений"""
@@ -23,6 +24,7 @@ class ConnectionManager:
         self._lock = asyncio.Lock()
         self.redis_client: Optional[redis.Redis] = None
         self._redis_connected = False
+        self.profile_client = get_profile_service_client()
     
     async def _get_redis(self):
         """Ленивая инициализация Redis"""
@@ -145,7 +147,6 @@ class ConnectionManager:
                 for connection_id in list(self.user_connections[keycloak_id]):
                     if connection_id in self.active_connections:
                         try:
-                            # ИСПРАВЛЕНО: Используем send_json вместо json.dumps + send_text
                             await self.active_connections[connection_id].send_json(message)
                         except Exception as e:
                             logger.error(f"Failed to send message to {connection_id[:8]}: {e}")
@@ -161,30 +162,31 @@ class ConnectionManager:
                         user_id = self.connection_users[connection_id]
                         if user_id != exclude_user and connection_id in self.active_connections:
                             try:
-                                # ИСПРАВЛЕНО: Используем send_json вместо json.dumps + send_text
                                 await self.active_connections[connection_id].send_json(message)
                             except Exception as e:
                                 logger.error(f"Failed to broadcast to {connection_id[:8]}: {e}")
                                 await self.disconnect(connection_id)
     
-    async def send_typing_indicator(self, chat_id: str, user_id: str, username: str, is_typing: bool):
-        """Отправка индикатора набора текста"""
+    async def send_typing_indicator(self, chat_id: str, user_id: str, is_typing: bool):
+        """Отправка индикатора набора текста с display_name"""
+        # Получаем display_name из profile-service
+        display_name = await self.profile_client.get_display_name(user_id)
+        
         indicator = TypingIndicator(
             chat_id=chat_id,
             user_id=user_id,
-            username=username,
+            display_name=display_name,
             is_typing=is_typing
         )
         
         message = WebSocketMessage(
             type="typing",
             chat_id=chat_id,
-            message=indicator.model_dump(),
+            message=indicator.model_dump(mode='json'),
             sender_id=user_id,
             timestamp=datetime.utcnow()
         )
         
-        # ИСПРАВЛЕНО: Используем mode='json' для сериализации
         await self.broadcast_to_chat(
             message.model_dump(mode='json'),
             str(chat_id),
@@ -203,12 +205,11 @@ class ConnectionManager:
         message = WebSocketMessage(
             type="read_receipt",
             chat_id=chat_id,
-            message=receipt.model_dump(),
+            message=receipt.model_dump(mode='json'),
             sender_id=user_id,
             timestamp=datetime.utcnow()
         )
         
-        # ИСПРАВЛЕНО: Используем mode='json' для сериализации UUID и datetime
         await self.broadcast_to_chat(
             message.model_dump(mode='json'),
             str(chat_id),

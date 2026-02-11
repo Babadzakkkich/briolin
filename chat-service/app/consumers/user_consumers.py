@@ -8,9 +8,10 @@ from sqlalchemy import update, select
 from app.database.postgres.models import ChatParticipant, Message
 from app.core.config import settings
 from app.core.logger import logger
+from app.services.profile_service_client import get_profile_service_client
 
 async def handle_user_profile_updated(event: Dict[str, Any]) -> bool:
-    """Обработка события обновления профиля пользователя"""
+    """Обработка события обновления профиля пользователя - обновляем display_name в чатах"""
     try:
         from shared.events.schemas import BaseEvent
         
@@ -24,33 +25,45 @@ async def handle_user_profile_updated(event: Dict[str, Any]) -> bool:
         keycloak_id = user_data.get("keycloak_id")
         updated_fields = user_data.get("updated_fields", {})
         
-        if not keycloak_id or "username" not in updated_fields:
-            return True  # Нас интересуют только обновления username
+        if not keycloak_id:
+            return True
         
-        new_username = updated_fields["username"]
+        # Проверяем, обновлялось ли имя или фамилия
+        if not any(field in updated_fields for field in ["first_name", "last_name", "username"]):
+            logger.debug(f"No name-related fields updated for {keycloak_id}")
+            return True
         
-        logger.info(f"Updating username for {keycloak_id} to {new_username}")
+        # Получаем новое отображаемое имя из profile-service
+        profile_client = get_profile_service_client()
+        new_display_name = await profile_client.get_display_name(keycloak_id)
+        
+        logger.info(f"Updating display_name for {keycloak_id} to {new_display_name}")
         
         async with async_session_factory() as session:
-            # Обновляем username в участниках чатов
+            # Обновляем display_name в участниках чатов
             stmt_participants = (
                 update(ChatParticipant)
                 .where(ChatParticipant.keycloak_id == keycloak_id)
-                .values(username=new_username)
+                .values(display_name=new_display_name)
             )
-            await session.execute(stmt_participants)
+            result = await session.execute(stmt_participants)
+            participants_updated = result.rowcount
             
-            # Обновляем username в сообщениях
+            # Обновляем display_name в сообщениях
             stmt_messages = (
                 update(Message)
                 .where(Message.sender_keycloak_id == keycloak_id)
-                .values(sender_username=new_username)
+                .values(sender_display_name=new_display_name)
             )
-            await session.execute(stmt_messages)
+            result = await session.execute(stmt_messages)
+            messages_updated = result.rowcount
             
             await session.commit()
         
-        logger.info(f"Username updated for {keycloak_id} in chat service")
+        logger.info(
+            f"Profile updated for {keycloak_id} in chat service: "
+            f"participants={participants_updated}, messages={messages_updated}"
+        )
         return True
         
     except Exception as e:

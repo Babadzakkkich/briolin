@@ -14,7 +14,7 @@ router = APIRouter(prefix="/profiles", tags=["Profiles"])
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_profile(
     profile_data: FullProfileCreate,
-    current_user: dict = Depends(require_test_passed()),  # ИЗМЕНЕНО
+    current_user: dict = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service)
 ):
     """Создание полного профиля (basic + detailed)"""

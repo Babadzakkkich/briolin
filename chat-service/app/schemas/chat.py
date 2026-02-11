@@ -21,15 +21,18 @@ class MessageStatus(str, Enum):
 
 class ParticipantBase(BaseModel):
     keycloak_id: str
-    username: str
+    display_name: str  # first_name + last_name
+    username: Optional[str] = None  # для совместимости
     is_admin: bool = False
     notifications_enabled: bool = True
+    avatar_url: Optional[str] = None  # аватарка участника
 
 class ChatCreate(BaseModel):
     type: ChatType = ChatType.DIRECT
-    participant_ids: List[str] = Field(..., min_items=1)
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    participant_ids: List[str] = Field(..., min_items=1, description="List of participant Keycloak IDs")
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="Chat name (for group chats only, ignored for direct)")
+    description: Optional[str] = Field(None, max_length=500, description="Chat description (for group chats)")
+    avatar_url: Optional[str] = Field(None, description="Chat avatar (for group chats only, ignored for direct)")
 
 class ChatUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -43,9 +46,9 @@ class ChatResponse(BaseModel):
     id: uuid.UUID
     type: ChatType
     status: ChatStatus
-    name: Optional[str]
-    description: Optional[str]
-    avatar_url: Optional[str]
+    name: Optional[str] = None  # Для direct - имя собеседника, для group - заданное имя
+    description: Optional[str] = None
+    avatar_url: Optional[str] = None  # Для direct - аватарка собеседника, для group - заданная
     participants: List[ParticipantBase]
     created_at: datetime
     updated_at: datetime
@@ -64,7 +67,7 @@ class MessageCreate(BaseModel):
     reply_to_id: Optional[uuid.UUID] = Field(None)
     media_url: Optional[str] = Field(None)
     media_type: Optional[str] = Field(None)
-    file_size: Optional[int] = Field(None)
+    file_size: Optional[int] = Field(None, ge=0)
 
 class MessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -72,14 +75,15 @@ class MessageResponse(BaseModel):
     id: uuid.UUID
     chat_id: uuid.UUID
     sender_keycloak_id: str
-    sender_username: str
+    sender_display_name: str  # first_name + last_name
+    sender_username: Optional[str] = None  # для совместимости
     content: str
     message_type: str
     status: MessageStatus
-    reply_to_id: Optional[uuid.UUID]
-    media_url: Optional[str]
-    media_type: Optional[str]
-    file_size: Optional[int]
+    reply_to_id: Optional[uuid.UUID] = None
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
+    file_size: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -89,7 +93,22 @@ class MessageListResponse(BaseModel):
     page: int
     size: int
 
-# ИСПРАВЛЕНО: Расширенный список типов для WebSocket
+class MessageIdsRequest(BaseModel):
+    """Модель для запроса на отметку сообщений как прочитанных"""
+    message_ids: List[uuid.UUID] = Field(..., min_items=1)
+
+class SearchMessagesResponse(BaseModel):
+    """Модель ответа для поиска сообщений"""
+    messages: List[MessageResponse]
+    total: int
+    query: str
+
+class OnlineUsersResponse(BaseModel):
+    """Модель ответа для получения онлайн пользователей"""
+    online_users: List[str]
+    count: int
+
+# WebSocket модели
 class WebSocketMessage(BaseModel):
     type: str = Field(..., pattern="^(message|typing|read_receipt|chat_update|error|connection_established|subscribed|ping|pong)$")
     chat_id: Optional[uuid.UUID] = None
@@ -100,7 +119,7 @@ class WebSocketMessage(BaseModel):
 class TypingIndicator(BaseModel):
     chat_id: uuid.UUID
     user_id: str
-    username: str
+    display_name: str  # first_name + last_name
     is_typing: bool
 
 class ReadReceipt(BaseModel):

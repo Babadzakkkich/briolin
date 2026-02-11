@@ -8,7 +8,7 @@ class UserServiceClient:
     """Клиент для взаимодействия с user-service"""
     
     def __init__(self):
-        self.base_url = settings.user_service.url
+        self.base_url = settings.user_service_url
         self.timeout = httpx.Timeout(5.0)
     
     async def get_user_by_keycloak_id(self, keycloak_id: str) -> Optional[Dict[str, Any]]:
