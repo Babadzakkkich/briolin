@@ -8,13 +8,57 @@ from app.dependencies import get_chat_service, get_current_active_user, require_
 from app.schemas.chat import (
     ChatCreate, ChatUpdate, ChatResponse, ChatListResponse,
     MessageCreate, MessageResponse, MessageListResponse,
-    MessageIdsRequest, MessageUpdate, OnlineUsersResponse
+    MessageIdsRequest, MessageUpdate, OnlineUsersResponse, SearchMessagesResponse
 )
 from app.services import websocket_manager
 from shared.schemas.shared import UserRole
 from app.core.logger import logger
 
 router = APIRouter(prefix="/chats", tags=["Chats"])
+
+@router.get("/search/messages", response_model=SearchMessagesResponse)
+async def search_messages(
+    query: str = Query(..., min_length=1, max_length=100, description="Search query"),
+    chat_id: Optional[uuid.UUID] = Query(None, description="Search in specific chat"),
+    skip: int = Query(0, ge=0, description="Skip records"),
+    limit: int = Query(20, ge=1, le=50, description="Limit records"),
+    current_user: dict = Depends(get_current_active_user),
+    service: ChatService = Depends(get_chat_service)
+):
+    """Поиск сообщений по тексту"""
+    messages = await service.search_messages(
+        current_user["keycloak_id"],
+        query,
+        chat_id,
+        skip,
+        limit
+    )
+    return SearchMessagesResponse(
+        messages=messages,
+        total=len(messages),
+        query=query
+    )
+
+
+@router.get("/online/users", response_model=OnlineUsersResponse)
+async def get_online_users(
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Получение списка онлайн пользователей"""
+    online_users = await websocket_manager.get_online_users()
+    return {
+        "online_users": online_users,
+        "count": len(online_users)
+    }
+
+
+@router.get("/online/users/count")
+async def get_online_users_count(
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Получение количества онлайн пользователей"""
+    count = websocket_manager.get_connection_count()
+    return {"count": count}
 
 @router.post("/", response_model=ChatResponse, status_code=status.HTTP_201_CREATED)
 async def create_chat(
@@ -38,6 +82,7 @@ async def create_chat(
         current_user["keycloak_id"],
         current_user.get("username", current_user["keycloak_id"])
     )
+
 
 @router.get("/", response_model=ChatListResponse)
 async def list_chats(
@@ -90,6 +135,7 @@ async def get_chat(
     """Получение информации о чате с персонализированным названием"""
     return await service.get_chat(chat_id, current_user["keycloak_id"])
 
+
 @router.put("/{chat_id}", response_model=ChatResponse)
 async def update_chat(
     chat_id: uuid.UUID,
@@ -99,6 +145,7 @@ async def update_chat(
 ):
     """Обновление информации о чате (только для групповых чатов)"""
     return await service.update_chat(chat_id, chat_data, current_user["keycloak_id"])
+
 
 @router.delete("/{chat_id}")
 async def delete_chat(
@@ -124,6 +171,7 @@ async def send_message(
         sender_keycloak_id=current_user["keycloak_id"],
         sender_username=current_user.get("username", current_user["keycloak_id"])
     )
+
 
 @router.get("/{chat_id}/messages", response_model=MessageListResponse)
 async def get_messages(
@@ -157,30 +205,7 @@ async def get_messages(
         size=limit
     )
 
-@router.delete("/messages/{message_id}")
-async def delete_message(
-    message_id: uuid.UUID,
-    current_user: dict = Depends(get_current_active_user),
-    service: ChatService = Depends(get_chat_service)
-):
-    """Удаление сообщения"""
-    await service.delete_message(message_id, current_user["keycloak_id"])
-    return {"message": "Message deleted successfully"}
 
-@router.put("/messages/{message_id}", response_model=MessageResponse)
-async def update_message(
-    message_id: uuid.UUID,
-    message_data: MessageUpdate,
-    current_user: dict = Depends(get_current_active_user),
-    service: ChatService = Depends(get_chat_service)
-):
-    """Редактирование сообщения (только отправитель, в течение 24 часов)"""
-    return await service.update_message(
-        message_id=message_id,
-        message_data=message_data,
-        sender_keycloak_id=current_user["keycloak_id"]
-    )
-    
 @router.post("/{chat_id}/read")
 async def mark_messages_as_read(
     chat_id: uuid.UUID,
@@ -195,6 +220,32 @@ async def mark_messages_as_read(
         message_ids.message_ids
     )
     return {"message": "Messages marked as read"}
+
+
+@router.delete("/messages/{message_id}")
+async def delete_message(
+    message_id: uuid.UUID,
+    current_user: dict = Depends(get_current_active_user),
+    service: ChatService = Depends(get_chat_service)
+):
+    """Удаление сообщения"""
+    await service.delete_message(message_id, current_user["keycloak_id"])
+    return {"message": "Message deleted successfully"}
+
+
+@router.put("/messages/{message_id}", response_model=MessageResponse)
+async def update_message(
+    message_id: uuid.UUID,
+    message_data: MessageUpdate,
+    current_user: dict = Depends(get_current_active_user),
+    service: ChatService = Depends(get_chat_service)
+):
+    """Редактирование сообщения (только отправитель, в течение 24 часов)"""
+    return await service.update_message(
+        message_id=message_id,
+        message_data=message_data,
+        sender_keycloak_id=current_user["keycloak_id"]
+    )
 
 @router.post("/{chat_id}/participants/{user_id}")
 async def add_participant(
@@ -211,6 +262,7 @@ async def add_participant(
     )
     return {"message": "Participant added successfully"}
 
+
 @router.delete("/{chat_id}/participants/{user_id}")
 async def remove_participant(
     chat_id: uuid.UUID,
@@ -221,44 +273,6 @@ async def remove_participant(
     """Удаление участника из группового чата"""
     await service.remove_participant(chat_id, current_user["keycloak_id"], user_id)
     return {"message": "Participant removed successfully"}
-
-@router.get("/search/messages", response_model=ChatListResponse)  # Исправлено на правильный response model
-async def search_messages(
-    query: str = Query(..., min_length=1, max_length=100, description="Search query"),
-    chat_id: Optional[uuid.UUID] = Query(None, description="Search in specific chat"),
-    skip: int = Query(0, ge=0, description="Skip records"),
-    limit: int = Query(20, ge=1, le=50, description="Limit records"),
-    current_user: dict = Depends(get_current_active_user),
-    service: ChatService = Depends(get_chat_service)
-):
-    """Поиск сообщений по тексту"""
-    messages = await service.search_messages(
-        current_user["keycloak_id"],
-        query,
-        chat_id,
-        skip,
-        limit
-    )
-    return {"messages": messages, "total": len(messages), "query": query}
-
-@router.get("/online/users", response_model=OnlineUsersResponse)
-async def get_online_users(
-    current_user: dict = Depends(get_current_active_user)
-):
-    """Получение списка онлайн пользователей"""
-    online_users = await websocket_manager.get_online_users()
-    return {
-        "online_users": online_users,
-        "count": len(online_users)
-    }
-
-@router.get("/online/users/count")
-async def get_online_users_count(
-    current_user: dict = Depends(get_current_active_user)
-):
-    """Получение количества онлайн пользователей"""
-    count = await websocket_manager.get_online_users_count()
-    return {"count": count}
 
 @router.get("/online/users/{keycloak_id}")
 async def check_user_online(

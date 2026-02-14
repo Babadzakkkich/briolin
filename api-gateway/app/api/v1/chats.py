@@ -21,6 +21,47 @@ from app.schemas.chat import (
 router = APIRouter(prefix="/chats", tags=["Chats"])
 security = HTTPBearer(auto_error=False)
 
+@router.get(
+    "/search/messages",
+    response_model=SearchMessagesResponse,
+    summary="Поиск сообщений",
+    description="Полнотекстовый поиск сообщений по содержимому."
+)
+async def search_messages(
+    request: Request,
+    query: str = Query(..., min_length=1, max_length=100, description="Поисковый запрос"),
+    chat_id: Optional[uuid.UUID] = Query(None, description="Искать в конкретном чате"),
+    skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
+    limit: int = Query(20, ge=1, le=50, description="Количество записей на странице"),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Поиск сообщений по тексту"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.get(
+    "/online/users",
+    response_model=OnlineUsersResponse,
+    summary="Онлайн пользователи",
+    description="Возвращает список пользователей, находящихся онлайн."
+)
+async def get_online_users(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Получение списка онлайн пользователей"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
 @router.post(
     "/",
     response_model=ChatResponse,
@@ -51,6 +92,7 @@ async def create_chat(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
 
 @router.get(
     "/",
@@ -97,6 +139,7 @@ async def get_chat(
         headers=dict(response.headers)
     )
 
+
 @router.put(
     "/{chat_id}",
     response_model=ChatResponse,
@@ -120,6 +163,7 @@ async def update_chat(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
 
 @router.delete(
     "/{chat_id}",
@@ -161,6 +205,7 @@ async def send_message(
         headers=dict(response.headers)
     )
 
+
 @router.get(
     "/{chat_id}/messages",
     response_model=MessageListResponse,
@@ -176,6 +221,27 @@ async def get_messages(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Получение сообщений из чата"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.post(
+    "/{chat_id}/read",
+    status_code=status.HTTP_200_OK,
+    summary="Отметка сообщений как прочитанных",
+    description="Отмечает указанные сообщения как прочитанные и отправляет уведомления через WebSocket."
+)
+async def mark_messages_as_read(
+    chat_id: uuid.UUID,
+    message_ids: MessageIdsRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Отметка сообщений как прочитанных"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -201,8 +267,13 @@ async def delete_message(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
-    
-@router.put("/messages/{message_id}", response_model=MessageResponse)
+
+
+@router.put(
+    "/messages/{message_id}",
+    response_model=MessageResponse,
+    summary="Редактирование сообщения"
+)
 async def update_message(
     message_id: uuid.UUID,
     message_data: MessageUpdate,
@@ -216,26 +287,6 @@ async def update_message(
     - Редактирование возможно в течение 24 часов после отправки
     - Всем участникам чата отправляется WebSocket уведомление message_updated
     """
-    response = await http_client.proxy_request(request)
-    return Response(
-        content=response.content,
-        status_code=response.status_code,
-        headers=dict(response.headers)
-    )
-
-@router.post(
-    "/{chat_id}/read",
-    status_code=status.HTTP_200_OK,
-    summary="Отметка сообщений как прочитанных",
-    description="Отмечает указанные сообщения как прочитанные и отправляет уведомления через WebSocket."
-)
-async def mark_messages_as_read(
-    chat_id: uuid.UUID,
-    message_ids: MessageIdsRequest,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """Отметка сообщений как прочитанных"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -263,6 +314,7 @@ async def add_participant(
         headers=dict(response.headers)
     )
 
+
 @router.delete(
     "/{chat_id}/participants/{user_id}",
     status_code=status.HTTP_200_OK,
@@ -276,46 +328,6 @@ async def remove_participant(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Удаление участника из группового чата"""
-    response = await http_client.proxy_request(request)
-    return Response(
-        content=response.content,
-        status_code=response.status_code,
-        headers=dict(response.headers)
-    )
-
-@router.get(
-    "/search/messages",
-    response_model=SearchMessagesResponse,
-    summary="Поиск сообщений",
-    description="Полнотекстовый поиск сообщений по содержимому."
-)
-async def search_messages(
-    request: Request,
-    query: str = Query(..., min_length=1, max_length=100, description="Поисковый запрос"),
-    chat_id: Optional[uuid.UUID] = Query(None, description="Искать в конкретном чате"),
-    skip: int = Query(0, ge=0, description="Количество пропускаемых записей"),
-    limit: int = Query(20, ge=1, le=50, description="Количество записей на странице"),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """Поиск сообщений по тексту"""
-    response = await http_client.proxy_request(request)
-    return Response(
-        content=response.content,
-        status_code=response.status_code,
-        headers=dict(response.headers)
-    )
-
-@router.get(
-    "/online/users",
-    response_model=OnlineUsersResponse,
-    summary="Онлайн пользователи",
-    description="Возвращает список пользователей, находящихся онлайн."
-)
-async def get_online_users(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """Получение списка онлайн пользователей"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
