@@ -19,7 +19,7 @@ async def websocket_endpoint(
     token: Optional[str] = Query(None),
     user_data: Optional[dict] = Depends(get_current_user_ws)
 ):
-    """WebSocket endpoint для реального времени с поддержкой display_name"""
+    """WebSocket endpoint для реального времени с поддержкой display_name и heartbeat"""
     if not user_data:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
@@ -60,12 +60,17 @@ async def websocket_endpoint(
                 await _handle_websocket_message(data, keycloak_id, display_name, connection_id)
                 
             except asyncio.TimeoutError:
-                # Проверка keep-alive
+                # Проверка keep-alive - отправляем ping
                 ping_message = WebSocketMessage(
                     type="ping",
                     timestamp=datetime.utcnow()
                 )
-                await websocket.send_json(ping_message.model_dump(mode='json'))
+                try:
+                    await websocket.send_json(ping_message.model_dump(mode='json'))
+                except Exception:
+                    # Клиент не отвечает, разрываем соединение
+                    logger.warning(f"Client {keycloak_id} not responding to ping")
+                    break
                 
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON from {keycloak_id}")
@@ -82,7 +87,7 @@ async def websocket_endpoint(
         logger.error(f"WebSocket error for {keycloak_id}: {e}", exc_info=True)
     finally:
         # Отключаем пользователя
-        await websocket_manager.disconnect(connection_id)
+        await websocket_manager.disconnect(connection_id, reason="disconnect")
 
 async def _handle_websocket_message(data: dict, keycloak_id: str, display_name: str, connection_id: str):
     """Обработка входящих WebSocket сообщений"""
@@ -113,7 +118,7 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, display_name: 
             await websocket_manager.unsubscribe_from_chat(connection_id, chat_id)
     
     elif message_type == "typing":
-        # Индикатор набора текста (display_name уже получен при подключении)
+        # Индикатор набора текста
         chat_id = data.get("chat_id")
         is_typing = data.get("is_typing", False)
         
@@ -137,7 +142,10 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, display_name: 
                 logger.warning(f"Invalid message ID: {message_id}")
     
     elif message_type == "ping":
-        # Ответ на ping
+        # Heartbeat от клиента - продлеваем статус
+        await websocket_manager.handle_heartbeat(keycloak_id, connection_id)
+        
+        # Отвечаем pong
         pong_message = WebSocketMessage(
             type="pong",
             timestamp=datetime.utcnow()

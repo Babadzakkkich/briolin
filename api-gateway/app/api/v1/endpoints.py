@@ -4,6 +4,7 @@ from .users import router as users_router
 from .profiles import router as profiles_router
 from .tests import router as testing_router
 from .chats import router as chats_router
+from .online import router as online_router
 
 router = APIRouter()
 
@@ -12,3 +13,4 @@ router.include_router(users_router)
 router.include_router(profiles_router)
 router.include_router(testing_router)
 router.include_router(chats_router)
+router.include_router(online_router)

@@ -20,6 +20,8 @@ from app.websocket.routes import router as ws_router
 async def shutdown_handler():
     """Обработчик graceful shutdown"""
     logger.info("Shutting down chat service gracefully...")
+    
+    await websocket_manager.stop_heartbeat_checker()
     await websocket_manager.disconnect_all()
     await rabbitmq_consumer.disconnect()
     await rabbitmq_publisher.disconnect()

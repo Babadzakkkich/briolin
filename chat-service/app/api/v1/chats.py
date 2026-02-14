@@ -8,7 +8,7 @@ from app.dependencies import get_chat_service, get_current_active_user, require_
 from app.schemas.chat import (
     ChatCreate, ChatUpdate, ChatResponse, ChatListResponse,
     MessageCreate, MessageResponse, MessageListResponse,
-    MessageIdsRequest
+    MessageIdsRequest, OnlineUsersResponse
 )
 from app.services import websocket_manager
 from shared.schemas.shared import UserRole
@@ -227,10 +227,33 @@ async def search_messages(
     )
     return {"messages": messages, "total": len(messages), "query": query}
 
-@router.get("/online/users")
+@router.get("/online/users", response_model=OnlineUsersResponse)
 async def get_online_users(
     current_user: dict = Depends(get_current_active_user)
 ):
     """Получение списка онлайн пользователей"""
     online_users = await websocket_manager.get_online_users()
-    return {"online_users": online_users, "count": len(online_users)}
+    return {
+        "online_users": online_users,
+        "count": len(online_users)
+    }
+
+@router.get("/online/users/count")
+async def get_online_users_count(
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Получение количества онлайн пользователей"""
+    count = await websocket_manager.get_online_users_count()
+    return {"count": count}
+
+@router.get("/online/users/{keycloak_id}")
+async def check_user_online(
+    keycloak_id: str,
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Проверка онлайн статуса конкретного пользователя"""
+    is_online = await websocket_manager.is_user_online(keycloak_id)
+    return {
+        "keycloak_id": keycloak_id,
+        "online": is_online
+    }

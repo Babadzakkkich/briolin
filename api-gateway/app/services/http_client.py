@@ -23,9 +23,7 @@ class HTTPClient:
     
     def _get_service_url(self, path: str) -> str:
         """Определяет URL сервиса по пути"""
-        # WebSocket эндпоинты теперь обрабатываются в API Gateway
         if path.startswith("/ws"):
-            # Это не должно вызываться для WebSocket, но на всякий случай
             raise ValueError("WebSocket requests should not use HTTP client")
         
         if path.startswith("/api/v1/auth"):
@@ -45,7 +43,6 @@ class HTTPClient:
         elif path.startswith("/api/v1/internal/tests"):
             return self.testing_service_url
         else:
-            # По умолчанию auth-service
             return self.auth_service_url
     
     async def proxy_request(
