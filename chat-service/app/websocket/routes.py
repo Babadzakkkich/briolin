@@ -140,6 +140,43 @@ async def _handle_websocket_message(data: dict, keycloak_id: str, display_name: 
                 )
             except ValueError:
                 logger.warning(f"Invalid message ID: {message_id}")
+                
+    elif message_type == "message_update":
+        # Редактирование сообщения через WebSocket
+        chat_id = data.get("chat_id")
+        message_id = data.get("message_id")
+        new_content = data.get("content")
+        
+        if chat_id and message_id and new_content:
+            try:
+                from app.schemas.chat import MessageUpdate
+                from app.services.chat_service import ChatService
+                from app.database.postgres.session import async_session_factory
+                
+                async with async_session_factory() as session:
+                    service = ChatService(session)
+                    message_uuid = uuid.UUID(message_id)
+                    update_data = MessageUpdate(content=new_content)
+                    
+                    await service.update_message(
+                        message_id=message_uuid,
+                        message_data=update_data,
+                        sender_keycloak_id=keycloak_id
+                    )
+                    # Успешное обновление отправляется через broadcast внутри update_message
+            except ValueError:
+                logger.warning(f"Invalid message ID for update: {message_id}")
+            except Exception as e:
+                logger.error(f"Error updating message via WebSocket: {e}")
+                error_message = WebSocketMessage(
+                    type="error",
+                    message={"error": f"Failed to update message: {str(e)}"},
+                    timestamp=datetime.utcnow()
+                )
+                await websocket_manager.send_personal_message(
+                    error_message.model_dump(mode='json'),
+                    keycloak_id
+                )
     
     elif message_type == "ping":
         # Heartbeat от клиента - продлеваем статус

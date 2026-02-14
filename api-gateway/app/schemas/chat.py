@@ -102,6 +102,10 @@ class MessageCreate(BaseModel):
     media_type: Optional[str] = Field(None, description="Тип медиа")
     file_size: Optional[int] = Field(None, ge=0, description="Размер файла в байтах")
 
+class MessageUpdate(BaseModel):
+    """Редактирование существующего сообщения"""
+    content: str = Field(..., min_length=1, max_length=5000, description="Новый текст сообщения")
+
 class MessageResponse(BaseModel):
     """Ответ с сообщением с отображаемым именем отправителя"""
     model_config = ConfigDict(from_attributes=True)
@@ -114,6 +118,7 @@ class MessageResponse(BaseModel):
     content: str
     message_type: str
     status: MessageStatus
+    is_edited: bool = Field(default=False, description="Было ли сообщение отредактировано")  # === НОВОЕ ПОЛЕ ===
     reply_to_id: Optional[uuid.UUID] = None
     media_url: Optional[str] = None
     media_type: Optional[str] = None

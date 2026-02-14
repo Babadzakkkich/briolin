@@ -24,7 +24,7 @@ from app.core.exceptions import (
 from app.core.logger import logger
 from app.schemas.chat import (
     ChatCreate, ChatUpdate, MessageCreate,
-    ChatResponse, MessageResponse, ChatEvent
+    ChatResponse, MessageResponse, ChatEvent, MessageUpdate
 )
 
 
@@ -649,7 +649,109 @@ class ChatService:
             await self.db.rollback()
             logger.error(f"Error deleting message: {e}")
             raise DatabaseException("Failed to delete message")
+        
+    async def update_message(
+        self,
+        message_id: uuid.UUID,
+        message_data: MessageUpdate,
+        sender_keycloak_id: str
+    ) -> MessageResponse:
+        """Редактирование существующего сообщения"""
+        try:
+            stmt = select(Message).where(Message.id == message_id)
+            result = await self.db.execute(stmt)
+            message = result.scalar_one_or_none()
+            
+            if not message:
+                raise MessageNotFoundException()
+            
+            # Проверяем права на редактирование (только отправитель может редактировать)
+            if message.sender_keycloak_id != sender_keycloak_id:
+                raise PermissionDeniedException("Only message sender can edit the message")
+            
+            # Проверяем, что сообщение не старше 24 часов (опционально)
+            message_age = datetime.utcnow() - message.created_at
+            if message_age > timedelta(hours=24):
+                raise PermissionDeniedException("Message can only be edited within 24 hours")
+            
+            # Проверяем, что сообщение не удалено
+            if message.status == MessageStatus.FAILED:
+                raise PermissionDeniedException("Cannot edit deleted message")
+            
+            # Обновляем содержимое
+            old_content = message.content
+            message.content = message_data.content
+            message.is_edited = True
+            
+            await self.db.commit()
+            await self.db.refresh(message)
+            
+            logger.info(f"Message updated: {message_id} by {sender_keycloak_id}")
+            
+            # Форматируем ответ
+            message_response = MessageResponse(
+                id=message.id,
+                chat_id=message.chat_id,
+                sender_keycloak_id=message.sender_keycloak_id,
+                sender_display_name=message.sender_display_name,
+                sender_username=message.sender_username,
+                content=message.content,
+                message_type=message.message_type,
+                status=message.status,
+                is_edited=message.is_edited,
+                reply_to_id=message.reply_to_id,
+                media_url=message.media_url,
+                media_type=message.media_type,
+                file_size=message.file_size,
+                created_at=message.created_at,
+                updated_at=message.updated_at
+            )
+            
+            # Отправляем событие об обновлении сообщения через WebSocket
+            ws_message = {
+                "type": "message_updated",
+                "chat_id": str(message.chat_id),
+                "message": message_response.model_dump(mode='json'),
+                "sender_id": sender_keycloak_id,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            await websocket_manager.broadcast_to_chat(
+                ws_message,
+                str(message.chat_id),
+                exclude_user=sender_keycloak_id
+            )
+            
+            # Обновляем в MongoDB для поиска
+            await self._update_message_in_mongo(message_response)
+            
+            return message_response
+            
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Error updating message: {e}")
+            raise DatabaseException("Failed to update message")
     
+    async def _update_message_in_mongo(self, message: MessageResponse):
+        """Обновление сообщения в MongoDB для поиска"""
+        try:
+            mongo_db = await self._get_mongo_db()
+            collection = mongo_db.messages
+            
+            await collection.update_one(
+                {"message_id": str(message.id)},
+                {
+                    "$set": {
+                        "content": message.content,
+                        "is_edited": message.is_edited,
+                        "updated_at": message.updated_at
+                    }
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error updating message in MongoDB: {e}")
+            
     async def mark_messages_as_read(self, chat_id: uuid.UUID, keycloak_id: str, message_ids: List[uuid.UUID]) -> bool:
         """Отметка сообщений как прочитанных"""
         await self._check_chat_permission(chat_id, keycloak_id)

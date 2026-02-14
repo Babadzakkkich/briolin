@@ -118,6 +118,7 @@ class Message(Base):
         default=datetime.utcnow,
         onupdate=datetime.utcnow
     )
+    is_edited: Mapped[bool] = mapped_column(Boolean, default=False)
     
     # Для сообщений-ответов
     reply_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)

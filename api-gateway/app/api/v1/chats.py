@@ -13,11 +13,9 @@ from app.schemas.chat import (
     MessageResponse,
     MessageListResponse,
     MessageIdsRequest,
+    MessageUpdate,
     SearchMessagesResponse,
     OnlineUsersResponse,
-    WebSocketMessage,
-    TypingIndicator,
-    ReadReceipt
 )
 
 router = APIRouter(prefix="/chats", tags=["Chats"])
@@ -197,6 +195,27 @@ async def delete_message(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Удаление сообщения"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+    
+@router.put("/messages/{message_id}", response_model=MessageResponse)
+async def update_message(
+    message_id: uuid.UUID,
+    message_data: MessageUpdate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Редактирование сообщения.
+    
+    - Только отправитель может редактировать сообщение
+    - Редактирование возможно в течение 24 часов после отправки
+    - Всем участникам чата отправляется WebSocket уведомление message_updated
+    """
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

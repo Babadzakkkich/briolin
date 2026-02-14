@@ -69,17 +69,21 @@ class MessageCreate(BaseModel):
     media_type: Optional[str] = Field(None)
     file_size: Optional[int] = Field(None, ge=0)
 
+class MessageUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000, description="Новый текст сообщения")
+
 class MessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: uuid.UUID
     chat_id: uuid.UUID
     sender_keycloak_id: str
-    sender_display_name: str  # first_name + last_name
-    sender_username: Optional[str] = None  # для совместимости
+    sender_display_name: str = Field(..., description="Имя и фамилия отправителя (first_name + last_name)")
+    sender_username: Optional[str] = Field(None, description="Username отправителя (для совместимости)")
     content: str
     message_type: str
     status: MessageStatus
+    is_edited: bool = Field(default=False, description="Было ли сообщение отредактировано")
     reply_to_id: Optional[uuid.UUID] = None
     media_url: Optional[str] = None
     media_type: Optional[str] = None

@@ -8,7 +8,7 @@ from app.dependencies import get_chat_service, get_current_active_user, require_
 from app.schemas.chat import (
     ChatCreate, ChatUpdate, ChatResponse, ChatListResponse,
     MessageCreate, MessageResponse, MessageListResponse,
-    MessageIdsRequest, OnlineUsersResponse
+    MessageIdsRequest, MessageUpdate, OnlineUsersResponse
 )
 from app.services import websocket_manager
 from shared.schemas.shared import UserRole
@@ -167,6 +167,20 @@ async def delete_message(
     await service.delete_message(message_id, current_user["keycloak_id"])
     return {"message": "Message deleted successfully"}
 
+@router.put("/messages/{message_id}", response_model=MessageResponse)
+async def update_message(
+    message_id: uuid.UUID,
+    message_data: MessageUpdate,
+    current_user: dict = Depends(get_current_active_user),
+    service: ChatService = Depends(get_chat_service)
+):
+    """Редактирование сообщения (только отправитель, в течение 24 часов)"""
+    return await service.update_message(
+        message_id=message_id,
+        message_data=message_data,
+        sender_keycloak_id=current_user["keycloak_id"]
+    )
+    
 @router.post("/{chat_id}/read")
 async def mark_messages_as_read(
     chat_id: uuid.UUID,
