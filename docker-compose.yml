@@ -1,318 +1,345 @@
 services:
-  keycloak-postgres:
-    image: postgres:17-alpine
-    container_name: keycloak-postgres
-    environment:
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak
-      POSTGRES_DB: keycloak
-    ports:
-      - "5433:5432"
-    volumes:
-      - keycloak-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U keycloak" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - briolin-network
+    frontend:
+        container_name: briolin-frontend
+        build:
+            context: ./frontend
+            dockerfile: Dockerfile.local
+        ports:
+            - "80:5173"
+        volumes:
+            - ./frontend:/app
+            - /app/node_modules
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.4
-    container_name: keycloak
-    command: start-dev
-    ports:
-      - "8080:8080"
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_DB: postgres
-      KC_DB_URL_HOST: keycloak-postgres
-      KC_DB_URL_PORT: 5432
-      KC_DB_URL_DATABASE: keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
-      KC_METRICS_ENABLED: "true"
-      KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME_STRICT: "false"
-    volumes:
-      - ./infrastructure/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
-    depends_on:
-      keycloak-postgres:
-        condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/health/ready" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks:
-      - briolin-network
+    keycloak-postgres:
+        image: postgres:17-alpine
+        container_name: keycloak-postgres
+        environment:
+            POSTGRES_USER: keycloak
+            POSTGRES_PASSWORD: keycloak
+            POSTGRES_DB: keycloak
+        ports:
+            - "5433:5432"
+        volumes:
+            - keycloak-postgres-data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U keycloak"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+        networks:
+            - briolin-network
 
-  auth-postgres:
-    image: postgres:17-alpine
-    container_name: auth-postgres
-    environment:
-      POSTGRES_USER: ${AUTH_DB_USER}
-      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
-      POSTGRES_DB: ${AUTH_DB_NAME}
-    ports:
-      - "5434:5432"
-    env_file: 
-      - .env
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    keycloak:
+        image: quay.io/keycloak/keycloak:26.4
+        container_name: keycloak
+        command: start-dev
+        ports:
+            - "8080:8080"
+        environment:
+            KC_BOOTSTRAP_ADMIN_USERNAME: admin
+            KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+            KC_DB: postgres
+            KC_DB_URL_HOST: keycloak-postgres
+            KC_DB_URL_PORT: 5432
+            KC_DB_URL_DATABASE: keycloak
+            KC_DB_USERNAME: keycloak
+            KC_DB_PASSWORD: keycloak
+            KC_METRICS_ENABLED: "true"
+            KC_HTTP_ENABLED: "true"
+            KC_HOSTNAME_STRICT: "false"
+        volumes:
+            - ./infrastructure/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+        depends_on:
+            keycloak-postgres:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 30s
+        networks:
+            - briolin-network
 
-  user-postgres:
-    image: postgres:17-alpine
-    container_name: user-postgres
-    environment:
-      POSTGRES_USER: ${USER__DB__USER}
-      POSTGRES_PASSWORD: ${USER__DB__PASSWORD}
-      POSTGRES_DB: ${USER__DB__NAME}
-    ports:
-      - "5435:5432"
-    env_file: 
-      - .env
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${USER__DB__USER} -d ${USER__DB__NAME}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    auth-postgres:
+        image: postgres:17-alpine
+        container_name: auth-postgres
+        environment:
+            POSTGRES_USER: ${AUTH__DB__USER}
+            POSTGRES_PASSWORD: ${AUTH__DB__PASSWORD}
+            POSTGRES_DB: ${AUTH__DB__NAME}
+        ports:
+            - "5434:5432"
+        env_file:
+            - .env
+        networks:
+            - briolin-network
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -U ${AUTH__DB__USER} -d ${AUTH__DB__NAME}",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 5
 
-  profile-postgres:
-    image: postgres:17-alpine
-    container_name: profile-postgres
-    environment:
-      POSTGRES_USER: ${PROFILE__DB__USER}
-      POSTGRES_PASSWORD: ${PROFILE__DB__PASSWORD}
-      POSTGRES_DB: ${PROFILE__DB__NAME}
-    ports:
-      - "5436:5432"
-    env_file: 
-      - .env
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PROFILE__DB__USER} -d ${PROFILE__DB__NAME}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-  
-  testing-postgres:
-    image: postgres:17-alpine
-    container_name: testing-postgres
-    environment:
-      POSTGRES_USER: ${TESTING__DB__USER}
-      POSTGRES_PASSWORD: ${TESTING__DB__PASSWORD}
-      POSTGRES_DB: ${TESTING__DB__NAME}
-    ports:
-      - "5437:5432"
-    env_file: 
-      - .env
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TESTING__DB__USER} -d ${TESTING__DB__NAME}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    user-postgres:
+        image: postgres:17-alpine
+        container_name: user-postgres
+        environment:
+            POSTGRES_USER: ${USER__DB__USER}
+            POSTGRES_PASSWORD: ${USER__DB__PASSWORD}
+            POSTGRES_DB: ${USER__DB__NAME}
+        ports:
+            - "5435:5432"
+        env_file:
+            - .env
+        networks:
+            - briolin-network
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -U ${USER__DB__USER} -d ${USER__DB__NAME}",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 5
 
-  testing-mongo:
-    image: mongo:8.0
-    container_name: testing-mongo
-    ports:
-      - "27017:27017"
-    networks:
-      - briolin-network
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 30s
-      timeout: 5s
-      retries: 5
+    profile-postgres:
+        image: postgres:17-alpine
+        container_name: profile-postgres
+        environment:
+            POSTGRES_USER: ${PROFILE__DB__USER}
+            POSTGRES_PASSWORD: ${PROFILE__DB__PASSWORD}
+            POSTGRES_DB: ${PROFILE__DB__NAME}
+        ports:
+            - "5436:5432"
+        env_file:
+            - .env
+        networks:
+            - briolin-network
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -U ${PROFILE__DB__USER} -d ${PROFILE__DB__NAME}",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: briolin-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    command: redis-server --appendonly yes
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    testing-postgres:
+        image: postgres:17-alpine
+        container_name: testing-postgres
+        environment:
+            POSTGRES_USER: ${TESTING__DB__USER}
+            POSTGRES_PASSWORD: ${TESTING__DB__PASSWORD}
+            POSTGRES_DB: ${TESTING__DB__NAME}
+        ports:
+            - "5437:5432"
+        env_file:
+            - .env
+        networks:
+            - briolin-network
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    "pg_isready -U ${TESTING__DB__USER} -d ${TESTING__DB__NAME}",
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 5
 
-  redis-insight:
-    image: redislabs/redisinsight:2.70
-    container_name: briolin-redis-insight
-    ports:
-      - "5540:5540"
-    volumes:
-      - redis-insight-data:/db
-    environment:
-      - REDISINSIGHT_HOST=0.0.0.0
-      - REDISINSIGHT_PORT=5540
-      - REDISINSIGHT_DATA_DIR=/db
-    depends_on:
-      - redis
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5540/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    testing-mongo:
+        image: mongo:8.0
+        container_name: testing-mongo
+        ports:
+            - "27017:27017"
+        networks:
+            - briolin-network
+        healthcheck:
+            test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+            interval: 30s
+            timeout: 5s
+            retries: 5
 
-  rabbitmq:
-    image: rabbitmq:4.2.2-management-alpine
-    container_name: briolin-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    redis:
+        image: redis:7-alpine
+        container_name: briolin-redis
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis-data:/data
+        command: redis-server --appendonly yes
+        networks:
+            - briolin-network
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
 
-  auth-service:
-    build: 
-      context: .
-      dockerfile: auth-service/Dockerfile
-    container_name: auth-service
-    ports:
-      - "8001:8001"
-    env_file:
-      - .env
-    depends_on:
-      auth-postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    volumes:
-      - ./shared:/app/shared:ro
-    networks:
-      - briolin-network
+    redis-insight:
+        image: redislabs/redisinsight:2.70
+        container_name: briolin-redis-insight
+        ports:
+            - "5540:5540"
+        volumes:
+            - redis-insight-data:/db
+        environment:
+            - REDISINSIGHT_HOST=0.0.0.0
+            - REDISINSIGHT_PORT=5540
+            - REDISINSIGHT_DATA_DIR=/db
+        depends_on:
+            - redis
+        networks:
+            - briolin-network
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:5540/"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
 
-  user-service:
-    build: 
-      context: .
-      dockerfile: user-service/Dockerfile
-    container_name: user-service
-    ports:
-      - "8002:8002"
-    env_file: 
-      - .env 
-    depends_on:
-      user-postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    volumes:
-      - ./shared:/app/shared:ro
-    networks:
-      - briolin-network
+    rabbitmq:
+        image: rabbitmq:4.2.2-management-alpine
+        container_name: briolin-rabbitmq
+        ports:
+            - "5672:5672"
+            - "15672:15672"
+        environment:
+            RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+        volumes:
+            - rabbitmq-data:/var/lib/rabbitmq
+        networks:
+            - briolin-network
+        healthcheck:
+            test: ["CMD", "rabbitmqctl", "status"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
 
-  profile-service:
-    build: 
-      context: .
-      dockerfile: profile-service/Dockerfile
-    container_name: profile-service
-    ports:
-      - "8003:8003"
-    env_file:
-      - .env
-    depends_on:
-      profile-postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      auth-service:
-        condition: service_started
-    volumes:
-      - ./shared:/app/shared:ro
-    networks:
-      - briolin-network
+    auth-service:
+        build:
+            context: .
+            dockerfile: auth-service/Dockerfile
+        container_name: auth-service
+        ports:
+            - "8001:8001"
+        env_file:
+            - .env
+        depends_on:
+            auth-postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+        volumes:
+            - ./shared:/app/shared:ro
+        networks:
+            - briolin-network
 
-  testing-service:
-    build: 
-      context: .
-      dockerfile: testing-service/Dockerfile
-    container_name: testing-service
-    ports:
-      - "8004:8004"
-    env_file:
-      - .env
-    depends_on:
-      testing-postgres:
-        condition: service_healthy
-      testing-mongo:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    volumes:
-      - ./shared:/app/shared:ro
-    networks:
-      - briolin-network
+    user-service:
+        build:
+            context: .
+            dockerfile: user-service/Dockerfile
+        container_name: user-service
+        ports:
+            - "8002:8002"
+        env_file:
+            - .env
+        depends_on:
+            user-postgres:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+        volumes:
+            - ./shared:/app/shared:ro
+        networks:
+            - briolin-network
 
-  api-gateway:
-    build: 
-      context: .
-      dockerfile: api-gateway/Dockerfile
-    container_name: api-gateway
-    ports:
-      - "8000:8000"
-    env_file: 
-      - .env 
-    depends_on:
-      auth-service:
-        condition: service_started
-      user-service:
-        condition: service_started
-      profile-service:
-        condition: service_started
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./shared:/app/shared:ro
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 3m
-      timeout: 10s
-      retries: 1
-      start_period: 40s
+    profile-service:
+        build:
+            context: .
+            dockerfile: profile-service/Dockerfile
+        container_name: profile-service
+        ports:
+            - "8003:8003"
+        env_file:
+            - .env
+        depends_on:
+            profile-postgres:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+            auth-service:
+                condition: service_started
+        volumes:
+            - ./shared:/app/shared:ro
+        networks:
+            - briolin-network
+
+    testing-service:
+        build:
+            context: .
+            dockerfile: testing-service/Dockerfile
+        container_name: testing-service
+        ports:
+            - "8004:8004"
+        env_file:
+            - .env
+        depends_on:
+            testing-postgres:
+                condition: service_healthy
+            testing-mongo:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+        volumes:
+            - ./shared:/app/shared:ro
+        networks:
+            - briolin-network
+
+    api-gateway:
+        build:
+            context: .
+            dockerfile: api-gateway/Dockerfile
+        container_name: api-gateway
+        ports:
+            - "8000:8000"
+        env_file:
+            - .env
+        depends_on:
+            auth-service:
+                condition: service_started
+            user-service:
+                condition: service_started
+            profile-service:
+                condition: service_started
+            redis:
+                condition: service_healthy
+        volumes:
+            - ./shared:/app/shared:ro
+        networks:
+            - briolin-network
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+            interval: 3m
+            timeout: 10s
+            retries: 1
+            start_period: 40s
 
 volumes:
-  keycloak-postgres-data:
-  redis-data:
-  redis-insight-data:
-  rabbitmq-data:
+    keycloak-postgres-data:
+    redis-data:
+    redis-insight-data:
+    rabbitmq-data:
 
 networks:
-  briolin-network:
-    driver: bridge
+    briolin-network:
+        driver: bridge
