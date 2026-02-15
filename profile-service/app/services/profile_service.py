@@ -228,38 +228,46 @@ class ProfileService:
             error_msg = final_status.get("error", "Unknown error")
             raise DatabaseException(f"Profile deletion failed: {error_msg}")
 
+    async def get_full_profile_by_keycloak_id(self, keycloak_id: str) -> Dict[str, Any]:
+        """Публичный метод для получения полного профиля (используется другими сервисами)"""
+        return await self._get_full_profile_by_keycloak_id(keycloak_id)
+    
     async def delete_profiles_by_keycloak_id(self, keycloak_id: str) -> bool:
-        """Удаление профилей по событию из auth-service (внутренний метод)"""
-        try:
-            async with async_session_factory() as session:
-                stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
-                result = await session.execute(stmt)
-                profile = result.scalar_one_or_none()
-                
-                if not profile:
-                    logger.warning(f"No profiles found for user {keycloak_id}")
+            """Удаление профилей по событию из auth-service (внутренний метод)"""
+            try:
+                async with async_session_factory() as session:
+                    stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
+                    result = await session.execute(stmt)
+                    profile = result.scalar_one_or_none()
+                    
+                    if not profile:
+                        logger.warning(f"No profiles found for user {keycloak_id}")
+                        return True
+                    
+                    # Удаляем каскадно (detailed удалится автоматически)
+                    await session.delete(profile)
+                    await session.commit()
+                    
+                    logger.info(f"Profiles deleted for user {keycloak_id} by event")
                     return True
-                
-                # Удаляем каскадно (detailed удалится автоматически)
-                await session.delete(profile)
-                await session.commit()
-                
-                logger.info(f"Profiles deleted for user {keycloak_id} by event")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Failed to delete profiles by keycloak_id: {e}")
-            return False
+                    
+            except Exception as e:
+                logger.error(f"Failed to delete profiles by keycloak_id: {e}")
+                return False
 
     async def update_online_status(self, keycloak_id: str, online: bool) -> bool:
         """Обновление онлайн статуса пользователя"""
         try:
             async with async_session_factory() as session:
+                from sqlalchemy import select
+                from app.database.models import BasicProfile
+                
                 stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
                 result = await session.execute(stmt)
                 profile = result.scalar_one_or_none()
                 
                 if not profile:
+                    logger.warning(f"Profile not found for {keycloak_id}")
                     return False
                 
                 profile.online = online
@@ -267,9 +275,87 @@ class ProfileService:
                     profile.last_login_at = datetime.utcnow()
                 
                 await session.commit()
-                logger.info(f"Online status updated for {keycloak_id}: {online}")
+                
+                status_str = "ONLINE" if online else "OFFLINE"
+                logger.info(f"Online status updated for {keycloak_id}: {status_str}")
                 return True
                 
         except Exception as e:
             logger.error(f"Failed to update online status: {e}")
             return False
+        
+    async def get_online_users(
+        self, 
+        skip: int = 0, 
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """Получение списка онлайн пользователей с пагинацией"""
+        try:
+            async with async_session_factory() as session:
+                from sqlalchemy import select, func
+                from app.database.models import BasicProfile
+                
+                # Получаем общее количество онлайн пользователей
+                count_stmt = select(func.count()).select_from(BasicProfile).where(BasicProfile.online == True)
+                count_result = await session.execute(count_stmt)
+                total = count_result.scalar_one()
+                
+                # Получаем список онлайн пользователей
+                stmt = (
+                    select(BasicProfile)
+                    .where(BasicProfile.online == True)
+                    .order_by(BasicProfile.last_login_at.desc())
+                    .offset(skip)
+                    .limit(limit)
+                )
+                result = await session.execute(stmt)
+                profiles = result.scalars().all()
+                
+                # Формируем ответ с базовыми полями
+                users = []
+                for profile in profiles:
+                    users.append({
+                        "keycloak_id": profile.keycloak_id,
+                        "first_name": profile.first_name,
+                        "last_name": profile.last_name,
+                        "avatar_url": None,  # Добавьте поле в модель если нужно
+                        "online": profile.online,
+                        "last_login_at": profile.last_login_at.isoformat() if profile.last_login_at else None
+                    })
+                
+                return {
+                    "users": users,
+                    "total": total,
+                    "page": skip // limit + 1 if limit > 0 else 1,
+                    "size": limit
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get online users: {e}")
+            raise
+    
+    async def get_user_online_status(self, keycloak_id: str) -> Optional[Dict[str, Any]]:
+        """Получение статуса конкретного пользователя"""
+        try:
+            async with async_session_factory() as session:
+                from sqlalchemy import select
+                from app.database.models import BasicProfile
+                
+                stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
+                result = await session.execute(stmt)
+                profile = result.scalar_one_or_none()
+                
+                if not profile:
+                    return None
+                
+                return {
+                    "keycloak_id": profile.keycloak_id,
+                    "first_name": profile.first_name,
+                    "last_name": profile.last_name,
+                    "online": profile.online,
+                    "last_login_at": profile.last_login_at.isoformat() if profile.last_login_at else None
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get user online status: {e}")
+            return None

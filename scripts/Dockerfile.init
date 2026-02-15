@@ -1,0 +1,27 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY auth-service/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY auth-service/app/ ./app/
+
+COPY shared/ ./shared/
+
+COPY scripts/create_superadmin.py ./
+
+ENV PYTHONPATH=/app
+ENV AUTH__DB__HOST=auth-postgres
+ENV AUTH__DB__PORT=5432
+ENV AUTH__DB__NAME=auth_db
+ENV AUTH__DB__USER=auth_user
+ENV KEYCLOAK__SERVER_URL=http://keycloak:8080/
+ENV KEYCLOAK__REALM=briolin
+
+ENTRYPOINT ["python", "create_superadmin.py"]

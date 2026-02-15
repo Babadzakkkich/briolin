@@ -1,12 +1,13 @@
 import logging
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 import re
 import asyncio
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from jose import jwt
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.websockets import WebSocket
 
 from app.services.keycloak_client import keycloak_client
 from app.services.auth_service_client import auth_service_client
@@ -25,15 +26,22 @@ PUBLIC_ENDPOINTS = [
     re.compile(r'^/docs.*$'),
     re.compile(r'^/redoc.*$'),
     re.compile(r'^/openapi\.json$'),
+    re.compile(r'^/ws/stats$'),  # Статистика WebSocket публична
+]
+
+# WebSocket эндпоинты (требуют специальной обработки)
+WS_ENDPOINTS = [
+    re.compile(r'^/ws$'),
+    re.compile(r'^/ws/.*$'),
 ]
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
-        self.token_cache = get_token_cache()  # Redis кэш
-        self.locks = {}  # Локи для предотвращения race condition
-        self.lock_cleanup_interval = 300  # Очистка локов каждые 5 минут
+        self.token_cache = get_token_cache()
+        self.locks = {}
+        self.lock_cleanup_interval = 300
         self.last_lock_cleanup = datetime.utcnow()
     
     async def _get_lock(self, keycloak_id: str) -> asyncio.Lock:
@@ -49,10 +57,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """Очищает старые locks"""
         now = datetime.utcnow()
         if (now - self.last_lock_cleanup).total_seconds() > self.lock_cleanup_interval:
-            # Простая очистка - в продакшене нужно более умное решение
             self.locks = {}
             self.last_lock_cleanup = now
             logger.debug("Cleaned up locks cache")
+    
+    def _is_public_endpoint(self, path: str) -> bool:
+        """Проверяет, является ли эндпоинт публичным"""
+        return any(pattern.match(path) for pattern in PUBLIC_ENDPOINTS)
+    
+    def _is_websocket_endpoint(self, path: str) -> bool:
+        """Проверяет, является ли эндпоинт WebSocket"""
+        return any(pattern.match(path) for pattern in WS_ENDPOINTS)
     
     async def _extract_existing_token(self, request: Request) -> Tuple[Optional[str], Optional[str]]:
         """Извлекает существующий токен из заголовков"""
@@ -76,12 +91,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 signature = cached_data.get("signature")
                 user_data = cached_data.get("user_data")
                 
-                # Проверяем валидность токена
                 if token and jwt_manager.is_token_valid(token):
                     logger.debug(f"Found valid token in Redis cache for {keycloak_id}")
                     return token, signature, user_data
                 else:
-                    # Токен в кэше невалиден - удаляем
                     await self.token_cache.delete_token(keycloak_id)
                     logger.debug(f"Removed invalid token from Redis cache for {keycloak_id}")
         
@@ -92,14 +105,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
     
     async def _create_new_token(self, keycloak_id: str, token_info: Dict[str, Any]) -> Tuple[str, str, Dict[str, Any]]:
         """Создает новый внутренний токен"""
-        # Получаем полную информацию о пользователе
         user_details = await auth_service_client.get_user_details(keycloak_id)
         
         if not user_details:
             logger.error(f"User {keycloak_id} not found in services")
             raise AuthenticationException("User not found")
         
-        # Создаем данные пользователя
         internal_user_data = {
             "keycloak_id": keycloak_id,
             "id": user_details.get("id"),
@@ -111,15 +122,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "authenticated_at": datetime.utcnow().isoformat()
         }
         
-        # Проверяем, что роли есть
         if not internal_user_data["roles"]:
             logger.warning(f"User {keycloak_id} has no roles assigned")
         
-        # Создаем токен и подпись
         internal_token = jwt_manager.create_internal_token(internal_user_data)
         signature = request_security.create_signature(internal_token)
         
-        # Сохраняем в Redis кэш
         try:
             await self.token_cache.set_token(
                 keycloak_id=keycloak_id,
@@ -131,11 +139,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug(f"Token cached in Redis for {keycloak_id}")
         except Exception as e:
             logger.warning(f"Failed to cache token in Redis: {e}")
-            # Продолжаем работу без кэша
         
         logger.info(f"Created NEW internal token for user: {internal_user_data['username']}")
         
-        # Логируем детали токена
         token_info = jwt_manager.get_token_info(internal_token)
         if token_info.get("time_left_seconds"):
             logger.debug(
@@ -155,19 +161,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not existing_token or not existing_signature:
             return None, None, None
         
-        # 1. Проверяем подпись
         if not request_security.verify_signature(existing_token, existing_signature):
             logger.debug("Existing token signature invalid")
             return None, None, None
         
-        # 2. Получаем информацию о токене
         token_info = jwt_manager.get_token_info(existing_token)
         if not token_info.get("valid", False):
             reason = "expired" if token_info.get("expired") else "invalid"
             logger.debug(f"Existing token {reason}")
             return None, None, None
         
-        # 3. Проверяем, что токен для того же пользователя
         if token_info.get("keycloak_id") != keycloak_id:
             logger.debug(
                 f"Existing token for different user: "
@@ -175,7 +178,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return None, None, None
         
-        # 4. Декодируем для получения user_data
         try:
             payload = jwt_manager.decode_internal_token(existing_token, verify_exp=False)
             user_data = payload.get("user", {})
@@ -199,7 +201,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         existing_signature: Optional[str] = None
     ) -> Tuple[str, str, Dict[str, Any]]:
         """Получает существующий или создает новый токен"""
-        # Пробуем использовать токен из заголовков запроса
         if existing_token and existing_signature:
             token, signature, user_data = await self._validate_existing_token(
                 existing_token, existing_signature, keycloak_id
@@ -207,23 +208,31 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if token:
                 return token, signature, user_data
         
-        # Пробуем получить токен из Redis кэша
         token, signature, user_data = await self._get_cached_token(keycloak_id)
         if token:
             return token, signature, user_data
         
-        # Если токен не найден - создаем новый
         logger.debug(f"Creating new internal token for {keycloak_id}")
         return await self._create_new_token(keycloak_id, token_info)
     
     async def dispatch(self, request: Request, call_next):
+        """
+        Основной метод middleware.
+        Обрабатывает HTTP запросы и WebSocket upgrade запросы.
+        """
         path = request.url.path
-        is_public = any(pattern.match(path) for pattern in PUBLIC_ENDPOINTS)
+        method = request.method
+
+        if method == "OPTIONS":
+            logger.debug(f"Preflight request: {path}")
+            return await call_next(request)
+
+        is_public = self._is_public_endpoint(path)
+        is_websocket = self._is_websocket_endpoint(path)
 
         # Логируем каждый запрос
-        logger.info(f"Incoming request: {request.method} {path}")
+        logger.info(f"Incoming request: {method} {path}")
         if logger.isEnabledFor(logging.DEBUG):
-            # Логируем только auth заголовки в debug режиме
             auth_headers = {}
             for key, value in request.headers.items():
                 if key.lower().startswith(('authorization', 'x-internal', 'x-token')):
@@ -238,6 +247,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug(f"Public endpoint accessed: {path}")
             return await call_next(request)
 
+        # Для WebSocket эндпоинтов проверяем токен, но не требуем его в заголовках
+        # (токен может быть в query параметрах)
+        if is_websocket:
+            logger.debug(f"WebSocket endpoint detected: {path}")
+            # WebSocket аутентификация обрабатывается в самом эндпоинте
+            # или через query параметры
+            return await call_next(request)
+
+        # Стандартная HTTP аутентификация
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             logger.warning("Missing or invalid Authorization header")
@@ -254,10 +272,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             token_info = keycloak_client.introspect_token(token)
             keycloak_id = token_info.get("sub")
             logger.debug(f"Keycloak ID: {keycloak_id[:8]}...")
-            
+
             # 2. Извлекаем существующий токен из заголовков
             existing_token, existing_signature = await self._extract_existing_token(request)
-            
+
             # 3. Используем lock для предотвращения race condition
             lock = await self._get_lock(keycloak_id)
             async with lock:
@@ -268,34 +286,31 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     existing_token=existing_token,
                     existing_signature=existing_signature
                 )
-            
-            # 5. Сохраняем данные в request.state
-            request.state.user = user_data
-            
-            # 6. Обновляем заголовки запроса
-            # Удаляем старые заголовки authorization и internal token
-            new_headers = []
-            for key, value in request.scope["headers"]:
-                key_lower = key.lower()
-                if key_lower not in [b"authorization", b"x-internal-token", b"x-token-signature"]:
-                    new_headers.append((key, value))
-            
-            # Добавляем новые заголовки
-            new_headers.append((b"x-internal-token", internal_token.encode()))
-            new_headers.append((b"x-token-signature", signature.encode()))
-            
-            request.scope["headers"] = new_headers
-            
-            # 7. Логируем результат аутентификации
-            token_info = jwt_manager.get_token_info(internal_token)
-            time_left = token_info.get("time_left_seconds", 0)
-            
-            logger.info(
-                f"Authenticated user: {user_data['username']} "
-                f"(roles: {user_data['roles']}, "
-                f"token expires in: {time_left:.0f}s)"
-            )
-            
+
+                # 5. Сохраняем данные в request.state
+                request.state.user = user_data
+                request.state.internal_token = internal_token
+                request.state.token_signature = signature
+
+                # 6. Обновляем заголовки запроса
+                new_headers = []
+                for key, value in request.scope["headers"]:
+                    key_lower = key.lower()
+                    if key_lower not in [b"authorization", b"x-internal-token", b"x-token-signature"]:
+                        new_headers.append((key, value))
+                new_headers.append((b"x-internal-token", internal_token.encode()))
+                new_headers.append((b"x-token-signature", signature.encode()))
+                request.scope["headers"] = new_headers
+
+                # 7. Логируем результат аутентификации
+                token_info = jwt_manager.get_token_info(internal_token)
+                time_left = token_info.get("time_left_seconds", 0)
+                logger.info(
+                    f"Authenticated user: {user_data['username']} "
+                    f"(roles: {user_data['roles']}, "
+                    f"token expires in: {time_left:.0f}s)"
+                )
+
             return await call_next(request)
 
         except AuthenticationException as e:

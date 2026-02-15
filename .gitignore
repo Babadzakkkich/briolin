@@ -221,3 +221,6 @@ dist-ssr
 *.sw?
 
 *.sql
+
+briolin-frontend
+briolin-client

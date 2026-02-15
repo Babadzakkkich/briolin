@@ -18,26 +18,31 @@ class HTTPClient:
         self.auth_service_url = settings.services.auth
         self.user_service_url = settings.services.user
         self.profile_service_url = settings.services.profile
-        self.testing_service_url = settings.services.testing  # ДОБАВЛЕНО
+        self.testing_service_url = settings.services.testing
+        self.chat_service_url = settings.services.chat
     
     def _get_service_url(self, path: str) -> str:
         """Определяет URL сервиса по пути"""
+        if path.startswith("/ws"):
+            raise ValueError("WebSocket requests should not use HTTP client")
+        
         if path.startswith("/api/v1/auth"):
             return self.auth_service_url
         elif path.startswith("/api/v1/users"):
             return self.user_service_url
         elif path.startswith("/api/v1/profiles"):
             return self.profile_service_url
-        elif path.startswith("/api/v1/tests"):  # ДОБАВЛЕНО
+        elif path.startswith("/api/v1/tests"):
             return self.testing_service_url
+        elif path.startswith("/api/v1/chats"):
+            return self.chat_service_url
         elif path.startswith("/api/v1/internal/users"):
             return self.user_service_url
         elif path.startswith("/api/v1/internal/profiles"):
             return self.profile_service_url
-        elif path.startswith("/api/v1/internal/tests"):  # ДОБАВЛЕНО
+        elif path.startswith("/api/v1/internal/tests"):
             return self.testing_service_url
         else:
-            # По умолчанию auth-service
             return self.auth_service_url
     
     async def proxy_request(
@@ -48,6 +53,11 @@ class HTTPClient:
         """Проксирование запроса к микросервису с внутренним токеном"""
         
         path = path_override if path_override else request.url.path
+        
+        # Проверяем, что это не WebSocket
+        if path.startswith("/ws"):
+            raise ValueError("Cannot proxy WebSocket through HTTP client. Use WebSocket proxy instead.")
+        
         service_url = self._get_service_url(path)
         
         # Формируем URL для целевого сервиса
