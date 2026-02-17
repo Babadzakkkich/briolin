@@ -1,15 +1,20 @@
-from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
 from shared.config import get_shared_config, KeycloakConfig, RabbitMQConfig
 
-class PostgresConfig(BaseModel):
-    """Конфигурация PostgreSQL"""
-    user: str = Field(..., env="CHAT__DB__USER")
-    password: str = Field(..., env="CHAT__DB__PASSWORD")
-    host: str = Field(..., env="CHAT__DB__HOST")
-    port: int = Field(..., env="CHAT__DB__PORT")
-    name: str = Field(..., env="CHAT__DB__NAME")
+
+class PostgresConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="CHAT__POSTGRES__",
+        case_sensitive=False,
+    )
+    
+    user: str
+    password: str
+    host: str
+    port: int = 5432
+    name: str
     
     echo: bool = False
     pool_size: int = 20
@@ -22,48 +27,102 @@ class PostgresConfig(BaseModel):
             f"@{self.host}:{self.port}/{self.name}"
         )
 
-class MongoConfig(BaseModel):
-    """Конфигурация MongoDB"""
-    host: str = Field(..., env="CHAT__MONGO__HOST")
-    port: int = Field(..., env="CHAT__MONGO__PORT")
-    database: str = Field(..., env="CHAT__MONGO__DATABASE")
+
+class MongoConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="CHAT__MONGO__",
+        case_sensitive=False,
+    )
+    
+    host: str
+    port: int = 27017
+    database: str
     
     @property
     def url(self):
         return f"mongodb://{self.host}:{self.port}"
 
-class RedisConfig(BaseModel):
-    """Конфигурация Redis для кэширования и rate limiting"""
-    url: str = Field("redis://redis:6379/1", env="CHAT__REDIS_URL")
 
-class WebSocketConfig(BaseModel):
-    """Конфигурация WebSocket"""
-    timeout: int = Field(300, env="CHAT__WEBSOCKET_TIMEOUT")
-    message_rate_limit: int = Field(10, env="CHAT__MESSAGE_RATE_LIMIT")
-    message_rate_window: int = Field(60, env="CHAT__MESSAGE_RATE_WINDOW")
+class RedisConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="CHAT__REDIS__",
+        case_sensitive=False,
+    )
+    url: str = "redis://redis:6379/1"
 
-class Settings(BaseSettings):
+
+class WebSocketConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="CHAT__WEBSOCKET__",
+        case_sensitive=False,
+    )
+    
+    timeout: int = 300
+    message_rate_limit: int = 10
+    message_rate_window: int = 60
+
+
+class ExternalServicesConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
         env_prefix="CHAT__",
         case_sensitive=False,
-        env_file=".env",
-        env_file_encoding="utf-8"
     )
-
-    app_name: str = "Briolin Chat Service"
-    service_name: str = "chat-service"
-    debug: bool = True
-
-    keycloak: KeycloakConfig = Field(default_factory=lambda: get_shared_config().keycloak)
-    rabbitmq: RabbitMQConfig = Field(default_factory=lambda: get_shared_config().rabbitmq)
-    postgres: PostgresConfig = Field(...)
-    mongo: MongoConfig = Field(...)
-    redis: RedisConfig = Field(...)
-    websocket: WebSocketConfig = Field(...)
     
-    # URL сервисов
-    user_service_url: str = Field("http://user-service:8002", env="CHAT__USER_SERVICE__URL")
-    profile_service_url: str = Field("http://profile-service:8003", env="CHAT__PROFILE_SERVICE__URL")
+    user_service_url: str = "http://user-service:8002"
+    profile_service_url: str = "http://profile-service:8003"
+
+
+class ChatServiceConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="CHAT__",
+        case_sensitive=False,
+    )
+    
+    debug: bool = True
+    service_name: str = "chat-service"
+
+
+class Settings:
+    def __init__(self):
+        self.service = ChatServiceConfig()
+        self.postgres = PostgresConfig()
+        self.mongo = MongoConfig()
+        self.redis = RedisConfig()
+        self.websocket = WebSocketConfig()
+        self.external = ExternalServicesConfig()
+    
+    @property
+    def keycloak(self) -> KeycloakConfig:
+        return get_shared_config().keycloak
+    
+    @property
+    def rabbitmq(self) -> RabbitMQConfig:
+        return get_shared_config().rabbitmq
+    
+    @property
+    def debug(self) -> bool:
+        return self.service.debug
+    
+    @property
+    def service_name(self) -> str:
+        return self.service.service_name
+    
+    @property
+    def app_name(self) -> str:
+        return "Briolin Chat Service"
+    
+    @property
+    def user_service_url(self) -> str:
+        return self.external.user_service_url
+    
+    @property
+    def profile_service_url(self) -> str:
+        return self.external.profile_service_url
+
 
 settings = Settings()

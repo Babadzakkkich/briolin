@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class SharedAuthConfig(BaseModel):
-    """Конфигурация для общей аутентификации"""
+    """Конфигурация для общей аутентификации (JWT)"""
     jwt_secret: str = Field(..., env="SHARED__JWT_SECRET")
     jwt_algorithm: str = Field(..., env="SHARED__JWT_ALGORITHM")
     jwt_issuer: str = Field(..., env="SHARED__JWT_ISSUER")
@@ -12,11 +12,12 @@ class SharedAuthConfig(BaseModel):
 
 
 class Settings(BaseSettings):
+    """
+    Настройки shared.auth - только переменные окружения.
+    """
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
         case_sensitive=False,
-        env_file=".env",
-        env_file_encoding="utf-8"
     )
     
     shared: SharedAuthConfig = Field(default_factory=SharedAuthConfig)
