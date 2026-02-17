@@ -7,7 +7,7 @@ from shared.auth.dependencies import (
     get_current_active_user,
     require_role,
     require_any_role,
-    require_test_passed  # ДОБАВЛЕНО
+    require_test_passed
 )
 from app.database.session import async_session_factory
 from app.services.keycloak_client import KeycloakClient
@@ -33,5 +33,5 @@ __all__ = [
     'get_current_active_user',
     'require_role',
     'require_any_role',
-    'require_test_passed'  # ДОБАВЛЕНО
+    'require_test_passed'
 ]

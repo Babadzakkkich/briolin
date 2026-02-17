@@ -56,7 +56,7 @@ class UserService:
             user_id = final_status["results"]["create_user_profile"]["result"]["user_id"]
             
             # Получаем пользователя из БД
-            user = await self.get_user_by_id(user_id)
+            user = await self._get_user_by_id(user_id)
             
             logger.info(f"User profile created via SAGA: {user.id}")
             return user
@@ -68,16 +68,19 @@ class UserService:
 
     async def update_user(
         self,
-        user_id: int,
+        keycloak_id: str,
         user_data: UserBase,
         current_user: dict,
         source_service: str = "api"
     ) -> User:
         """Обновление пользователя с ожиданием подтверждения от auth-service"""
-        user = await self.get_user_by_id(user_id)
+        user = await self.get_user_by_keycloak_id(keycloak_id)
+        
+        if not user:
+            raise UserNotFoundException(f"User with keycloak_id {keycloak_id} not found")
         
         # Проверяем права
-        is_self = user_id == current_user["id"]
+        is_self = keycloak_id == current_user["keycloak_id"]
         is_admin = UserRole.ADMIN in current_user["roles"]
         
         if not (is_self or is_admin):
@@ -103,7 +106,7 @@ class UserService:
                 conditions.append(User.username == update_data['username'].lower())
             
             if conditions:
-                stmt = select(User).where(or_(*conditions), User.id != user_id)
+                stmt = select(User).where(or_(*conditions), User.id != user.id)
                 result = await self.db.execute(stmt)
                 if result.scalar_one_or_none():
                     raise UserAlreadyExistsException("Email or username already taken")
@@ -124,7 +127,7 @@ class UserService:
             if not success:
                 raise DatabaseException("Failed to send update request to auth-service")
             
-            logger.info(f"Sent update request for user {user_id} with correlation {correlation_id}")
+            logger.info(f"Sent update request for user {keycloak_id} with correlation {correlation_id}")
             
             # 2. Ждем подтверждения от auth-service через EventWaiter
             result = await self.event_waiter.wait_for_event(correlation_id, timeout=30)
@@ -145,7 +148,7 @@ class UserService:
             )
             
             # 4. Возвращаем обновленного пользователя
-            return await self.get_user_by_id(user_id)
+            return await self.get_user_by_keycloak_id(keycloak_id)
         
         elif source_service == "auth-service":
             # Это вызов из обработчика событий
@@ -159,20 +162,23 @@ class UserService:
                 await self.db.commit()
                 await self.db.refresh(user)
                 
-                logger.info(f"User {user_id} updated locally from auth-service")
+                logger.info(f"User {keycloak_id} updated locally from auth-service")
                 return user
                 
             except Exception as e:
                 await self.db.rollback()
-                logger.error(f"Failed to update user {user_id} locally: {e}")
+                logger.error(f"Failed to update user {keycloak_id} locally: {e}")
                 raise DatabaseException("Failed to update user locally")
         
         else:
             raise ValidationException(f"Unknown source service: {source_service}")
 
-    async def toggle_user_status(self, user_id: int, current_user: dict) -> User:
+    async def toggle_user_status(self, keycloak_id: str, current_user: dict) -> User:
         """Переключение статуса активности пользователя с ожиданием подтверждения"""
-        user = await self.get_user_by_id(user_id)
+        user = await self.get_user_by_keycloak_id(keycloak_id)
+        
+        if not user:
+            raise UserNotFoundException(f"User with keycloak_id {keycloak_id} not found")
         
         if UserRole.ADMIN not in current_user["roles"]:
             raise PermissionDeniedException("Not enough permissions")
@@ -193,7 +199,7 @@ class UserService:
         if not success:
             raise DatabaseException("Failed to send status change request to auth-service")
         
-        logger.info(f"Sent status change request for user {user_id} with correlation {correlation_id}")
+        logger.info(f"Sent status change request for user {keycloak_id} with correlation {correlation_id}")
         
         # 2. Ждем подтверждения от auth-service
         result = await self.event_waiter.wait_for_event(correlation_id, timeout=30)
@@ -213,16 +219,19 @@ class UserService:
         )
         
         # 4. Возвращаем обновленного пользователя
-        return await self.get_user_by_id(user_id)
+        return await self.get_user_by_keycloak_id(keycloak_id)
 
     async def update_user_roles(
         self,
-        user_id: int,
+        keycloak_id: str,
         roles_data: UserRolesUpdate,
         current_user: dict
     ) -> User:
         """Обновление ролей пользователя с ожиданием подтверждения"""
-        user = await self.get_user_by_id(user_id)
+        user = await self.get_user_by_keycloak_id(keycloak_id)
+        
+        if not user:
+            raise UserNotFoundException(f"User with keycloak_id {keycloak_id} not found")
         
         if UserRole.ADMIN not in current_user["roles"]:
             raise PermissionDeniedException("Not enough permissions")
@@ -246,7 +255,7 @@ class UserService:
         if not success:
             raise DatabaseException("Failed to send roles update request to auth-service")
         
-        logger.info(f"Sent roles update request for user {user_id} with correlation {correlation_id}")
+        logger.info(f"Sent roles update request for user {keycloak_id} with correlation {correlation_id}")
         
         # 2. Ждем подтверждения от auth-service
         result = await self.event_waiter.wait_for_event(correlation_id, timeout=30)
@@ -260,12 +269,12 @@ class UserService:
         
         # 3. Обновляем локальную БД
         await self.db.execute(
-            delete(UserRoleAssignment).where(UserRoleAssignment.user_id == user_id)
+            delete(UserRoleAssignment).where(UserRoleAssignment.user_id == user.id)
         )
         
         for role in roles_data.roles:
             role_assignment = UserRoleAssignment(
-                user_id=user_id,
+                user_id=user.id,
                 role=role
             )
             self.db.add(role_assignment)
@@ -273,7 +282,7 @@ class UserService:
         try:
             await self.db.commit()
             await self.db.refresh(user)
-            logger.info(f"User {user_id} roles updated locally after confirmation")
+            logger.info(f"User {keycloak_id} roles updated locally after confirmation")
             
             return user
         except Exception as e:
@@ -281,12 +290,15 @@ class UserService:
             logger.error(f"Failed to update user roles locally: {e}")
             raise DatabaseException("Failed to update user roles locally")
 
-    async def delete_user(self, user_id: int, current_user: dict) -> bool:
+    async def delete_user(self, keycloak_id: str, current_user: dict) -> bool:
         """Удаление пользователя с ожиданием подтверждения"""
         if UserRole.ADMIN not in current_user["roles"]:
             raise PermissionDeniedException("Not enough permissions")
         
-        user = await self.get_user_by_id(user_id)
+        user = await self.get_user_by_keycloak_id(keycloak_id)
+        
+        if not user:
+            raise UserNotFoundException(f"User with keycloak_id {keycloak_id} not found")
         
         # Генерируем correlation_id
         correlation_id = str(uuid.uuid4())
@@ -301,12 +313,9 @@ class UserService:
         if not success:
             raise DatabaseException("Failed to send deletion request to auth-service")
         
-        logger.info(f"Sent deletion request for user {user_id} with correlation {correlation_id}")
+        logger.info(f"Sent deletion request for user {keycloak_id} with correlation {correlation_id}")
         
-        # 2. НЕ УДАЛЯЕМ пользователя локально здесь - дождемся подтверждения
-        # Вместо этого просто регистрируем ожидание
-        
-        # 3. Ждем подтверждения от auth-service
+        # 2. Ждем подтверждения от auth-service
         result = await self.event_waiter.wait_for_event(correlation_id, timeout=30)
         
         if not result:
@@ -316,26 +325,25 @@ class UserService:
             error_msg = result.get("error", "Unknown error from auth-service")
             raise DatabaseException(f"Deletion failed in auth-service: {error_msg}")
         
-        # 4. После подтверждения проверяем, не был ли пользователь уже удален обработчиком события
-        # Если не был - удаляем здесь
-        user_still_exists = await self.check_user_exists(user_id)
+        # 3. После подтверждения проверяем, не был ли пользователь уже удален обработчиком события
+        user_still_exists = await self.check_user_exists(keycloak_id)
         
         if user_still_exists:
             try:
                 # Получаем пользователя снова (объект мог быть отсоединен)
-                user_to_delete = await self.get_user_by_id(user_id)
+                user_to_delete = await self.get_user_by_keycloak_id(keycloak_id)
                 await self.db.delete(user_to_delete)
                 await self.db.commit()
                 
-                logger.info(f"User {user_id} deleted locally after confirmation")
+                logger.info(f"User {keycloak_id} deleted locally after confirmation")
                 return True
                 
             except Exception as e:
                 await self.db.rollback()
-                logger.error(f"Failed to delete user {user_id} locally: {e}")
+                logger.error(f"Failed to delete user {keycloak_id} locally: {e}")
                 raise DatabaseException("Failed to delete user locally")
         else:
-            logger.info(f"User {user_id} was already deleted by event handler")
+            logger.info(f"User {keycloak_id} was already deleted by event handler")
             return True
 
     async def update_user_from_event(
@@ -392,16 +400,16 @@ class UserService:
             logger.error(f"Failed to update user {keycloak_id} from event: {e}")
             return False
 
-    async def check_user_exists(self, user_id: int) -> bool:
-        """Проверка существования пользователя по ID"""
+    async def check_user_exists(self, keycloak_id: str) -> bool:
+        """Проверка существования пользователя по Keycloak ID"""
         try:
-            user = await self.get_user_by_id(user_id)
-            return True
-        except UserNotFoundException:
+            user = await self.get_user_by_keycloak_id(keycloak_id)
+            return user is not None
+        except Exception:
             return False
 
-    async def get_user_by_id(self, user_id: int) -> User:
-        """Получение пользователя по ID"""
+    async def _get_user_by_id(self, user_id: int) -> User:
+        """Внутренний метод для получения пользователя по ID"""
         stmt = select(User).where(User.id == user_id)
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
@@ -415,9 +423,12 @@ class UserService:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_my_info(self, user_id: int) -> Dict[str, Any]:
+    async def get_my_info(self, keycloak_id: str) -> Dict[str, Any]:
         """Получение информации о текущем пользователе"""
-        user = await self.get_user_by_id(user_id)
+        user = await self.get_user_by_keycloak_id(keycloak_id)
+        if not user:
+            raise UserNotFoundException(f"User with keycloak_id {keycloak_id} not found")
+        
         return {
             "id": user.id,
             "keycloak_id": user.keycloak_id,
@@ -429,33 +440,18 @@ class UserService:
             "created_at": user.created_at
         }
 
-    async def list_users(self, skip: int = 0, limit: int = 100, is_active: Optional[bool] = None,
-                        search: Optional[str] = None, role: Optional[UserRole] = None) -> Tuple[List[User], int]:
-        """Получение списка пользователей с фильтрацией"""
-        query = select(User)
-        
-        if is_active is not None:
-            query = query.where(User.is_active == is_active)
-        
-        if search:
-            search_term = f"%{search}%"
-            query = query.where(
-                or_(
-                    User.username.ilike(search_term),
-                    User.email.ilike(search_term)
-                )
-            )
-        
-        if role:
-            query = query.join(UserRoleAssignment).where(UserRoleAssignment.role == role)
-        
+    async def list_users(self, skip: int = 0, limit: int = 100) -> Tuple[List[User], int]:
+        """
+        Получение списка пользователей с пагинацией
+        Убраны все параметры фильтрации, только skip и limit
+        """
         # Получаем общее количество
-        count_query = select(func.count()).select_from(query.subquery())
+        count_query = select(func.count()).select_from(User)
         total_result = await self.db.execute(count_query)
         total = total_result.scalar_one()
         
         # Получаем данные с пагинацией
-        query = query.offset(skip).limit(limit)
+        query = select(User).offset(skip).limit(limit)
         result = await self.db.execute(query)
         users = result.scalars().all()
         
@@ -473,8 +469,27 @@ class UserService:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_users_by_role(self, role: UserRole) -> List[User]:
-        """Получение пользователей по роли"""
-        stmt = select(User).join(UserRoleAssignment).where(UserRoleAssignment.role == role)
+    async def get_users_by_role(self, role: UserRole, skip: int = 0, limit: int = 100) -> Tuple[List[User], int]:
+        """Получение пользователей по роли с пагинацией"""
+        # Получаем общее количество
+        count_query = (
+            select(func.count())
+            .select_from(User)
+            .join(UserRoleAssignment)
+            .where(UserRoleAssignment.role == role)
+        )
+        total_result = await self.db.execute(count_query)
+        total = total_result.scalar_one()
+        
+        # Получаем данные с пагинацией
+        stmt = (
+            select(User)
+            .join(UserRoleAssignment)
+            .where(UserRoleAssignment.role == role)
+            .offset(skip)
+            .limit(limit)
+        )
         result = await self.db.execute(stmt)
-        return result.scalars().all()
+        users = result.scalars().all()
+        
+        return users, total
