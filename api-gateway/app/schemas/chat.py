@@ -16,7 +16,6 @@ class ChatStatus(str, Enum):
 class MessageStatus(str, Enum):
     SENT = "sent"
     DELIVERED = "delivered"
-    READ = "read"
     FAILED = "failed"
 
 class ParticipantBase(BaseModel):
@@ -118,13 +117,27 @@ class MessageResponse(BaseModel):
     content: str
     message_type: str
     status: MessageStatus
-    is_edited: bool = Field(default=False, description="Было ли сообщение отредактировано")  # === НОВОЕ ПОЛЕ ===
+    is_edited: bool = Field(default=False, description="Было ли сообщение отредактировано")
     reply_to_id: Optional[uuid.UUID] = None
     media_url: Optional[str] = None
     media_type: Optional[str] = None
     file_size: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    
+    # === НОВЫЕ ПОЛЯ для статуса прочтения ===
+    read_by: List[str] = Field(
+        default_factory=list, 
+        description="Список пользователей, прочитавших сообщение"
+    )
+    read_count: int = Field(
+        0, 
+        description="Количество пользователей, прочитавших сообщение"
+    )
+    is_read_by_me: bool = Field(
+        False, 
+        description="Прочитал ли текущий пользователь"
+    )
 
 class MessageListResponse(BaseModel):
     """Список сообщений с пагинацией"""
@@ -135,7 +148,29 @@ class MessageListResponse(BaseModel):
 
 class MessageIdsRequest(BaseModel):
     """Запрос на отметку сообщений как прочитанных"""
-    message_ids: List[uuid.UUID] = Field(..., min_items=1, description="Список ID сообщений")
+    message_ids: List[uuid.UUID] = Field(..., min_items=1, max_items=100, description="Список ID сообщений")
+
+# === НОВАЯ СХЕМА: массовая отметка сообщений ===
+class BulkMessageIdsRequest(BaseModel):
+    """Запрос на массовую отметку сообщений как прочитанных"""
+    message_ids: List[uuid.UUID] = Field(..., min_items=1, max_items=500, description="Список ID сообщений")
+
+# === НОВАЯ СХЕМА: информация о прочитавших сообщение ===
+class ReadByUserInfo(BaseModel):
+    """Информация о пользователе, прочитавшем сообщение"""
+    keycloak_id: str
+    display_name: str
+    avatar_url: Optional[str] = None
+    read_at: datetime
+
+class MessageReadStatusResponse(BaseModel):
+    """Ответ с информацией о том, кто прочитал сообщение"""
+    message_id: uuid.UUID
+    read_by_users: List[ReadByUserInfo] = Field(
+        default_factory=list,
+        description="Список пользователей с временем прочтения"
+    )
+    total_read_count: int
 
 class SearchMessagesResponse(BaseModel):
     """Результат поиска сообщений"""
@@ -157,15 +192,24 @@ class TypingIndicator(BaseModel):
     is_typing: bool
 
 class ReadReceipt(BaseModel):
-    """Подтверждение прочтения сообщения"""
+    """Подтверждение прочтения одного сообщения"""
     chat_id: uuid.UUID
     user_id: str
     message_id: uuid.UUID
     read_at: datetime
 
+# === НОВАЯ WebSocket модель: массовое подтверждение прочтения ===
+class BulkReadReceipt(BaseModel):
+    """Массовое подтверждение прочтения нескольких сообщений"""
+    type: str = "bulk_read_receipt"
+    chat_id: uuid.UUID
+    user_id: str
+    message_ids: List[uuid.UUID]
+    read_at: datetime
+
 class WebSocketMessage(BaseModel):
     """WebSocket сообщение"""
-    type: str = Field(..., pattern="^(message|typing|read_receipt|chat_update|error|connection_established|subscribed|ping|pong)$")
+    type: str = Field(..., pattern="^(message|typing|read_receipt|bulk_read_receipt|chat_update|error|connection_established|subscribed|ping|pong|message_updated|message_deleted)$")
     chat_id: Optional[uuid.UUID] = None
     message: Optional[Dict[str, Any]] = None
     sender_id: Optional[str] = None

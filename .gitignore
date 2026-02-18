@@ -222,5 +222,4 @@ dist-ssr
 
 *.sql
 
-briolin-frontend
-briolin-client
+chat-test-app

@@ -1,5 +1,5 @@
 from typing import Optional, List
-from fastapi import APIRouter, Request, Depends, Response, Query, Body, status
+from fastapi import APIRouter, Request, Depends, Response, Query, Body, status, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
 
@@ -13,13 +13,18 @@ from app.schemas.chat import (
     MessageResponse,
     MessageListResponse,
     MessageIdsRequest,
+    BulkMessageIdsRequest,
     MessageUpdate,
     SearchMessagesResponse,
     OnlineUsersResponse,
+    MessageReadStatusResponse,
+    ReadByUserInfo
 )
+from app.core.logger import logger
 
 router = APIRouter(prefix="/chats", tags=["Chats"])
 security = HTTPBearer(auto_error=False)
+
 
 @router.get(
     "/search/messages",
@@ -61,6 +66,7 @@ async def get_online_users(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
 
 @router.post(
     "/",
@@ -119,6 +125,7 @@ async def list_chats(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
 
 @router.get(
     "/{chat_id}",
@@ -184,6 +191,7 @@ async def delete_chat(
         headers=dict(response.headers)
     )
 
+
 @router.post(
     "/{chat_id}/messages",
     response_model=MessageResponse,
@@ -210,7 +218,14 @@ async def send_message(
     "/{chat_id}/messages",
     response_model=MessageListResponse,
     summary="Получение сообщений",
-    description="Возвращает список сообщений чата с отображаемыми именами отправителей."
+    description="""
+    Возвращает список сообщений чата с отображаемыми именами отправителей.
+    
+    Каждое сообщение содержит информацию о прочтении:
+    - read_by: список пользователей, прочитавших сообщение
+    - read_count: количество прочитавших
+    - is_read_by_me: прочитал ли текущий пользователь
+    """
 )
 async def get_messages(
     request: Request,
@@ -229,11 +244,17 @@ async def get_messages(
     )
 
 
+# === ОБНОВЛЕННЫЙ ЭНДПОИНТ: отметка сообщений как прочитанных ===
 @router.post(
     "/{chat_id}/read",
     status_code=status.HTTP_200_OK,
     summary="Отметка сообщений как прочитанных",
-    description="Отмечает указанные сообщения как прочитанные и отправляет уведомления через WebSocket."
+    description="""
+    Отмечает указанные сообщения как прочитанные для текущего пользователя.
+    
+    Отправляет WebSocket уведомления другим участникам чата.
+    Максимум 100 сообщений за запрос.
+    """
 )
 async def mark_messages_as_read(
     chat_id: uuid.UUID,
@@ -248,6 +269,63 @@ async def mark_messages_as_read(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
+
+# === НОВЫЙ ЭНДПОИНТ: массовая отметка сообщений как прочитанных ===
+@router.post(
+    "/{chat_id}/read/bulk",
+    status_code=status.HTTP_200_OK,
+    summary="Массовая отметка сообщений как прочитанных",
+    description="""
+    Оптимизированная версия для отметки большого количества сообщений как прочитанных.
+    
+    Отправляет одно массовое WebSocket уведомление вместо множества отдельных.
+    Максимум 500 сообщений за запрос.
+    """
+)
+async def mark_messages_as_read_bulk(
+    chat_id: uuid.UUID,
+    message_ids: BulkMessageIdsRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Массовая отметка сообщений как прочитанных"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+# === НОВЫЙ ЭНДПОИНТ: получение статуса прочтения сообщения ===
+@router.get(
+    "/messages/{message_id}/read-status",
+    response_model=MessageReadStatusResponse,
+    summary="Статус прочтения сообщения",
+    description="""
+    Возвращает информацию о том, кто прочитал указанное сообщение.
+    
+    Включает:
+    - Список пользователей, прочитавших сообщение
+    - Время прочтения для каждого
+    - Общее количество прочитавших
+    """
+)
+async def get_message_read_status(
+    message_id: uuid.UUID,
+    request: Request,
+    chat_id: uuid.UUID = Query(..., description="ID чата, содержащего сообщение"),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Получение информации о прочитавших сообщение"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
 
 @router.delete(
     "/messages/{message_id}",
@@ -272,7 +350,15 @@ async def delete_message(
 @router.put(
     "/messages/{message_id}",
     response_model=MessageResponse,
-    summary="Редактирование сообщения"
+    summary="Редактирование сообщения",
+    description="""
+    Редактирование сообщения.
+    
+    - Только отправитель может редактировать сообщение
+    - Редактирование возможно в течение 24 часов после отправки
+    - Всем участникам чата отправляется WebSocket уведомление message_updated
+    - В ответе будет is_edited=true
+    """
 )
 async def update_message(
     message_id: uuid.UUID,
@@ -280,19 +366,14 @@ async def update_message(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """
-    Редактирование сообщения.
-    
-    - Только отправитель может редактировать сообщение
-    - Редактирование возможно в течение 24 часов после отправки
-    - Всем участникам чата отправляется WebSocket уведомление message_updated
-    """
+    """Редактирование сообщения"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
 
 @router.post(
     "/{chat_id}/participants/{user_id}",
@@ -328,6 +409,46 @@ async def remove_participant(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Удаление участника из группового чата"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+# === ДОПОЛНИТЕЛЬНЫЙ ЭНДПОИНТ: проверка онлайн статуса пользователя ===
+@router.get(
+    "/online/users/{keycloak_id}",
+    summary="Проверка онлайн статуса",
+    description="Проверяет, находится ли указанный пользователь онлайн."
+)
+async def check_user_online(
+    keycloak_id: str,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Проверка онлайн статуса конкретного пользователя"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+# === ОПЦИОНАЛЬНО: эндпоинт для получения непрочитанных сообщений ===
+@router.get(
+    "/{chat_id}/unread/count",
+    summary="Количество непрочитанных",
+    description="Возвращает количество непрочитанных сообщений в чате для текущего пользователя."
+)
+async def get_unread_count(
+    chat_id: uuid.UUID,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Получение количества непрочитанных сообщений"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

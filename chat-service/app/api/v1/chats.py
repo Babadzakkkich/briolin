@@ -8,9 +8,10 @@ from app.dependencies import get_chat_service, get_current_active_user, require_
 from app.schemas.chat import (
     ChatCreate, ChatUpdate, ChatResponse, ChatListResponse,
     MessageCreate, MessageResponse, MessageListResponse,
-    MessageIdsRequest, MessageUpdate, OnlineUsersResponse, SearchMessagesResponse
+    MessageIdsRequest, MessageUpdate, OnlineUsersResponse, 
+    SearchMessagesResponse, MessageReadStatusResponse
 )
-from app.services import websocket_manager
+from app.services.websocket_manager import websocket_manager
 from shared.schemas.shared import UserRole
 from app.core.logger import logger
 
@@ -57,8 +58,9 @@ async def get_online_users_count(
     current_user: dict = Depends(get_current_active_user)
 ):
     """Получение количества онлайн пользователей"""
-    count = websocket_manager.get_connection_count()
+    count = websocket_manager.get_online_users_count()
     return {"count": count}
+
 
 @router.post("/", response_model=ChatResponse, status_code=status.HTTP_201_CREATED)
 async def create_chat(
@@ -94,7 +96,6 @@ async def list_chats(
     service: ChatService = Depends(get_chat_service)
 ):
     """Получение списка чатов пользователя с персонализированными названиями"""
-    # Преобразуем строковые параметры в enum если нужно
     from app.database.postgres.models import ChatType, ChatStatus
     
     type_enum = None
@@ -125,6 +126,7 @@ async def list_chats(
         page=skip // limit + 1 if limit > 0 else 1,
         size=limit
     )
+
 
 @router.get("/{chat_id}", response_model=ChatResponse)
 async def get_chat(
@@ -157,6 +159,7 @@ async def delete_chat(
     await service.delete_chat(chat_id, current_user["keycloak_id"])
     return {"message": "Chat deleted successfully"}
 
+
 @router.post("/{chat_id}/messages", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 async def send_message(
     chat_id: uuid.UUID,
@@ -182,7 +185,7 @@ async def get_messages(
     current_user: dict = Depends(get_current_active_user),
     service: ChatService = Depends(get_chat_service)
 ):
-    """Получение сообщений из чата"""
+    """Получение сообщений из чата с информацией о прочтении"""
     before_date = None
     if before:
         try:
@@ -206,6 +209,7 @@ async def get_messages(
     )
 
 
+# === ОБНОВЛЕННЫЙ ЭНДПОИНТ: отметка сообщений как прочитанных ===
 @router.post("/{chat_id}/read")
 async def mark_messages_as_read(
     chat_id: uuid.UUID,
@@ -213,13 +217,63 @@ async def mark_messages_as_read(
     current_user: dict = Depends(get_current_active_user),
     service: ChatService = Depends(get_chat_service)
 ):
-    """Отметка сообщений как прочитанных"""
+    """
+    Отметка сообщений как прочитанных.
+    
+    Отмечает указанные сообщения как прочитанные для текущего пользователя.
+    Отправляет WebSocket уведомления другим участникам чата.
+    """
     await service.mark_messages_as_read(
         chat_id,
         current_user["keycloak_id"],
-        message_ids.message_ids
+        message_ids.message_ids,
+        notify=True
     )
     return {"message": "Messages marked as read"}
+
+
+# === НОВЫЙ ЭНДПОИНТ: массовая отметка сообщений как прочитанных ===
+@router.post("/{chat_id}/read/bulk")
+async def mark_messages_as_read_bulk(
+    chat_id: uuid.UUID,
+    message_ids: MessageIdsRequest,
+    current_user: dict = Depends(get_current_active_user),
+    service: ChatService = Depends(get_chat_service)
+):
+    """
+    Массовая отметка сообщений как прочитанных.
+    
+    Оптимизированная версия для отметки большого количества сообщений.
+    Отправляет одно массовое WebSocket уведомление вместо множества отдельных.
+    """
+    await service.mark_messages_as_read(
+        chat_id,
+        current_user["keycloak_id"],
+        message_ids.message_ids,
+        notify=True
+    )
+    return {"message": f"{len(message_ids.message_ids)} messages marked as read"}
+
+
+# === НОВЫЙ ЭНДПОИНТ: получение статуса прочтения сообщения ===
+@router.get("/messages/{message_id}/read-status", response_model=MessageReadStatusResponse)
+async def get_message_read_status(
+    message_id: uuid.UUID,
+    chat_id: uuid.UUID = Query(..., description="ID чата, содержащего сообщение"),
+    current_user: dict = Depends(get_current_active_user),
+    service: ChatService = Depends(get_chat_service)
+):
+    """
+    Получение информации о том, кто прочитал сообщение.
+    
+    Возвращает список пользователей, которые прочитали указанное сообщение,
+    с временем прочтения.
+    """
+    return await service.get_message_read_status(
+        chat_id=chat_id,
+        message_id=message_id,
+        keycloak_id=current_user["keycloak_id"]
+    )
 
 
 @router.delete("/messages/{message_id}")
@@ -247,6 +301,7 @@ async def update_message(
         sender_keycloak_id=current_user["keycloak_id"]
     )
 
+
 @router.post("/{chat_id}/participants/{user_id}")
 async def add_participant(
     chat_id: uuid.UUID,
@@ -273,6 +328,7 @@ async def remove_participant(
     """Удаление участника из группового чата"""
     await service.remove_participant(chat_id, current_user["keycloak_id"], user_id)
     return {"message": "Participant removed successfully"}
+
 
 @router.get("/online/users/{keycloak_id}")
 async def check_user_online(

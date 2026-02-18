@@ -4,11 +4,14 @@ import json
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc, update
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select, and_, or_, func, desc, update, delete
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.exc import IntegrityError
 
-from app.database.postgres.models import Chat, ChatParticipant, Message, ChatType, ChatStatus, MessageStatus
+from app.database.postgres.models import (
+    Chat, ChatParticipant, Message, MessageReadStatus, 
+    ChatType, ChatStatus, MessageStatus
+)
 from app.database.mongo.session import get_mongo_db
 from app.services.websocket_manager import websocket_manager
 from app.services.user_service_client import get_user_service_client
@@ -24,7 +27,8 @@ from app.core.exceptions import (
 from app.core.logger import logger
 from app.schemas.chat import (
     ChatCreate, ChatUpdate, MessageCreate,
-    ChatResponse, MessageResponse, ChatEvent, MessageUpdate
+    ChatResponse, MessageResponse, ChatEvent, MessageUpdate,
+    MessageReadStatusResponse
 )
 
 
@@ -49,7 +53,6 @@ class ChatService:
                 "username": user_data.get("username", keycloak_id),
                 "keycloak_id": keycloak_id
             }
-        # Fallback если user-service недоступен
         logger.warning(f"Using fallback for user {keycloak_id}: user-service unavailable")
         return {
             "username": keycloak_id,
@@ -57,10 +60,7 @@ class ChatService:
         }
     
     async def _get_profile_info(self, keycloak_id: str) -> Dict[str, Any]:
-        """
-        Получение полной информации о профиле из profile-service.
-        Возвращает display_name (first_name + last_name) и avatar_url.
-        """
+        """Получение полной информации о профиле из profile-service"""
         profile = await self.profile_client.get_profile_by_keycloak_id(keycloak_id)
         
         if profile and "basic" in profile:
@@ -78,10 +78,9 @@ class ChatService:
                 "last_name": last_name,
                 "avatar_url": basic.get("avatar_url"),
                 "keycloak_id": keycloak_id,
-                "username": basic.get("username")  # Добавьте если есть в ответе
+                "username": basic.get("username")
             }
         
-        # Fallback на user-service если profile недоступен
         logger.warning(f"Profile not found for {keycloak_id}, using fallback")
         user_info = await self._get_user_info(keycloak_id)
         return {
@@ -90,7 +89,7 @@ class ChatService:
             "last_name": "",
             "avatar_url": None,
             "keycloak_id": keycloak_id,
-            "username": user_info.get("username", keycloak_id[:8])  # Исправлено: берем username из user-service
+            "username": user_info.get("username", keycloak_id[:8])
         }
     
     async def _get_display_name(self, keycloak_id: str) -> str:
@@ -101,7 +100,10 @@ class ChatService:
         """Проверка доступа пользователя к чату"""
         stmt = (
             select(Chat)
-            .options(selectinload(Chat.participants))
+            .options(
+                selectinload(Chat.participants),
+                selectinload(Chat.messages).selectinload(Message.read_statuses)
+            )
             .where(Chat.id == chat_id)
         )
         result = await self.db.execute(stmt)
@@ -113,7 +115,6 @@ class ChatService:
         if chat.status == ChatStatus.BLOCKED:
             raise PermissionDeniedException("Chat is blocked")
         
-        # Проверяем, является ли пользователь участником чата
         is_participant = any(
             p.keycloak_id == keycloak_id and p.left_at is None
             for p in chat.participants
@@ -129,10 +130,7 @@ class ChatService:
         creator_keycloak_id: str,
         other_user_id: str
     ) -> Optional[Chat]:
-        """
-        Проверяет существование личного чата между двумя пользователями.
-        Возвращает существующий чат или None если не найден.
-        """
+        """Проверяет существование личного чата между двумя пользователями"""
         stmt = (
             select(Chat)
             .join(ChatParticipant, Chat.id == ChatParticipant.chat_id)
@@ -153,15 +151,10 @@ class ChatService:
         for_user_keycloak_id: str,
         partner_keycloak_id: str
     ) -> Tuple[str, Optional[str]]:
-        """
-        Генерирует название чата и аватарку для личного чата.
-        Для пользователя for_user_keycloak_id генерируем имя на основе профиля partner_keycloak_id.
-        """
+        """Генерирует название чата и аватарку для личного чата"""
         partner_profile = await self._get_profile_info(partner_keycloak_id)
-        
         name = partner_profile["display_name"]
         avatar_url = partner_profile["avatar_url"]
-        
         return name, avatar_url
     
     async def create_chat(
@@ -178,7 +171,6 @@ class ChatService:
             if chat_data.type == ChatType.GROUP and len(chat_data.participant_ids) < 1:
                 raise ValidationException("Group chat must have at least one other participant")
             
-            # Для личного чата проверяем существование
             other_user_id = None
             if chat_data.type == ChatType.DIRECT:
                 other_user_id = chat_data.participant_ids[0]
@@ -192,7 +184,6 @@ class ChatService:
                     logger.info(f"Returning existing direct chat: {existing_chat.id}")
                     return await self._format_chat_response(existing_chat, creator_keycloak_id)
             
-            # Получаем профили всех участников
             all_participant_ids = [creator_keycloak_id] + chat_data.participant_ids
             unique_participant_ids = list(dict.fromkeys(all_participant_ids))
             
@@ -200,9 +191,8 @@ class ChatService:
             for pid in unique_participant_ids:
                 profile = await self._get_profile_info(pid)
                 participants_profiles[pid] = profile
-                logger.debug(f"Profile for {pid}: display_name={profile.get('display_name')}, username={profile.get('username')}")
+                logger.debug(f"Profile for {pid}: display_name={profile.get('display_name')}")
             
-            # Создаем чат
             new_chat = Chat(
                 id=uuid.uuid4(),
                 type=chat_data.type,
@@ -210,11 +200,8 @@ class ChatService:
             )
             
             if chat_data.type == ChatType.DIRECT:
-                # Для direct чата: название = имя собеседника (относительно создателя)
-                # Но в БД сохраняем имя собеседника для создателя как название чата
                 other_profile = participants_profiles[other_user_id]
-                
-                new_chat.name = other_profile["display_name"]  # Имя собеседника (для создателя)
+                new_chat.name = other_profile["display_name"]
                 new_chat.avatar_url = other_profile["avatar_url"]
                 
                 new_chat.direct_chat_partner_mapping = json.dumps({
@@ -228,17 +215,12 @@ class ChatService:
             
             self.db.add(new_chat)
             
-            # Добавляем участников
             for pid in unique_participant_ids:
                 is_admin = (pid == creator_keycloak_id)
-                
-                # КАЖДЫЙ участник видит СВОЁ имя в display_name
-                # Название чата (name) уже содержит имя собеседника для direct чатов
                 profile = participants_profiles[pid]
-                display_name = profile["display_name"]  # СВОЁ имя
-                avatar_url = profile["avatar_url"]  # СВОЯ аватарка
+                display_name = profile["display_name"]
+                avatar_url = profile["avatar_url"]
                 
-                # Получаем username (fallback на user-service если нет в профиле)
                 username = profile.get("username")
                 if not username or username == pid:
                     user_info = await self._get_user_info(pid)
@@ -247,10 +229,10 @@ class ChatService:
                 participant = ChatParticipant(
                     chat_id=new_chat.id,
                     keycloak_id=pid,
-                    display_name=display_name,  # СВОЁ имя
+                    display_name=display_name,
                     username=username,
                     is_admin=is_admin,
-                    avatar_url=avatar_url  # СВОЯ аватарка
+                    avatar_url=avatar_url
                 )
                 self.db.add(participant)
             
@@ -296,7 +278,6 @@ class ChatService:
     ) -> Tuple[List[ChatResponse], int]:
         """Получение списка чатов пользователя"""
         try:
-            # Основной запрос для получения чатов пользователя
             subquery = (
                 select(ChatParticipant.chat_id)
                 .where(
@@ -320,12 +301,10 @@ class ChatService:
             else:
                 query = query.where(Chat.status != ChatStatus.BLOCKED)
             
-            # Получаем общее количество
             count_query = select(func.count()).select_from(query.subquery())
             total_result = await self.db.execute(count_query)
             total = total_result.scalar_one()
             
-            # Получаем чаты с сортировкой по последнему сообщению
             query = (
                 query
                 .outerjoin(Message, Chat.id == Message.chat_id)
@@ -338,7 +317,6 @@ class ChatService:
             result = await self.db.execute(query)
             chats = result.scalars().all()
             
-            # Форматируем ответы
             chat_responses = []
             for chat in chats:
                 chat_response = await self._format_chat_response(chat, keycloak_id)
@@ -359,11 +337,9 @@ class ChatService:
         """Обновление информации о чате"""
         chat = await self._check_chat_permission(chat_id, keycloak_id)
         
-        # Проверяем права на обновление
         if chat.type == ChatType.DIRECT:
             raise PermissionDeniedException("Cannot update direct chat")
         
-        # Проверяем, является ли пользователь администратором
         is_admin = any(
             p.keycloak_id == keycloak_id and p.is_admin and p.left_at is None
             for p in chat.participants
@@ -373,7 +349,6 @@ class ChatService:
             raise PermissionDeniedException("Only chat admins can update chat")
         
         try:
-            # Обновляем поля
             update_data = chat_data.model_dump(exclude_unset=True)
             for field, value in update_data.items():
                 if hasattr(chat, field) and value is not None:
@@ -384,7 +359,6 @@ class ChatService:
             
             logger.info(f"Chat updated: {chat_id} by {keycloak_id}")
             
-            # Отправляем событие об обновлении чата
             await self._notify_chat_event(
                 chat_id,
                 "chat_updated",
@@ -402,7 +376,6 @@ class ChatService:
         """Полное удаление чата"""
         chat = await self._check_chat_permission(chat_id, keycloak_id)
         
-        # Проверяем права на удаление
         if chat.type == ChatType.GROUP:
             is_admin = any(
                 p.keycloak_id == keycloak_id and p.is_admin and p.left_at is None
@@ -412,10 +385,8 @@ class ChatService:
                 raise PermissionDeniedException("Only chat admins can delete group chat")
         
         try:
-            # Получаем ID чата для события перед удалением
             chat_id_str = str(chat_id)
             
-            # Удаляем все связанные сообщения из MongoDB
             try:
                 mongo_db = await self._get_mongo_db()
                 await mongo_db.messages.delete_many({"chat_id": chat_id_str})
@@ -423,13 +394,11 @@ class ChatService:
             except Exception as e:
                 logger.warning(f"Failed to delete messages from MongoDB: {e}")
             
-            # Каскадное удаление чата
             await self.db.delete(chat)
             await self.db.commit()
             
             logger.info(f"Chat deleted permanently: {chat_id_str} by {keycloak_id}")
             
-            # Отправляем событие об удалении чата
             await self._notify_chat_event(
                 chat_id,
                 "chat_deleted",
@@ -448,27 +417,23 @@ class ChatService:
         chat_id: uuid.UUID,
         message_data: MessageCreate,
         sender_keycloak_id: str,
-        sender_username: str  # Теперь используется как fallback
+        sender_username: str
     ) -> MessageResponse:
         """Отправка сообщения в чат"""
-        # Проверяем rate limiting
         if not await websocket_manager.check_rate_limit(sender_keycloak_id):
             raise RateLimitException("Message rate limit exceeded")
         
-        # Проверяем доступ к чату
         chat = await self._check_chat_permission(chat_id, sender_keycloak_id)
         
         try:
-            # Получаем отображаемое имя отправителя из profile-service
             sender_display_name = await self._get_display_name(sender_keycloak_id)
             
-            # Создаем сообщение
             new_message = Message(
                 id=uuid.uuid4(),
                 chat_id=chat_id,
                 sender_keycloak_id=sender_keycloak_id,
                 sender_display_name=sender_display_name,
-                sender_username=sender_username,  # Fallback
+                sender_username=sender_username,
                 content=message_data.content,
                 message_type=message_data.message_type,
                 reply_to_id=message_data.reply_to_id,
@@ -479,8 +444,6 @@ class ChatService:
             )
             
             self.db.add(new_message)
-            
-            # Обновляем время последнего обновления чата
             chat.updated_at = datetime.utcnow()
             
             await self.db.commit()
@@ -488,25 +451,8 @@ class ChatService:
             
             logger.info(f"Message sent: {new_message.id} in chat {chat_id}")
             
-            # Форматируем ответ
-            message_response = MessageResponse(
-                id=new_message.id,
-                chat_id=new_message.chat_id,
-                sender_keycloak_id=new_message.sender_keycloak_id,
-                sender_display_name=new_message.sender_display_name,
-                sender_username=new_message.sender_username,
-                content=new_message.content,
-                message_type=new_message.message_type,
-                status=new_message.status,
-                reply_to_id=new_message.reply_to_id,
-                media_url=new_message.media_url,
-                media_type=new_message.media_type,
-                file_size=new_message.file_size,
-                created_at=new_message.created_at,
-                updated_at=new_message.updated_at
-            )
+            message_response = await self._format_message_response(new_message, sender_keycloak_id)
             
-            # Отправляем сообщение через WebSocket
             ws_message = {
                 "type": "message",
                 "chat_id": str(chat_id),
@@ -521,7 +467,6 @@ class ChatService:
                 exclude_user=sender_keycloak_id
             )
             
-            # Сохраняем в MongoDB для полнотекстового поиска
             await self._save_message_to_mongo(message_response)
             
             return message_response
@@ -539,25 +484,23 @@ class ChatService:
         limit: int = 50,
         before: Optional[datetime] = None
     ) -> Tuple[List[MessageResponse], int]:
-        """Получение сообщений из чата"""
+        """Получение сообщений из чата с правильным статусом прочтения"""
         await self._check_chat_permission(chat_id, keycloak_id)
         
         try:
-            # Основной запрос для сообщений
             query = (
                 select(Message)
+                .options(selectinload(Message.read_statuses))
                 .where(Message.chat_id == chat_id)
             )
             
             if before:
                 query = query.where(Message.created_at < before)
             
-            # Получаем общее количество
             count_query = select(func.count()).select_from(query.subquery())
             total_result = await self.db.execute(count_query)
             total = total_result.scalar_one()
             
-            # Получаем сообщения с пагинацией
             query = (
                 query
                 .order_by(desc(Message.created_at))
@@ -568,31 +511,24 @@ class ChatService:
             result = await self.db.execute(query)
             messages = result.scalars().all()
             
-            # Обновляем статус прочтения для полученных сообщений
-            if messages:
-                message_ids = [msg.id for msg in messages if msg.sender_keycloak_id != keycloak_id]
-                if message_ids:
-                    await self._mark_messages_as_read(chat_id, keycloak_id, message_ids)
+            # Автоматически отмечаем как прочитанные сообщения, полученные от других
+            unread_messages = [
+                msg for msg in messages 
+                if msg.sender_keycloak_id != keycloak_id 
+                and not msg.is_read_by(keycloak_id)
+            ]
             
-            # Форматируем ответы
-            message_responses = []
-            for message in reversed(messages):  # Восстанавливаем правильный порядок
-                message_response = MessageResponse(
-                    id=message.id,
-                    chat_id=message.chat_id,
-                    sender_keycloak_id=message.sender_keycloak_id,
-                    sender_display_name=message.sender_display_name,
-                    sender_username=message.sender_username,
-                    content=message.content,
-                    message_type=message.message_type,
-                    status=message.status,
-                    reply_to_id=message.reply_to_id,
-                    media_url=message.media_url,
-                    media_type=message.media_type,
-                    file_size=message.file_size,
-                    created_at=message.created_at,
-                    updated_at=message.updated_at
+            if unread_messages:
+                await self.mark_messages_as_read(
+                    chat_id, 
+                    keycloak_id, 
+                    [msg.id for msg in unread_messages],
+                    notify=False  # Не отправляем уведомления при пагинации
                 )
+            
+            message_responses = []
+            for message in reversed(messages):
+                message_response = await self._format_message_response(message, keycloak_id)
                 message_responses.append(message_response)
             
             return message_responses, total
@@ -611,7 +547,6 @@ class ChatService:
             if not message:
                 raise MessageNotFoundException()
             
-            # Проверяем права на удаление
             chat = await self._check_chat_permission(message.chat_id, keycloak_id)
             
             is_sender = message.sender_keycloak_id == keycloak_id
@@ -623,13 +558,18 @@ class ChatService:
             if not (is_sender or is_admin):
                 raise PermissionDeniedException("Cannot delete this message")
             
-            # Удаляем сообщение
+            # Удаляем из MongoDB
+            try:
+                mongo_db = await self._get_mongo_db()
+                await mongo_db.messages.delete_one({"message_id": str(message_id)})
+            except Exception as e:
+                logger.warning(f"Failed to delete message from MongoDB: {e}")
+            
             await self.db.delete(message)
             await self.db.commit()
             
             logger.info(f"Message deleted: {message_id} by {keycloak_id}")
             
-            # Отправляем событие об удалении сообщения
             ws_message = {
                 "type": "message_deleted",
                 "chat_id": str(message.chat_id),
@@ -649,7 +589,7 @@ class ChatService:
             await self.db.rollback()
             logger.error(f"Error deleting message: {e}")
             raise DatabaseException("Failed to delete message")
-        
+    
     async def update_message(
         self,
         message_id: uuid.UUID,
@@ -658,28 +598,27 @@ class ChatService:
     ) -> MessageResponse:
         """Редактирование существующего сообщения"""
         try:
-            stmt = select(Message).where(Message.id == message_id)
+            stmt = (
+                select(Message)
+                .options(selectinload(Message.read_statuses))
+                .where(Message.id == message_id)
+            )
             result = await self.db.execute(stmt)
             message = result.scalar_one_or_none()
             
             if not message:
                 raise MessageNotFoundException()
             
-            # Проверяем права на редактирование (только отправитель может редактировать)
             if message.sender_keycloak_id != sender_keycloak_id:
                 raise PermissionDeniedException("Only message sender can edit the message")
             
-            # Проверяем, что сообщение не старше 24 часов (опционально)
             message_age = datetime.utcnow() - message.created_at
             if message_age > timedelta(hours=24):
                 raise PermissionDeniedException("Message can only be edited within 24 hours")
             
-            # Проверяем, что сообщение не удалено
             if message.status == MessageStatus.FAILED:
                 raise PermissionDeniedException("Cannot edit deleted message")
             
-            # Обновляем содержимое
-            old_content = message.content
             message.content = message_data.content
             message.is_edited = True
             
@@ -688,26 +627,8 @@ class ChatService:
             
             logger.info(f"Message updated: {message_id} by {sender_keycloak_id}")
             
-            # Форматируем ответ
-            message_response = MessageResponse(
-                id=message.id,
-                chat_id=message.chat_id,
-                sender_keycloak_id=message.sender_keycloak_id,
-                sender_display_name=message.sender_display_name,
-                sender_username=message.sender_username,
-                content=message.content,
-                message_type=message.message_type,
-                status=message.status,
-                is_edited=message.is_edited,
-                reply_to_id=message.reply_to_id,
-                media_url=message.media_url,
-                media_type=message.media_type,
-                file_size=message.file_size,
-                created_at=message.created_at,
-                updated_at=message.updated_at
-            )
+            message_response = await self._format_message_response(message, sender_keycloak_id)
             
-            # Отправляем событие об обновлении сообщения через WebSocket
             ws_message = {
                 "type": "message_updated",
                 "chat_id": str(message.chat_id),
@@ -722,7 +643,6 @@ class ChatService:
                 exclude_user=sender_keycloak_id
             )
             
-            # Обновляем в MongoDB для поиска
             await self._update_message_in_mongo(message_response)
             
             return message_response
@@ -732,52 +652,100 @@ class ChatService:
             logger.error(f"Error updating message: {e}")
             raise DatabaseException("Failed to update message")
     
-    async def _update_message_in_mongo(self, message: MessageResponse):
-        """Обновление сообщения в MongoDB для поиска"""
-        try:
-            mongo_db = await self._get_mongo_db()
-            collection = mongo_db.messages
-            
-            await collection.update_one(
-                {"message_id": str(message.id)},
-                {
-                    "$set": {
-                        "content": message.content,
-                        "is_edited": message.is_edited,
-                        "updated_at": message.updated_at
-                    }
-                }
-            )
-            
-        except Exception as e:
-            logger.error(f"Error updating message in MongoDB: {e}")
-            
-    async def mark_messages_as_read(self, chat_id: uuid.UUID, keycloak_id: str, message_ids: List[uuid.UUID]) -> bool:
-        """Отметка сообщений как прочитанных"""
+    async def mark_messages_as_read(
+        self,
+        chat_id: uuid.UUID,
+        keycloak_id: str,
+        message_ids: List[uuid.UUID],
+        notify: bool = True
+    ) -> bool:
+        """
+        Отметка сообщений как прочитанных с правильным many-to-many подходом.
+        
+        Args:
+            chat_id: ID чата
+            keycloak_id: ID пользователя
+            message_ids: Список ID сообщений для отметки
+            notify: Отправлять ли WebSocket уведомления
+        """
         await self._check_chat_permission(chat_id, keycloak_id)
         
+        if not message_ids:
+            return True
+        
         try:
-            # Обновляем статус сообщений
+            # Получаем сообщения, которые нужно отметить
             stmt = (
-                update(Message)
+                select(Message)
                 .where(
                     Message.id.in_(message_ids),
                     Message.chat_id == chat_id,
-                    Message.sender_keycloak_id != keycloak_id,
-                    Message.status != MessageStatus.READ
+                    Message.sender_keycloak_id != keycloak_id  # Не отмечаем свои
                 )
-                .values(status=MessageStatus.READ)
             )
-            
             result = await self.db.execute(stmt)
-            await self.db.commit()
+            messages = result.scalars().all()
             
-            if result.rowcount > 0:
-                logger.info(f"{result.rowcount} messages marked as read in chat {chat_id}")
+            if not messages:
+                logger.debug(f"No messages to mark as read for {keycloak_id} in chat {chat_id}")
+                return True
+            
+            # Получаем существующие статусы прочтения
+            existing_stmt = select(MessageReadStatus).where(
+                MessageReadStatus.message_id.in_([msg.id for msg in messages]),
+                MessageReadStatus.keycloak_id == keycloak_id
+            )
+            existing_result = await self.db.execute(existing_stmt)
+            existing_statuses = existing_result.scalars().all()
+            existing_message_ids = {str(rs.message_id) for rs in existing_statuses}
+            
+            # Создаем новые статусы для сообщений, которых еще нет
+            new_statuses = []
+            marked_message_ids = []
+            
+            for message in messages:
+                if str(message.id) not in existing_message_ids:
+                    read_status = MessageReadStatus(
+                        message_id=message.id,
+                        keycloak_id=keycloak_id,
+                        read_at=datetime.utcnow()
+                    )
+                    self.db.add(read_status)
+                    new_statuses.append(read_status)
+                    marked_message_ids.append(message.id)
+            
+            if new_statuses:
+                await self.db.commit()
+                logger.info(
+                    f"Marked {len(new_statuses)} messages as read for {keycloak_id} "
+                    f"in chat {chat_id}"
+                )
                 
-                # Отправляем подтверждения прочтения через WebSocket
-                for message_id in message_ids:
-                    await websocket_manager.send_read_receipt(chat_id, keycloak_id, message_id)
+                # Отправляем WebSocket уведомления
+                if notify and marked_message_ids:
+                    for message_id in marked_message_ids[:10]:  # Ограничиваем количество уведомлений
+                        await websocket_manager.send_read_receipt(
+                            chat_id, 
+                            keycloak_id, 
+                            message_id
+                        )
+                    
+                    # Если много сообщений, отправляем одно массовое уведомление
+                    if len(marked_message_ids) > 10:
+                        bulk_receipt = {
+                            "type": "bulk_read_receipt",
+                            "chat_id": str(chat_id),
+                            "user_id": keycloak_id,
+                            "message_ids": [str(mid) for mid in marked_message_ids],
+                            "read_at": datetime.utcnow().isoformat()
+                        }
+                        await websocket_manager.broadcast_to_chat(
+                            bulk_receipt,
+                            str(chat_id),
+                            exclude_user=keycloak_id
+                        )
+            else:
+                logger.debug(f"No new messages to mark as read for {keycloak_id}")
             
             return True
             
@@ -786,6 +754,52 @@ class ChatService:
             logger.error(f"Error marking messages as read: {e}")
             raise DatabaseException("Failed to mark messages as read")
     
+    async def get_message_read_status(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        keycloak_id: str
+    ) -> MessageReadStatusResponse:
+        """Получение информации о том, кто прочитал сообщение"""
+        await self._check_chat_permission(chat_id, keycloak_id)
+        
+        try:
+            stmt = (
+                select(Message)
+                .options(selectinload(Message.read_statuses))
+                .where(
+                    Message.id == message_id,
+                    Message.chat_id == chat_id
+                )
+            )
+            result = await self.db.execute(stmt)
+            message = result.scalar_one_or_none()
+            
+            if not message:
+                raise MessageNotFoundException(f"Message {message_id} not found")
+            
+            # Получаем информацию о пользователях, прочитавших сообщение
+            read_by_users = []
+            for read_status in message.read_statuses:
+                # Получаем профиль пользователя
+                profile = await self._get_profile_info(read_status.keycloak_id)
+                read_by_users.append({
+                    "keycloak_id": read_status.keycloak_id,
+                    "display_name": profile.get("display_name", read_status.keycloak_id[:8]),
+                    "avatar_url": profile.get("avatar_url"),
+                    "read_at": read_status.read_at.isoformat()
+                })
+            
+            return MessageReadStatusResponse(
+                message_id=message_id,
+                read_by_users=read_by_users,
+                total_read_count=len(read_by_users)
+            )
+            
+        except Exception as e:
+            logger.error(f"Error getting message read status: {e}")
+            raise DatabaseException("Failed to get message read status")
+    
     async def add_participant(self, chat_id: uuid.UUID, keycloak_id: str, new_user_id: str) -> bool:
         """Добавление участника в чат"""
         chat = await self._check_chat_permission(chat_id, keycloak_id)
@@ -793,7 +807,6 @@ class ChatService:
         if chat.type != ChatType.GROUP:
             raise ValidationException("Cannot add participants to non-group chat")
         
-        # Проверяем права на добавление участников
         is_admin = any(
             p.keycloak_id == keycloak_id and p.is_admin and p.left_at is None
             for p in chat.participants
@@ -803,7 +816,6 @@ class ChatService:
             raise PermissionDeniedException("Only chat admins can add participants")
         
         try:
-            # Проверяем, не является ли пользователь уже участником
             existing_participant = any(
                 p.keycloak_id == new_user_id and p.left_at is None
                 for p in chat.participants
@@ -812,10 +824,8 @@ class ChatService:
             if existing_participant:
                 raise ValidationException("User is already a participant")
             
-            # Получаем информацию о новом участнике из profile-service
             new_user_profile = await self._get_profile_info(new_user_id)
             
-            # Добавляем участника
             new_participant = ChatParticipant(
                 chat_id=chat_id,
                 keycloak_id=new_user_id,
@@ -830,7 +840,6 @@ class ChatService:
             
             logger.info(f"User {new_user_id} added to chat {chat_id}")
             
-            # Отправляем событие о добавлении участника
             await self._notify_chat_event(
                 chat_id,
                 "user_joined",
@@ -856,7 +865,6 @@ class ChatService:
         if chat.type != ChatType.GROUP:
             raise ValidationException("Cannot remove participants from non-group chat")
         
-        # Проверяем права
         is_admin = any(
             p.keycloak_id == keycloak_id and p.is_admin and p.left_at is None
             for p in chat.participants
@@ -868,7 +876,6 @@ class ChatService:
             raise PermissionDeniedException("Cannot remove this participant")
         
         try:
-            # Находим участника
             stmt = select(ChatParticipant).where(
                 ChatParticipant.chat_id == chat_id,
                 ChatParticipant.keycloak_id == user_to_remove_id,
@@ -880,14 +887,12 @@ class ChatService:
             if not participant:
                 raise ValidationException("Participant not found")
             
-            # Отмечаем время выхода
             participant.left_at = datetime.utcnow()
             
             await self.db.commit()
             
             logger.info(f"User {user_to_remove_id} removed from chat {chat_id}")
             
-            # Отправляем событие о выходе участника
             await self._notify_chat_event(
                 chat_id,
                 "user_left",
@@ -915,53 +920,43 @@ class ChatService:
     ) -> List[MessageResponse]:
         """Поиск сообщений по тексту"""
         try:
-            # Для поиска используем MongoDB
             mongo_db = await self._get_mongo_db()
             collection = mongo_db.messages
             
-            # Строим фильтр поиска
             search_filter = {"content": {"$regex": query, "$options": "i"}}
             
+            # Получаем ID чатов, к которым имеет доступ пользователь
+            user_chat_ids = await self._get_user_chat_ids(keycloak_id)
+            
             if chat_id:
-                # Проверяем доступ к чату
-                await self._check_chat_permission(chat_id, keycloak_id)
+                # Проверяем доступ к конкретному чату
+                if str(chat_id) not in user_chat_ids:
+                    raise PermissionDeniedException("You don't have access to this chat")
                 search_filter["chat_id"] = str(chat_id)
             else:
-                # Получаем все чаты пользователя
-                user_chats = await self._get_user_chat_ids(keycloak_id)
-                search_filter["chat_id"] = {"$in": user_chats}
+                # Ищем только в чатах пользователя
+                if not user_chat_ids:
+                    return []
+                search_filter["chat_id"] = {"$in": user_chat_ids}
             
-            # Выполняем поиск
             cursor = collection.find(search_filter)
             cursor.sort("created_at", -1)
             cursor.skip(skip).limit(limit)
             
             mongo_messages = await cursor.to_list(length=limit)
             
-            # Получаем полные данные из PostgreSQL
             message_responses = []
             for msg in mongo_messages:
-                stmt = select(Message).where(Message.id == uuid.UUID(msg["message_id"]))
+                stmt = (
+                    select(Message)
+                    .options(selectinload(Message.read_statuses))
+                    .where(Message.id == uuid.UUID(msg["message_id"]))
+                )
                 result = await self.db.execute(stmt)
                 message = result.scalar_one_or_none()
                 
                 if message:
-                    message_response = MessageResponse(
-                        id=message.id,
-                        chat_id=message.chat_id,
-                        sender_keycloak_id=message.sender_keycloak_id,
-                        sender_display_name=message.sender_display_name,
-                        sender_username=message.sender_username,
-                        content=message.content,
-                        message_type=message.message_type,
-                        status=message.status,
-                        reply_to_id=message.reply_to_id,
-                        media_url=message.media_url,
-                        media_type=message.media_type,
-                        file_size=message.file_size,
-                        created_at=message.created_at,
-                        updated_at=message.updated_at
-                    )
+                    message_response = await self._format_message_response(message, keycloak_id)
                     message_responses.append(message_response)
             
             return message_responses
@@ -972,7 +967,6 @@ class ChatService:
     
     async def _format_chat_response(self, chat: Chat, keycloak_id: str) -> ChatResponse:
         """Форматирование ответа чата с персонализацией для текущего пользователя"""
-        # Получаем последнее сообщение
         stmt = (
             select(Message)
             .where(Message.chat_id == chat.id)
@@ -982,20 +976,26 @@ class ChatService:
         result = await self.db.execute(stmt)
         last_message = result.scalar_one_or_none()
         
-        # Получаем количество непрочитанных сообщений
+        # Подсчет непрочитанных сообщений для этого пользователя
         unread_stmt = (
             select(func.count())
             .select_from(Message)
+            .outerjoin(
+                MessageReadStatus,
+                and_(
+                    MessageReadStatus.message_id == Message.id,
+                    MessageReadStatus.keycloak_id == keycloak_id
+                )
+            )
             .where(
                 Message.chat_id == chat.id,
                 Message.sender_keycloak_id != keycloak_id,
-                Message.status != MessageStatus.READ
+                MessageReadStatus.id.is_(None)  # Нет записи о прочтении
             )
         )
         unread_result = await self.db.execute(unread_stmt)
         unread_count = unread_result.scalar_one()
         
-        # Форматируем последнее сообщение
         last_message_data = None
         if last_message:
             last_message_data = {
@@ -1007,16 +1007,13 @@ class ChatService:
                 "type": last_message.message_type
             }
         
-        # Форматируем участников
         participants = []
         chat_name = chat.name
         chat_avatar = chat.avatar_url
         
         if chat.type == ChatType.DIRECT:
-            # Для direct чата: название = имя собеседника (динамически)
             partner_id = None
             
-            # Парсим partner_mapping
             if chat.direct_chat_partner_mapping:
                 try:
                     mapping = json.loads(chat.direct_chat_partner_mapping)
@@ -1024,32 +1021,28 @@ class ChatService:
                 except json.JSONDecodeError:
                     pass
             
-            # Если не нашли в mapping, ищем вручную
             if not partner_id:
                 for p in chat.participants:
                     if p.keycloak_id != keycloak_id and p.left_at is None:
                         partner_id = p.keycloak_id
                         break
             
-            # Получаем профиль собеседника для названия чата
             if partner_id:
                 partner_profile = await self._get_profile_info(partner_id)
                 chat_name = partner_profile["display_name"]
                 chat_avatar = partner_profile["avatar_url"]
             
-            # Формируем список участников (каждый со своим именем)
             for p in chat.participants:
                 if p.left_at is None:
                     participants.append({
                         "keycloak_id": p.keycloak_id,
-                        "display_name": p.display_name,  # СВОЁ имя
+                        "display_name": p.display_name,
                         "username": p.username,
                         "is_admin": p.is_admin,
                         "notifications_enabled": p.notifications_enabled,
                         "avatar_url": p.avatar_url
                     })
         else:
-            # GROUP чат
             for p in chat.participants:
                 if p.left_at is None:
                     participants.append({
@@ -1075,6 +1068,44 @@ class ChatService:
             unread_count=unread_count
         )
     
+    async def _format_message_response(
+        self, 
+        message: Message, 
+        current_user_id: str
+    ) -> MessageResponse:
+        """Форматирование ответа сообщения с информацией о прочтении"""
+        is_read_by_me = message.is_read_by(current_user_id)
+        
+        # Определяем статус для ответа
+        if message.sender_keycloak_id == current_user_id:
+            # Для отправителя: показываем реальный статус доставки
+            status = message.status
+        else:
+            # Для получателя: DELIVERED по умолчанию (статус READ не используется)
+            # В будущем можно добавить READ, если будет нужно
+            status = MessageStatus.DELIVERED
+        
+        return MessageResponse(
+            id=message.id,
+            chat_id=message.chat_id,
+            sender_keycloak_id=message.sender_keycloak_id,
+            sender_display_name=message.sender_display_name,
+            sender_username=message.sender_username,
+            content=message.content,
+            message_type=message.message_type,
+            status=status,
+            is_edited=message.is_edited,
+            reply_to_id=message.reply_to_id,
+            media_url=message.media_url,
+            media_type=message.media_type,
+            file_size=message.file_size,
+            created_at=message.created_at,
+            updated_at=message.updated_at,
+            read_by=message.read_by_users,
+            read_count=message.read_by_count,
+            is_read_by_me=is_read_by_me
+        )
+    
     async def _notify_chat_event(self, chat_id: uuid.UUID, event_type: str, data: Dict[str, Any]):
         """Отправка события о чате через WebSocket"""
         event = ChatEvent(
@@ -1093,27 +1124,6 @@ class ChatService:
         
         await websocket_manager.broadcast_to_chat(ws_message, str(chat_id))
     
-    async def _mark_messages_as_read(self, chat_id: uuid.UUID, keycloak_id: str, message_ids: List[uuid.UUID]):
-        """Внутренний метод для отметки сообщений как прочитанных"""
-        if not message_ids:
-            return
-        
-        try:
-            stmt = (
-                update(Message)
-                .where(
-                    Message.id.in_(message_ids),
-                    Message.chat_id == chat_id,
-                    Message.sender_keycloak_id != keycloak_id
-                )
-                .values(status=MessageStatus.READ)
-            )
-            
-            await self.db.execute(stmt)
-            
-        except Exception as e:
-            logger.error(f"Error marking messages as read internally: {e}")
-    
     async def _save_message_to_mongo(self, message: MessageResponse):
         """Сохранение сообщения в MongoDB для поиска"""
         try:
@@ -1128,14 +1138,35 @@ class ChatService:
                 "sender_username": message.sender_username,
                 "content": message.content,
                 "message_type": message.message_type,
-                "created_at": message.created_at,
-                "updated_at": message.updated_at
+                "created_at": message.created_at.isoformat(),
+                "updated_at": message.updated_at.isoformat(),
+                "is_edited": message.is_edited
             }
             
             await collection.insert_one(mongo_doc)
             
         except Exception as e:
             logger.error(f"Error saving message to MongoDB: {e}")
+    
+    async def _update_message_in_mongo(self, message: MessageResponse):
+        """Обновление сообщения в MongoDB для поиска"""
+        try:
+            mongo_db = await self._get_mongo_db()
+            collection = mongo_db.messages
+            
+            await collection.update_one(
+                {"message_id": str(message.id)},
+                {
+                    "$set": {
+                        "content": message.content,
+                        "is_edited": message.is_edited,
+                        "updated_at": message.updated_at.isoformat()
+                    }
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error updating message in MongoDB: {e}")
     
     async def _get_user_chat_ids(self, keycloak_id: str) -> List[str]:
         """Получение списка ID чатов пользователя"""

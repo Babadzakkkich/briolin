@@ -87,7 +87,7 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ__USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ__PASSWORD:-guest}
     env_file:
-      - api-gateway/.env  # Загружаем общие переменные
+      - api-gateway/.env
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     networks:
@@ -105,16 +105,12 @@ services:
     container_name: auth-postgres
     env_file:
       - auth-service/.env
-    environment:
-      POSTGRES_USER: ${AUTH__DB__USER}
-      POSTGRES_PASSWORD: ${AUTH__DB__PASSWORD}
-      POSTGRES_DB: ${AUTH__DB__NAME}
     ports:
       - "5434:5432"
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTH__DB__USER} -d ${AUTH__DB__NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -124,16 +120,12 @@ services:
     container_name: user-postgres
     env_file:
       - user-service/.env
-    environment:
-      POSTGRES_USER: ${USER__DB__USER}
-      POSTGRES_PASSWORD: ${USER__DB__PASSWORD}
-      POSTGRES_DB: ${USER__DB__NAME}
     ports:
       - "5435:5432"
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${USER__DB__USER} -d ${USER__DB__NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U user_user -d user_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -143,16 +135,12 @@ services:
     container_name: profile-postgres
     env_file:
       - profile-service/.env
-    environment:
-      POSTGRES_USER: ${PROFILE__DB__USER}
-      POSTGRES_PASSWORD: ${PROFILE__DB__PASSWORD}
-      POSTGRES_DB: ${PROFILE__DB__NAME}
     ports:
       - "5436:5432"
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PROFILE__DB__USER} -d ${PROFILE__DB__NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U profile_user -d profile_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -162,16 +150,12 @@ services:
     container_name: testing-postgres
     env_file:
       - testing-service/.env
-    environment:
-      POSTGRES_USER: ${TESTING__DB__USER}
-      POSTGRES_PASSWORD: ${TESTING__DB__PASSWORD}
-      POSTGRES_DB: ${TESTING__DB__NAME}
     ports:
       - "5437:5432"
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TESTING__DB__USER} -d ${TESTING__DB__NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U testing_user -d testing_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -194,16 +178,12 @@ services:
     container_name: chat-postgres
     env_file:
       - chat-service/.env
-    environment:
-      POSTGRES_USER: ${CHAT__POSTGRES__USER}
-      POSTGRES_PASSWORD: ${CHAT__POSTGRES__PASSWORD}
-      POSTGRES_DB: ${CHAT__POSTGRES__NAME}
     ports:
       - "5438:5432"
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CHAT__POSTGRES__USER} -d ${CHAT__POSTGRES__NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U chat_user -d chat_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -378,7 +358,7 @@ services:
     networks:
       - briolin-network
     profiles:
-      - init  
+      - init
 
 volumes:
   keycloak-postgres-data:

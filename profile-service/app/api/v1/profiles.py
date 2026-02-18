@@ -11,43 +11,43 @@ from app.core.logger import logger
 
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
 
-@router.get("/online", response_model=Dict[str, Any])
-async def get_online_users_list(
-    skip: int = Query(0, ge=0, description="Skip records"),
-    limit: int = Query(50, ge=1, le=100, description="Limit records"),
-    current_user: dict = Depends(get_current_user),
-    service: ProfileService = Depends(get_profile_service)
-):
-    """
-    Получение списка онлайн пользователей с пагинацией.
-    Возвращает базовые поля: keycloak_id, first_name, last_name, avatar_url
-    """
-    try:
-        result = await service.get_online_users(skip=skip, limit=limit)
-        return result
-    except Exception as e:
-        logger.error(f"Failed to get online users: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get online users")
+# @router.get("/online", response_model=Dict[str, Any])
+# async def get_online_users_list(
+#     skip: int = Query(0, ge=0, description="Skip records"),
+#     limit: int = Query(50, ge=1, le=100, description="Limit records"),
+#     current_user: dict = Depends(get_current_user),
+#     service: ProfileService = Depends(get_profile_service)
+# ):
+#     """
+#     Получение списка онлайн пользователей с пагинацией.
+#     Возвращает базовые поля: keycloak_id, first_name, last_name, avatar_url
+#     """
+#     try:
+#         result = await service.get_online_users(skip=skip, limit=limit)
+#         return result
+#     except Exception as e:
+#         logger.error(f"Failed to get online users: {e}")
+#         raise HTTPException(status_code=500, detail="Failed to get online users")
 
-@router.get("/online/{keycloak_id}")
-async def get_user_online_status(
-    keycloak_id: str,
-    current_user: dict = Depends(get_current_user),
-    service: ProfileService = Depends(get_profile_service)
-):
-    """
-    Проверка онлайн статуса конкретного пользователя
-    """
-    try:
-        status = await service.get_user_online_status(keycloak_id)
-        if not status:
-            raise HTTPException(status_code=404, detail="User not found")
-        return status
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get user status: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get user status")
+# @router.get("/online/{keycloak_id}")
+# async def get_user_online_status(
+#     keycloak_id: str,
+#     current_user: dict = Depends(get_current_user),
+#     service: ProfileService = Depends(get_profile_service)
+# ):
+#     """
+#     Проверка онлайн статуса конкретного пользователя
+#     """
+#     try:
+#         status = await service.get_user_online_status(keycloak_id)
+#         if not status:
+#             raise HTTPException(status_code=404, detail="User not found")
+#         return status
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Failed to get user status: {e}")
+#         raise HTTPException(status_code=500, detail="Failed to get user status")
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=FullProfileResponse)
 async def create_profile(

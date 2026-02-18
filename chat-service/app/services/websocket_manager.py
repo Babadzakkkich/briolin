@@ -495,6 +495,23 @@ class ConnectionManager:
                 logger.error(f"Error clearing Redis on shutdown: {e}")
             
             logger.info("All WebSocket connections disconnected")
+            
+    async def send_bulk_read_receipt(
+        self, 
+        chat_id: str, 
+        user_id: str, 
+        message_ids: List[str]
+    ):
+        """Отправка массового подтверждения прочтения нескольких сообщений"""
+        receipt = {
+            "type": "bulk_read_receipt",
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "message_ids": message_ids,
+            "read_at": datetime.utcnow().isoformat()
+        }
+        
+        await self.broadcast_to_chat(receipt, chat_id, exclude_user=user_id)
 
 # Глобальный экземпляр менеджера
 websocket_manager = ConnectionManager()
