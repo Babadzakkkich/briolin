@@ -350,7 +350,7 @@ services:
       dockerfile: scripts/Dockerfile.init
     container_name: briolin-init-superadmin
     env_file:
-      - .env
+      - scripts/.env
     environment:
       - SUPERADMIN_EMAIL=${SUPERADMIN_EMAIL}
       - SUPERADMIN_USERNAME=${SUPERADMIN_USERNAME}
