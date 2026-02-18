@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 from shared.config import get_shared_config, KeycloakConfig
 
+
 class GatewayKeycloakClientConfig(BaseSettings):
     """Конфигурация клиента Keycloak для api-gateway"""
     model_config = SettingsConfigDict(
@@ -12,6 +13,7 @@ class GatewayKeycloakClientConfig(BaseSettings):
     )
     client_id: str
     client_secret: str
+
 
 class GatewayConfig(BaseSettings):
     model_config = SettingsConfigDict(
@@ -24,6 +26,7 @@ class GatewayConfig(BaseSettings):
     debug: bool = True
     service_name: str = "api-gateway"
 
+
 class ServicesConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
@@ -34,6 +37,9 @@ class ServicesConfig(BaseSettings):
     user: str
     profile: str
     testing: str
+    chat: str
+    chat_ws: str 
+
 
 class CacheConfig(BaseSettings):
     model_config = SettingsConfigDict(
@@ -45,24 +51,38 @@ class CacheConfig(BaseSettings):
     user_cache_ttl: int = 60
     token_cache_ttl_buffer: int = 30
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_nested_delimiter="__",
-        case_sensitive=False,
-        env_file=".env",
-        env_file_encoding="utf-8"
-    )
+
+class Settings:
+    """
+    Композитная конфигурация api-gateway.
+    Загружает специфичные настройки из env, shared - через get_shared_config().
+    """
     
-    # Используем общую конфигурацию Keycloak
-    keycloak: KeycloakConfig = Field(default_factory=lambda: get_shared_config().keycloak)
-    # Плюс специфичные для api-gateway настройки клиента
-    gateway_keycloak: GatewayKeycloakClientConfig = Field(default_factory=GatewayKeycloakClientConfig)
-    gateway: GatewayConfig = Field(default_factory=GatewayConfig)
-    services: ServicesConfig = Field(default_factory=ServicesConfig)
-    cache: CacheConfig = Field(default_factory=CacheConfig)
+    def __init__(self):
+        # Специфичные для gateway настройки (из env)
+        self.gateway_keycloak = GatewayKeycloakClientConfig()
+        self.gateway = GatewayConfig()
+        self.services = ServicesConfig()
+        self.cache = CacheConfig()
+        
+        # Shared настройки (через синглтон)
+        self._shared = None
+    
+    @property
+    def keycloak(self) -> KeycloakConfig:
+        return get_shared_config().keycloak
+    
+    @property
+    def shared_config(self):
+        """Доступ к полному shared config если нужно"""
+        if self._shared is None:
+            self._shared = get_shared_config()
+        return self._shared
     
     @property
     def service_name(self) -> str:
         return self.gateway.service_name
 
+
+# Глобальный экземпляр
 settings = Settings()

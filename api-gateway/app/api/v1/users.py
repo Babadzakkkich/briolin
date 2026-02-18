@@ -19,12 +19,9 @@ async def list_users(
     request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    is_active: Optional[bool] = Query(None),
-    search: Optional[str] = Query(None),
-    role: Optional[UserRole] = Query(None),
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Получить список пользователей с пагинацией и фильтрацией"""
+    """Получить список пользователей с пагинацией (только для админов)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -45,13 +42,13 @@ async def get_my_info(
         headers=dict(response.headers)
     )
 
-@router.get("/{user_id}", response_model=UserPublic)
+@router.get("/{keycloak_id}", response_model=UserPublic)
 async def get_user(
-    user_id: int,
+    keycloak_id: str,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Получить пользователя по ID"""
+    """Получить пользователя по Keycloak ID"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -87,9 +84,9 @@ async def get_user_by_email(
         headers=dict(response.headers)
     )
 
-@router.put("/{user_id}", response_model=UserPublic)
+@router.put("/{keycloak_id}", response_model=UserPublic)
 async def update_user(
-    user_id: int,
+    keycloak_id: str,
     user_data: UserBase,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -102,9 +99,9 @@ async def update_user(
         headers=dict(response.headers)
     )
 
-@router.put("/{user_id}/roles", response_model=UserPublic)
+@router.put("/{keycloak_id}/roles", response_model=UserPublic)
 async def update_user_roles(
-    user_id: int,
+    keycloak_id: str,
     roles_data: UserRolesUpdate,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -117,9 +114,9 @@ async def update_user_roles(
         headers=dict(response.headers)
     )
 
-@router.delete("/{user_id}")
+@router.delete("/{keycloak_id}")
 async def delete_user(
-    user_id: int,
+    keycloak_id: str,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
@@ -131,9 +128,9 @@ async def delete_user(
         headers=dict(response.headers)
     )
 
-@router.patch("/{user_id}/toggle-status", response_model=UserPublic)
+@router.patch("/{keycloak_id}/toggle-status", response_model=UserPublic)
 async def toggle_user_status(
-    user_id: int,
+    keycloak_id: str,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
@@ -161,13 +158,13 @@ async def get_users_by_role(
         headers=dict(response.headers)
     )
     
-@router.get("/{user_id}/exists")
+@router.get("/{keycloak_id}/exists")
 async def check_user_exists(
-    user_id: int,
+    keycloak_id: str,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Проверить существование пользователя"""
+    """Проверить существование пользователя по Keycloak ID"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

@@ -13,22 +13,16 @@ router = APIRouter(prefix="/users", tags=["Users"])
 async def list_users(
     skip: int = Query(0, ge=0, description="Skip records"),
     limit: int = Query(100, ge=1, le=500, description="Limit records"),
-    is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    search: Optional[str] = Query(None, description="Search in username, email, first/last name"),
-    role: Optional[UserRole] = Query(None, description="Filter by role"),
     current_user: dict = Depends(require_role(UserRole.ADMIN)),
     service: UserService = Depends(get_user_service)
 ):
     """
-    Получить список пользователей с пагинацией и фильтрацией
+    Получить список пользователей с пагинацией
     Требуется роль admin
     """
     users, total = await service.list_users(
         skip=skip,
-        limit=limit,
-        is_active=is_active,
-        search=search,
-        role=role
+        limit=limit
     )
     
     return UserList(
@@ -46,22 +40,22 @@ async def get_my_info(
     """
     Получение информации о текущем пользователе
     """
-    return await service.get_my_info(current_user["id"])
+    return await service.get_my_info(current_user["keycloak_id"])
 
-@router.get("/{user_id}", response_model=UserPublic)
+@router.get("/{keycloak_id}", response_model=UserPublic)
 async def get_user(
-    user_id: int,
+    keycloak_id: str,
     current_user: dict = Depends(get_current_user),
     service: UserService = Depends(get_user_service)
 ):
     """
-    Получить пользователя по ID
+    Получить пользователя по Keycloak ID
     Можно получить информацию о себе или если есть роль admin
     """
-    if user_id != current_user["id"] and UserRole.ADMIN not in current_user["roles"]:
+    if keycloak_id != current_user["keycloak_id"] and UserRole.ADMIN not in current_user["roles"]:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     
-    return await service.get_user_by_id(user_id)
+    return await service.get_user_by_keycloak_id(keycloak_id)
 
 @router.get("/username/{username}", response_model=UserPublic)
 async def get_user_by_username(
@@ -87,9 +81,9 @@ async def get_user_by_email(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@router.put("/{user_id}", response_model=UserPublic)
+@router.put("/{keycloak_id}", response_model=UserPublic)
 async def update_user(
-    user_id: int,
+    keycloak_id: str,
     user_data: UserBase,
     current_user: dict = Depends(get_current_active_user),
     service: UserService = Depends(get_user_service)
@@ -98,16 +92,15 @@ async def update_user(
     Обновить данные пользователя (только базовые поля)
     Можно обновить свой профиль или если есть роль admin
     """
-    # Убрали проверку прав здесь, так как она теперь в сервисе
     return await service.update_user(
-        user_id=user_id,
+        keycloak_id=keycloak_id,
         user_data=user_data,
-        current_user=current_user  # Добавили передачу current_user
+        current_user=current_user
     )
 
-@router.put("/{user_id}/roles", response_model=UserPublic)
+@router.put("/{keycloak_id}/roles", response_model=UserPublic)
 async def update_user_roles(
-    user_id: int,
+    keycloak_id: str,
     roles_data: UserRolesUpdate,
     current_user: dict = Depends(require_role(UserRole.ADMIN)),
     service: UserService = Depends(get_user_service)
@@ -117,14 +110,14 @@ async def update_user_roles(
     Требуется роль admin
     """
     return await service.update_user_roles(
-        user_id=user_id,
+        keycloak_id=keycloak_id,
         roles_data=roles_data,
         current_user=current_user
     )
 
-@router.delete("/{user_id}")
+@router.delete("/{keycloak_id}")
 async def delete_user(
-    user_id: int,
+    keycloak_id: str,
     current_user: dict = Depends(require_role(UserRole.ADMIN)),
     service: UserService = Depends(get_user_service)
 ):
@@ -132,15 +125,14 @@ async def delete_user(
     ПОЛНОЕ УДАЛЕНИЕ пользователя из БД и Keycloak
     Требуется роль admin
     """
-    # Добавим current_user в метод delete_user
     return await service.delete_user(
-        user_id=user_id,
-        current_user=current_user  # Нужно добавить этот параметр в метод
+        keycloak_id=keycloak_id,
+        current_user=current_user
     )
 
-@router.patch("/{user_id}/toggle-status", response_model=UserPublic)
+@router.patch("/{keycloak_id}/toggle-status", response_model=UserPublic)
 async def toggle_user_status(
-    user_id: int,
+    keycloak_id: str,
     current_user: dict = Depends(require_role(UserRole.ADMIN)),
     service: UserService = Depends(get_user_service)
 ):
@@ -149,7 +141,7 @@ async def toggle_user_status(
     Требуется роль admin
     """
     return await service.toggle_user_status(
-        user_id=user_id,
+        keycloak_id=keycloak_id,
         current_user=current_user
     )
 
@@ -165,24 +157,22 @@ async def get_users_by_role(
     Получить пользователей по роли
     Требуется роль admin
     """
-    users = await service.get_users_by_role(role)
-    total = len(users)
-    paginated_users = users[skip:skip + limit]
+    users, total = await service.get_users_by_role(role, skip=skip, limit=limit)
     
     return UserList(
-        users=paginated_users,
+        users=users,
         total=total,
         page=skip // limit + 1 if limit > 0 else 1,
         size=limit
     )
     
-@router.get("/{user_id}/exists")
+@router.get("/{keycloak_id}/exists")
 async def check_user_exists(
-    user_id: int,
+    keycloak_id: str,
     service: UserService = Depends(get_user_service)
 ):
     """
-    Проверить существование пользователя по ID
+    Проверить существование пользователя по Keycloak ID
     """
-    exists = await service.check_user_exists(user_id)
+    exists = await service.check_user_exists(keycloak_id)
     return {"exists": exists}

@@ -35,7 +35,7 @@ class AuthService:
             email=user_register.email,
             username=user_register.username,
             password=user_register.password,
-            role=user_register.role.value  # Получаем строковое значение из enum
+            role="user"
         )
         
         saga_id = saga_result["saga_id"]
@@ -72,7 +72,7 @@ class AuthService:
                     keycloak_id=keycloak_id,
                     email=user_register.email,
                     username=user_register.username,
-                    role=user_register.role.value  # Получаем строковое значение из enum
+                    role="user"
                 )
                 logger.info(f"User registration event published for {keycloak_id}")
                 

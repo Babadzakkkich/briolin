@@ -1,10 +1,10 @@
-from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
 from shared.config import get_shared_config, KeycloakConfig, RabbitMQConfig
 
+
 class AuthKeycloakClientConfig(BaseSettings):
-    """Конфигурация клиента Keycloak для auth-service (client_id и client_secret)"""
+    """Конфигурация клиента Keycloak для auth-service"""
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
         env_prefix="AUTH__KEYCLOAK__",
@@ -15,12 +15,20 @@ class AuthKeycloakClientConfig(BaseSettings):
     client_secret: str
     default_role: str = "user"
 
-class DatabaseConfig(BaseModel):
-    user: str = Field(..., env="AUTH__DB__USER")
-    password: str = Field(..., env="AUTH__DB__PASSWORD")
-    host: str = Field(..., env="AUTH__DB__HOST")
-    port: int = Field(..., env="AUTH__DB__PORT")
-    name: str = Field(..., env="AUTH__DB__NAME")
+
+class DatabaseConfig(BaseSettings):
+    """Database config с префиксом AUTH__DB__"""
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="AUTH__DB__",
+        case_sensitive=False,
+    )
+    
+    user: str
+    password: str
+    host: str
+    port: int = 5432
+    name: str
     
     echo: bool = False
     echo_pool: bool = False
@@ -34,31 +42,58 @@ class DatabaseConfig(BaseModel):
             f"@{self.host}:{self.port}/{self.name}"
         )
 
-class UserServiceConfig(BaseModel):
-    url: str = Field(..., env="AUTH__USER_SERVICE__URL")
 
-class Settings(BaseSettings):
+class UserServiceConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="AUTH__USER_SERVICE__",
+        case_sensitive=False,
+    )
+    url: str
+
+
+class AuthServiceConfig(BaseSettings):
+    """Основные настройки auth-service"""
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
         env_prefix="AUTH__",
         case_sensitive=False,
-        extra='allow'
     )
+    
+    debug: bool = True
+    service_name: str = "auth-service"
 
-    app_name: str = "Briolin Auth Service"
-    service_name: str = "auth-service"  # Добавляем имя сервиса для событий
-    debug: bool = Field(..., env="AUTH__DEBUG")
 
-    # Используем AuthKeycloakClientConfig как BaseSettings
-    keycloak_client: AuthKeycloakClientConfig = Field(default_factory=AuthKeycloakClientConfig)
-    db: DatabaseConfig = Field(...)
-    user_service: UserServiceConfig = Field(...)
+class Settings:
+    """
+    Композитная конфигурация auth-service.
+    """
+    
+    def __init__(self):
+        self.service = AuthServiceConfig()
+        self.keycloak_client = AuthKeycloakClientConfig()
+        self.db = DatabaseConfig()
+        self.user_service = UserServiceConfig()
     
     @property
     def keycloak(self) -> KeycloakConfig:
         return get_shared_config().keycloak
+    
     @property
     def rabbitmq(self) -> RabbitMQConfig:
         return get_shared_config().rabbitmq
+    
+    @property
+    def debug(self) -> bool:
+        return self.service.debug
+    
+    @property
+    def service_name(self) -> str:
+        return self.service.service_name
+    
+    @property
+    def app_name(self) -> str:
+        return "Briolin Auth Service"
+
 
 settings = Settings()

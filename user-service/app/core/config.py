@@ -1,15 +1,20 @@
-from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from urllib.parse import quote_plus
-from typing import ClassVar
 from shared.config import get_shared_config, KeycloakConfig, RabbitMQConfig
 
-class DatabaseConfig(BaseModel):
-    user: str = Field(..., env="USER__DB__USER")
-    password: str = Field(..., env="USER__DB__PASSWORD")
-    host: str = Field(..., env="USER__DB__HOST")
-    port: int = Field(..., env="USER__DB__PORT")
-    name: str = Field(..., env="USER__DB__NAME")
+
+class DatabaseConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="USER__DB__",
+        case_sensitive=False,
+    )
+    
+    user: str
+    password: str
+    host: str
+    port: int = 5432
+    name: str
     
     echo: bool = False
     echo_pool: bool = False
@@ -23,23 +28,47 @@ class DatabaseConfig(BaseModel):
             f"@{self.host}:{self.port}/{self.name}"
         )
 
-class Settings(BaseSettings):
+
+class UserServiceConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
         env_prefix="USER__",
         case_sensitive=False,
-        env_file=".env",
-        env_file_encoding="utf-8"
     )
-
-    app_name: str = "Briolin User Service"
-    service_name: str = "user-service"  # Добавляем имя сервиса
-    debug: bool = Field(False, env="USER__DEBUG")
-
-    keycloak: KeycloakConfig = Field(default_factory=lambda: get_shared_config().keycloak)
-    rabbitmq: RabbitMQConfig = Field(default_factory=lambda: get_shared_config().rabbitmq)
-    db: DatabaseConfig = Field(...)
     
-    auth_service_url: str = Field("http://auth-service:8001", env="USER__AUTH_SERVICE__URL")
+    debug: bool = False
+    service_name: str = "user-service"
+    auth_service_url: str = "http://auth-service:8001"
+
+
+class Settings:
+    def __init__(self):
+        self.service = UserServiceConfig()
+        self.db = DatabaseConfig()
+    
+    @property
+    def keycloak(self) -> KeycloakConfig:
+        return get_shared_config().keycloak
+    
+    @property
+    def rabbitmq(self) -> RabbitMQConfig:
+        return get_shared_config().rabbitmq
+    
+    @property
+    def debug(self) -> bool:
+        return self.service.debug
+    
+    @property
+    def service_name(self) -> str:
+        return self.service.service_name
+    
+    @property
+    def app_name(self) -> str:
+        return "Briolin User Service"
+    
+    @property
+    def auth_service_url(self) -> str:
+        return self.service.auth_service_url
+
 
 settings = Settings()

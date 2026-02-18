@@ -6,7 +6,6 @@ class UserRegister(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6)
-    role: UserRole = Field(default=UserRole.USER)
 
 class UserLogin(BaseModel):
     username: str
