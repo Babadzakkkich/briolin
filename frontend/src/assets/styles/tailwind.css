@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+
+@font-face {
+  font-family: 'Comediant';
+  src: url('../fonts/comediant.ttf') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Involve';
+  src: url('../fonts/involve/Involve-Medium.ttf') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@theme {
+  --font-comediant: 'Comediant', sans-serif;
+  --font-involve: 'Involve', sans-serif;
+
+  --color-brown: #453729;
+  --color-beige: #f6f2ec;
+  --color-accent: #4b6b56;
+  --color-ash-blue: #9abbc0;
+  --color-error: #dc4c4c;
+}
+
+a {
+  cursor: pointer;
+}
+
+a:hover {
+  text-decoration: underline;
+}

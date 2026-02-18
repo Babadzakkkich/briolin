@@ -361,11 +361,11 @@ services:
       - init
 
 volumes:
-  keycloak-postgres-data:
-  redis-data:
-  redis-insight-data:
-  rabbitmq-data:
+    keycloak-postgres-data:
+    redis-data:
+    redis-insight-data:
+    rabbitmq-data:
 
 networks:
-  briolin-network:
-    driver: bridge
+    briolin-network:
+        driver: bridge
