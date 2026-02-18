@@ -1,11 +1,28 @@
-import { MoveLeft } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Text } from '@/components/ui/Text';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
+import { MoveLeft } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Text } from "@/components/ui/Text";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { useState } from "react";
+import { register } from "@/api/auth";
+import { useMutation } from "@tanstack/react-query";
 
 export function RegisterPage() {
   const navigate = useNavigate();
+
+  const [username, setUsername] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+
+  const mutation = useMutation({
+    mutationFn: () => register({ username, email, password }),
+    onSuccess: () => {
+      navigate("/login");
+    },
+    onError: (error: any) => {
+      console.error("Ошибка регистрации:", error.detail);
+    },
+  });
 
   return (
     <div className="mx-auto min-h-screen max-w-7xl px-6 py-9 md:px-10">
@@ -30,13 +47,26 @@ export function RegisterPage() {
           </Text>
         </div>
         <div className="flex w-full max-w-md flex-col gap-4 px-4">
-          <Input placeholder="Почта" />
-          <Input placeholder="Логин" />
-          <Input type="password" placeholder="Пароль" />
+          <Input
+            placeholder="Почта"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Input
+            placeholder="Логин"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <Input
+            type="password"
+            placeholder="Пароль"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
         </div>
         <Button
           variant="solid"
-          onClick={() => navigate('/registration-complete')}
+          onClick={() => mutation.mutate()}
           className="w-full md:w-3xs"
         >
           Далее
