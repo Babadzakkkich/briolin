@@ -1,6 +1,6 @@
+from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
-from typing import Optional, List
-from shared.schemas.shared import UserRole
+from typing import Any, Dict, Optional, List
 
 class UserRegister(BaseModel):
     email: EmailStr
@@ -24,11 +24,28 @@ class RefreshRequest(BaseModel):
 class LogoutRequest(BaseModel):
     refresh_token: str
 
-class UserInfo(BaseModel):
-    """Ответ при регистрации пользователя"""
+class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: int
     keycloak_id: str
     email: EmailStr
     is_active: bool
+    
+class SagaStepInfo(BaseModel):
+    name: str
+    status: str
+    attempts: int
+    error: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+class SagaStatusResponse(BaseModel):
+    saga_id: str
+    name: str
+    status: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error: Optional[str] = None
+    steps: List[SagaStepInfo] = []
+    result: Optional[Dict[str, Any]] = None

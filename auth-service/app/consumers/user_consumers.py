@@ -7,6 +7,7 @@ from app.database.session import async_session_factory
 from app.core.config import settings
 from app.core.logger import logger
 from app.services.keycloak_client import KeycloakClient
+from app.services.saga_worker import get_saga_worker  # Импортируем saga_worker
 
 async def handle_user_profile_update_requested(event: Dict[str, Any]) -> bool:
     """Обработка события запроса на обновление профиля пользователя из user-service"""
@@ -35,22 +36,23 @@ async def handle_user_profile_update_requested(event: Dict[str, Any]) -> bool:
         async with async_session_factory() as session:
             from app.services.keycloak_client import KeycloakClient
             kc_client = KeycloakClient()
-            auth_service = AuthService(session, kc_client)
+            saga_worker = get_saga_worker()
+            auth_service = AuthService(session, kc_client, saga_worker)
             
-            # Определяем поля, которые нужно обновить в Keycloak
             keycloak_update_fields = {}
             if 'email' in updated_fields:
                 keycloak_update_fields['email'] = updated_fields['email']
             if 'username' in updated_fields:
-                keycloak_update_fields['username'] = updated_fields['username']
+                keycloak_update_fields['username'] = updated_fields['username']  # username поддерживается!
             if 'first_name' in updated_fields:
-                keycloak_update_fields['first_name'] = updated_fields['first_name']
+                keycloak_update_fields['firstName'] = updated_fields['first_name']  # firstName, не first_name
             if 'last_name' in updated_fields:
-                keycloak_update_fields['last_name'] = updated_fields['last_name']
+                keycloak_update_fields['lastName'] = updated_fields['last_name']    # lastName, не last_name
             
             # Обновляем в Keycloak (только auth-service имеет право!)
             if keycloak_update_fields:
                 try:
+                    logger.info(f"Updating Keycloak user {keycloak_id} with fields: {list(keycloak_update_fields.keys())}")
                     kc_client.update_user_in_keycloak(keycloak_id, keycloak_update_fields)
                     logger.info(f"User {keycloak_id} updated in Keycloak")
                 except Exception as e:
@@ -110,7 +112,8 @@ async def handle_user_status_change_requested(event: Dict[str, Any]) -> bool:
         async with async_session_factory() as session:
             from app.services.keycloak_client import KeycloakClient
             kc_client = KeycloakClient()
-            auth_service = AuthService(session, kc_client)
+            saga_worker = get_saga_worker()  # Получаем saga_worker
+            auth_service = AuthService(session, kc_client, saga_worker)  # Передаём все три аргумента
             
             # Обновляем статус в Keycloak
             try:
@@ -174,7 +177,8 @@ async def handle_user_roles_update_requested(event: Dict[str, Any]) -> bool:
         async with async_session_factory() as session:
             from app.services.keycloak_client import KeycloakClient
             kc_client = KeycloakClient()
-            auth_service = AuthService(session, kc_client)
+            saga_worker = get_saga_worker()  # Получаем saga_worker
+            auth_service = AuthService(session, kc_client, saga_worker)  # Передаём все три аргумента
             
             # Обновляем роли в Keycloak
             try:
@@ -226,7 +230,8 @@ async def handle_user_deletion_requested(event: Dict[str, Any]) -> bool:
         async with async_session_factory() as session:
             from app.services.keycloak_client import KeycloakClient
             kc_client = KeycloakClient()
-            auth_service = AuthService(session, kc_client)
+            saga_worker = get_saga_worker()  # Получаем saga_worker
+            auth_service = AuthService(session, kc_client, saga_worker)  # Передаём все три аргумента
             
             # Удаляем из Keycloak
             try:
@@ -258,6 +263,22 @@ async def handle_user_deletion_requested(event: Dict[str, Any]) -> bool:
         logger.error(f"Error handling user deletion request: {e}", exc_info=True)
         return False
 
+async def handle_user_profile_created_ack(event: Dict[str, Any]) -> bool:
+    """Просто подтверждаем получение события создания профиля"""
+    try:
+        from shared.events.schemas import BaseEvent
+        base_event = BaseEvent(**event)
+        
+        if base_event.is_processed_by(settings.service_name):
+            logger.debug(f"Event {base_event.event_id[:8]} already processed by auth-service")
+            return True
+        
+        logger.debug(f"Received USER_PROFILE_CREATED event from {base_event.source_service}")
+        return True
+    except Exception as e:
+        logger.error(f"Error handling USER_PROFILE_CREATED event: {e}")
+        return False
+
 async def register(consumer):
     """Регистрация consumers для событий от user-service"""
     try:
@@ -282,19 +303,7 @@ async def register(consumer):
             callback=handle_user_deletion_requested
         )
         
-        # Также обрабатываем подтверждения от user-service (для завершенных операций)
-        async def handle_user_profile_created_ack(event: Dict[str, Any]) -> bool:
-            """Просто подтверждаем получение события создания профиля"""
-            from shared.events.schemas import BaseEvent
-            base_event = BaseEvent(**event)
-            
-            if base_event.is_processed_by(settings.service_name):
-                logger.debug(f"Event {base_event.event_id[:8]} already processed by auth-service")
-                return True
-            
-            logger.debug(f"Received USER_PROFILE_CREATED event from {base_event.source_service}")
-            return True
-        
+        # Также обрабатываем подтверждения от user-service
         await consumer.consume_user_events(
             event_type=EventType.USER_PROFILE_CREATED,
             callback=handle_user_profile_created_ack

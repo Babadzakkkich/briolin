@@ -12,18 +12,8 @@ from app.core.exception_handlers import user_exception_handler, global_exception
 from app.api.v1 import router as api_router
 from app.services.rabbitmq import rabbitmq_publisher, rabbitmq_consumer
 from app.consumers import register_consumers
-from app.services.event_waiter import get_event_waiter
-
-async def cleanup_old_waiters_periodically():
-    """Периодическая очистка старых ожиданий событий"""
-    while True:
-        try:
-            event_waiter = get_event_waiter()
-            await event_waiter.cleanup_old_waiters()
-            await asyncio.sleep(60)  # Проверяем каждую минуту
-        except Exception as e:
-            logger.error(f"Error in cleanup_old_waiters_periodically: {e}")
-            await asyncio.sleep(60)
+from app.services.saga_worker import get_saga_worker
+from app.services.saga_handlers import UserSagaHandlers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,11 +22,13 @@ async def lifespan(app: FastAPI):
     # Инициализация БД
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    # Запускаем фоновую задачу очистки
-    cleanup_task = asyncio.create_task(cleanup_old_waiters_periodically())
+        
+        # Создаем таблицы для саги
+        from shared.saga.models import SagaBase
+        await conn.run_sync(SagaBase.metadata.create_all)
     
     # Подключение к RabbitMQ
+    rabbitmq_connected = False
     try:
         await rabbitmq_publisher.connect()
         logger.info("User Service publisher connected to RabbitMQ")
@@ -44,31 +36,69 @@ async def lifespan(app: FastAPI):
         await rabbitmq_consumer.connect()
         logger.info("User Service consumer connected to RabbitMQ")
         
+        rabbitmq_connected = True
+        
         # Регистрация consumers
         await register_consumers()
         
         logger.info("User Service started successfully with RabbitMQ")
     except Exception as e:
         logger.error(f"Failed to connect to RabbitMQ: {e}", exc_info=True)
-        # Можно продолжить работу без RabbitMQ
+    
+    # Инициализация и запуск SAGA воркера
+    try:
+        saga_worker = get_saga_worker()
+        
+        # Регистрируем обработчики шагов
+        handlers = UserSagaHandlers()
+
+        # Основные шаги
+        saga_worker.register_step_handler("create_user_profile", handlers.handle_create_user_profile)
+        saga_worker.register_step_handler("assign_user_role", handlers.handle_assign_user_role)
+        saga_worker.register_step_handler("update_user_profile", handlers.handle_update_user_profile)
+        saga_worker.register_step_handler("update_user_roles", handlers.handle_update_user_roles)
+        saga_worker.register_step_handler("delete_user_profile", handlers.handle_delete_user_profile)
+
+        saga_worker.register_step_handler("publish_user_profile_update_requested", handlers.handle_publish_user_profile_update_requested)
+        saga_worker.register_step_handler("publish_user_status_change_requested", handlers.handle_publish_user_status_change_requested)
+        saga_worker.register_step_handler("publish_user_roles_update_requested", handlers.handle_publish_user_roles_update_requested)
+        saga_worker.register_step_handler("publish_user_deletion_requested", handlers.handle_publish_user_deletion_requested)
+
+        # Шаги публикации подтверждений
+        saga_worker.register_step_handler("publish_user_profile_created", handlers.handle_publish_user_profile_created)
+        saga_worker.register_step_handler("publish_user_updated", handlers.handle_publish_user_updated)
+        saga_worker.register_step_handler("publish_user_roles_updated", handlers.handle_publish_user_roles_updated)
+        saga_worker.register_step_handler("publish_user_deleted", handlers.handle_publish_user_deleted)
+
+        # Компенсации
+        saga_worker.register_step_handler("compensate_create_user_profile", handlers.handle_compensate_create_user_profile)
+        saga_worker.register_step_handler("compensate_assign_user_role", handlers.handle_compensate_assign_user_role)
+        
+        # Запускаем воркер
+        await saga_worker.start()
+        logger.info("SAGA Worker started")
+    except Exception as e:
+        logger.error(f"Failed to start SAGA worker: {e}")
     
     yield
     
     logger.info("Shutting down User Service...")
     
-    # Отменяем фоновую задачу
-    cleanup_task.cancel()
+    # Остановка SAGA воркера
     try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass
+        saga_worker = get_saga_worker()
+        await saga_worker.stop()
+        logger.info("SAGA Worker stopped")
+    except Exception as e:
+        logger.error(f"Error stopping SAGA worker: {e}")
     
     # Отключение от RabbitMQ
-    try:
-        await rabbitmq_consumer.disconnect()
-        await rabbitmq_publisher.disconnect()
-    except Exception as e:
-        logger.error(f"Error disconnecting from RabbitMQ: {e}")
+    if rabbitmq_connected:
+        try:
+            await rabbitmq_consumer.disconnect()
+            await rabbitmq_publisher.disconnect()
+        except Exception as e:
+            logger.error(f"Error disconnecting from RabbitMQ: {e}")
     
     await dispose_engine()
 
@@ -94,4 +124,10 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    saga_worker = get_saga_worker()
+    return {
+        "status": "healthy",
+        "service": settings.service_name,
+        "rabbitmq": "connected" if rabbitmq_publisher._is_connected else "disconnected",
+        "saga_worker": "running" if saga_worker._running else "stopped"
+    }

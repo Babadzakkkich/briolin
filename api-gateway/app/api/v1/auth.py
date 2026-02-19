@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Response, HTTPException, status
+from fastapi import APIRouter, Request, Depends, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.services.http_client import http_client
 from app.schemas.auth import (
@@ -6,14 +6,14 @@ from app.schemas.auth import (
     UserLogin, 
     RefreshRequest, 
     LogoutRequest, 
-    UserInfo,
-    TokenResponse
+    UserResponse,
+    TokenResponse,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 security = HTTPBearer(auto_error=False)
 
-@router.post("/register", response_model=UserInfo)
+@router.post("/register", response_model=UserResponse)
 async def register_user(
     user_data: UserRegister,
     request: Request

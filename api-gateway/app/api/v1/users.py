@@ -9,7 +9,7 @@ from app.schemas.user import (
     UserRolesUpdate, 
     UserMeResponse
 )
-from app.schemas.auth import UserRole
+from shared.schemas.shared import UserRole
 
 router = APIRouter(prefix="/users", tags=["Users"])
 security = HTTPBearer(auto_error=False)

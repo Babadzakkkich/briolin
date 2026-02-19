@@ -5,6 +5,15 @@ from app.core.exceptions import UserAlreadyExistsException
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+@router.get("/saga/{saga_id}/status")
+async def get_saga_status(
+    saga_id: str,
+    service: AuthService = Depends(get_auth_service)
+):
+    """Получение статуса регистрации по ID саги"""
+    status = await service.get_saga_status(saga_id)
+    return status
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_user(
     request: Request,

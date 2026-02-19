@@ -9,7 +9,6 @@ from app.schemas.profile import (
     BasicProfileResponse,
     ProfileListResponse
 )
-from app.schemas.auth import UserRole
 
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
 security = HTTPBearer(auto_error=False)

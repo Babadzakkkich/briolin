@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import Optional
 
 from app.services.user_service import UserService
@@ -8,6 +8,17 @@ from shared.schemas.shared import UserRole
 from app.core.logger import logger
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+@router.get("/saga/{saga_id}/status")
+async def get_saga_status(
+    saga_id: str,
+    service: UserService = Depends(get_user_service)
+):
+    """Получение статуса операции по ID саги"""
+    status = await service.get_saga_status(saga_id)
+    if status["status"] == "not_found":
+        raise HTTPException(status_code=404, detail="Saga not found")
+    return status
 
 @router.get("/", response_model=UserList)
 async def list_users(
@@ -55,7 +66,10 @@ async def get_user(
     if keycloak_id != current_user["keycloak_id"] and UserRole.ADMIN not in current_user["roles"]:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     
-    return await service.get_user_by_keycloak_id(keycloak_id)
+    user = await service.get_user_by_keycloak_id(keycloak_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 @router.get("/username/{username}", response_model=UserPublic)
 async def get_user_by_username(
@@ -81,7 +95,7 @@ async def get_user_by_email(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@router.put("/{keycloak_id}", response_model=UserPublic)
+@router.put("/{keycloak_id}", status_code=status.HTTP_202_ACCEPTED)
 async def update_user(
     keycloak_id: str,
     user_data: UserBase,
@@ -91,6 +105,7 @@ async def update_user(
     """
     Обновить данные пользователя (только базовые поля)
     Можно обновить свой профиль или если есть роль admin
+    Возвращает 202 Accepted с ID саги для отслеживания
     """
     return await service.update_user(
         keycloak_id=keycloak_id,
@@ -98,7 +113,7 @@ async def update_user(
         current_user=current_user
     )
 
-@router.put("/{keycloak_id}/roles", response_model=UserPublic)
+@router.put("/{keycloak_id}/roles", status_code=status.HTTP_202_ACCEPTED)
 async def update_user_roles(
     keycloak_id: str,
     roles_data: UserRolesUpdate,
@@ -108,6 +123,7 @@ async def update_user_roles(
     """
     Обновить роли пользователя
     Требуется роль admin
+    Возвращает 202 Accepted с ID саги для отслеживания
     """
     return await service.update_user_roles(
         keycloak_id=keycloak_id,
@@ -115,7 +131,7 @@ async def update_user_roles(
         current_user=current_user
     )
 
-@router.delete("/{keycloak_id}")
+@router.delete("/{keycloak_id}", status_code=status.HTTP_202_ACCEPTED)
 async def delete_user(
     keycloak_id: str,
     current_user: dict = Depends(require_role(UserRole.ADMIN)),
@@ -124,13 +140,14 @@ async def delete_user(
     """
     ПОЛНОЕ УДАЛЕНИЕ пользователя из БД и Keycloak
     Требуется роль admin
+    Возвращает 202 Accepted с ID саги для отслеживания
     """
     return await service.delete_user(
         keycloak_id=keycloak_id,
         current_user=current_user
     )
 
-@router.patch("/{keycloak_id}/toggle-status", response_model=UserPublic)
+@router.patch("/{keycloak_id}/toggle-status", status_code=status.HTTP_202_ACCEPTED)
 async def toggle_user_status(
     keycloak_id: str,
     current_user: dict = Depends(require_role(UserRole.ADMIN)),
@@ -139,6 +156,7 @@ async def toggle_user_status(
     """
     Переключить статус активности пользователя
     Требуется роль admin
+    Возвращает 202 Accepted с ID саги для отслеживания
     """
     return await service.toggle_user_status(
         keycloak_id=keycloak_id,

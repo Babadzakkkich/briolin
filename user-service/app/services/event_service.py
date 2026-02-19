@@ -28,39 +28,7 @@ class EventService:
         
         return success
     
-    async def publish_user_profile_created(
-        self,
-        keycloak_id: str,
-        user_id: int,
-        username: str,
-        email: str,
-        roles: List[str],
-        correlation_id: str = None
-    ) -> bool:
-        """Публикация события создания профиля пользователя в user-service"""
-        try:
-            correlation_id = correlation_id or str(uuid.uuid4())
-            
-            event = BaseEvent(
-                event_id=str(uuid.uuid4()),
-                event_type=EventType.USER_PROFILE_CREATED,
-                source_service=settings.service_name,
-                correlation_id=correlation_id,
-                user_data={
-                    "keycloak_id": keycloak_id,
-                    "user_id": user_id,
-                    "username": username,
-                    "email": email,
-                    "roles": roles,
-                    "is_active": True
-                }
-            )
-            
-            return await self._publish_event(event)
-            
-        except Exception as e:
-            logger.error(f"Error publishing USER_PROFILE_CREATED event: {e}")
-            return False
+    # ========== REQUEST СОБЫТИЯ (от user-service к auth-service) ==========
     
     async def publish_user_profile_update_requested(
         self,
@@ -180,6 +148,171 @@ class EventService:
             
         except Exception as e:
             logger.error(f"Error publishing USER_DELETION_REQUESTED event: {e}")
+            return False
+    
+    # ========== CONFIRMATION СОБЫТИЯ (для других сервисов) ==========
+    
+    async def publish_user_profile_created(
+        self,
+        keycloak_id: str,
+        user_id: int,
+        username: str,
+        email: str,
+        roles: List[str],
+        correlation_id: str = None
+    ) -> bool:
+        """Публикация события создания профиля пользователя"""
+        try:
+            correlation_id = correlation_id or str(uuid.uuid4())
+            
+            event = BaseEvent(
+                event_id=str(uuid.uuid4()),
+                event_type=EventType.USER_PROFILE_CREATED,
+                source_service=settings.service_name,
+                correlation_id=correlation_id,
+                user_data={
+                    "keycloak_id": keycloak_id,
+                    "user_id": user_id,
+                    "username": username,
+                    "email": email,
+                    "roles": roles,
+                    "is_active": True
+                }
+            )
+            
+            return await self._publish_event(event)
+            
+        except Exception as e:
+            logger.error(f"Error publishing USER_PROFILE_CREATED event: {e}")
+            return False
+    
+    async def publish_user_profile_updated(
+        self,
+        keycloak_id: str,
+        user_id: int,
+        updated_fields: Dict[str, Any],
+        old_values: Optional[Dict[str, Any]] = None,
+        correlation_id: str = None,
+        source_service: str = "user-service"
+    ) -> bool:
+        """Публикация события подтверждения обновления профиля пользователя"""
+        try:
+            correlation_id = correlation_id or str(uuid.uuid4())
+            
+            event = BaseEvent(
+                event_id=str(uuid.uuid4()),
+                event_type=EventType.USER_PROFILE_UPDATED,
+                source_service=settings.service_name,
+                correlation_id=correlation_id,
+                user_data={
+                    "keycloak_id": keycloak_id,
+                    "user_id": user_id,
+                    "updated_fields": updated_fields,
+                    "old_values": old_values or {},
+                    "source_service": source_service
+                }
+            )
+            
+            return await self._publish_event(event)
+            
+        except Exception as e:
+            logger.error(f"Error publishing USER_PROFILE_UPDATED event: {e}")
+            return False
+    
+    async def publish_user_status_changed(
+        self,
+        keycloak_id: str,
+        user_id: int,
+        is_active: bool,
+        reason: Optional[str] = None,
+        correlation_id: str = None,
+        source_service: str = "user-service"
+    ) -> bool:
+        """Публикация события подтверждения изменения статуса пользователя"""
+        try:
+            correlation_id = correlation_id or str(uuid.uuid4())
+            
+            event = BaseEvent(
+                event_id=str(uuid.uuid4()),
+                event_type=EventType.USER_STATUS_CHANGED,
+                source_service=settings.service_name,
+                correlation_id=correlation_id,
+                user_data={
+                    "keycloak_id": keycloak_id,
+                    "user_id": user_id,
+                    "is_active": is_active,
+                    "reason": reason,
+                    "source_service": source_service
+                }
+            )
+            
+            return await self._publish_event(event)
+            
+        except Exception as e:
+            logger.error(f"Error publishing USER_STATUS_CHANGED event: {e}")
+            return False
+    
+    async def publish_user_roles_updated(
+        self,
+        keycloak_id: str,
+        user_id: int,
+        roles: List[str],
+        old_roles: Optional[List[str]] = None,
+        correlation_id: str = None,
+        source_service: str = "user-service"
+    ) -> bool:
+        """Публикация события подтверждения обновления ролей пользователя"""
+        try:
+            correlation_id = correlation_id or str(uuid.uuid4())
+            
+            event = BaseEvent(
+                event_id=str(uuid.uuid4()),
+                event_type=EventType.USER_ROLES_UPDATED,
+                source_service=settings.service_name,
+                correlation_id=correlation_id,
+                user_data={
+                    "keycloak_id": keycloak_id,
+                    "user_id": user_id,
+                    "roles": roles,
+                    "old_roles": old_roles or [],
+                    "source_service": source_service
+                }
+            )
+            
+            return await self._publish_event(event)
+            
+        except Exception as e:
+            logger.error(f"Error publishing USER_ROLES_UPDATED event: {e}")
+            return False
+    
+    async def publish_user_deleted(
+        self,
+        keycloak_id: str,
+        user_id: Optional[int] = None,
+        correlation_id: str = None,
+        source_service: str = "user-service"
+    ) -> bool:
+        """Публикация события подтверждения удаления пользователя"""
+        try:
+            correlation_id = correlation_id or str(uuid.uuid4())
+            
+            event = BaseEvent(
+                event_id=str(uuid.uuid4()),
+                event_type=EventType.USER_DELETED,
+                source_service=settings.service_name,
+                correlation_id=correlation_id,
+                user_data={
+                    "keycloak_id": keycloak_id,
+                    "user_id": user_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "source_service": source_service
+                }
+            )
+            
+            return await self._publish_event(event)
+            
+        except Exception as e:
+            logger.error(f"Error publishing USER_DELETED event: {e}")
             return False
 
 

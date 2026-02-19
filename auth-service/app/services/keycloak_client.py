@@ -31,7 +31,6 @@ class KeycloakClient:
             client_secret_key=client_secret,
         )
         
-        # Клиент для Admin API (создание юзеров)
         self._admin_connection = None
 
     @property
@@ -56,7 +55,7 @@ class KeycloakClient:
         email: str, 
         username: str, 
         password: str, 
-        role: str  # Изменено: принимаем строку, а не UserRole
+        role: str
     ) -> Tuple[str, List[Callable[[], None]]]:
         """
         Создает пользователя в Keycloak и возвращает tuple:
@@ -67,19 +66,13 @@ class KeycloakClient:
         
         try:
             # Проверяем, существует ли пользователь с таким email или username
-            try:
-                existing_user_by_email = self.admin.get_user_by_email(email)
-                if existing_user_by_email:
-                    raise UserAlreadyExistsException(f"User with email {email} already exists in Keycloak")
-            except Exception:
-                pass  # Если пользователь не найден - это нормально
+            existing_user_by_email = self.get_user_by_email(email)
+            if existing_user_by_email:
+                raise UserAlreadyExistsException(f"User with email {email} already exists in Keycloak")
             
-            try:
-                existing_user_by_username = self.admin.get_user_by_username(username)
-                if existing_user_by_username:
-                    raise UserAlreadyExistsException(f"User with username {username} already exists in Keycloak")
-            except Exception:
-                pass  # Если пользователь не найден - это нормально
+            existing_user_by_username = self.get_user_by_username(username)
+            if existing_user_by_username:
+                raise UserAlreadyExistsException(f"User with username {username} already exists in Keycloak")
             
             user_payload = {
                 "email": email,
@@ -103,7 +96,6 @@ class KeycloakClient:
                     if user_id:
                         self.admin.delete_user(user_id)
                 except Exception as e:
-                    # Если пользователь уже удален (404), это не ошибка
                     if "404" in str(e) and "User not found" in str(e):
                         logger.debug(f"User {user_id} already deleted, skipping compensation")
                     else:
@@ -143,9 +135,8 @@ class KeycloakClient:
             return user_id, compensation_actions
             
         except UserAlreadyExistsException:
-            raise  # Пробрасываем дальше
+            raise
         except Exception as e:
-            # Если произошла ошибка, выполняем компенсацию
             logger.error(f"Keycloak create_user failed: {e}")
             self._execute_compensation(compensation_actions)
             raise KeycloakConnectionError(f"Failed to create user in Keycloak: {str(e)}")
@@ -156,7 +147,6 @@ class KeycloakClient:
             try:
                 action()
             except Exception as e:
-                # Логируем ошибку, но продолжаем выполнение других компенсаций
                 logger.error(f"Compensation action failed: {e}")
 
     def delete_user_from_keycloak(self, user_id: str) -> bool:
@@ -166,7 +156,6 @@ class KeycloakClient:
             logger.info(f"User {user_id} deleted from Keycloak")
             return True
         except Exception as e:
-            # Если пользователь уже удален (404), это не ошибка
             if "404" in str(e) and "User not found" in str(e):
                 logger.debug(f"User {user_id} already deleted from Keycloak")
                 return True
@@ -184,7 +173,6 @@ class KeycloakClient:
                 if "invalid_grant" in error_message and ("invalid user credentials" in error_message or "user not found" in error_message):
                     raise InvalidCredentialsException("Invalid username or password")
                 elif "account is not fully set up" in error_message:
-                    # Это ошибка возникает, если пользователь создан с пустыми обязательными полями
                     logger.error(f"Keycloak account setup error: {e}")
                     raise KeycloakConnectionError("User account is not fully configured. Please contact administrator.")
                 else:
@@ -200,33 +188,33 @@ class KeycloakClient:
     def update_user_in_keycloak(self, keycloak_id: str, user_data: dict, roles: list = None) -> None:
         """Обновление пользователя в Keycloak"""
         try:
-            # Преобразуем имена полей в формат Keycloak
             kc_data = {}
+            
             if 'email' in user_data:
                 kc_data['email'] = user_data['email']
                 kc_data['emailVerified'] = False
+            if 'username' in user_data:
+                kc_data['username'] = user_data['username']
+            if 'firstName' in user_data:
+                kc_data['firstName'] = user_data['firstName']
+            if 'lastName' in user_data:
+                kc_data['lastName'] = user_data['lastName']
             
-            # Обновляем основные данные пользователя
             if kc_data:
+                logger.info(f"Updating Keycloak user {keycloak_id} with: {list(kc_data.keys())}")
                 self.admin.update_user(keycloak_id, kc_data)
                 logger.info(f"User {keycloak_id} updated in Keycloak: {list(kc_data.keys())}")
             
-            # Обновляем роли, если переданы
             if roles:
-                # Получаем текущие роли пользователя
                 current_roles = self.admin.get_realm_roles_of_user(keycloak_id)
-                
-                # Находим роли для добавления и удаления
                 current_role_names = [r['name'] for r in current_roles]
                 
-                # Добавляем новые роли
                 for role in roles:
                     if role not in current_role_names:
                         realm_role = self.admin.get_realm_role(role)
                         if realm_role:
                             self.admin.assign_realm_roles(user_id=keycloak_id, roles=[realm_role])
                 
-                # Удаляем старые роли, которых нет в новых
                 for current_role in current_roles:
                     if current_role['name'] not in roles and current_role['name'] not in ['default-roles-briolin', 'offline_access']:
                         self.admin.delete_realm_roles_of_user(
@@ -252,20 +240,15 @@ class KeycloakClient:
     def update_user_roles_in_keycloak(self, keycloak_id: str, roles: List[str]) -> None:
         """Обновление ролей пользователя в Keycloak"""
         try:
-            # Получаем текущие роли пользователя
             current_roles = self.admin.get_realm_roles_of_user(keycloak_id)
-            
-            # Находим роли для добавления и удаления
             current_role_names = [r['name'] for r in current_roles]
             
-            # Добавляем новые роли
             for role in roles:
                 if role not in current_role_names:
                     realm_role = self.admin.get_realm_role(role)
                     if realm_role:
                         self.admin.assign_realm_roles(user_id=keycloak_id, roles=[realm_role])
             
-            # Удаляем старые роли, которых нет в новых
             for current_role in current_roles:
                 if current_role['name'] not in roles and current_role['name'] not in ['default-roles-briolin', 'offline_access']:
                     self.admin.delete_realm_roles_of_user(
@@ -335,7 +318,6 @@ class KeycloakClient:
         """Получение realm roles пользователя из Keycloak"""
         try:
             roles = self.admin.get_realm_roles_of_user(keycloak_id)
-            # Фильтруем технические роли
             return [role['name'] for role in roles 
                    if role['name'] not in ['default-roles-briolin', 'offline_access']]
         except Exception as e:
@@ -345,7 +327,9 @@ class KeycloakClient:
     def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Получение пользователя по email"""
         try:
-            return self.admin.get_user_by_email(email)
+            # В некоторых версиях нужно использовать get_users с фильтром
+            users = self.admin.get_users({"email": email})
+            return users[0] if users else None
         except Exception as e:
             if "404" in str(e) and "User not found" in str(e):
                 return None
@@ -355,7 +339,9 @@ class KeycloakClient:
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Получение пользователя по username"""
         try:
-            return self.admin.get_user_by_username(username)
+            # В некоторых версиях нужно использовать get_users с фильтром
+            users = self.admin.get_users({"username": username})
+            return users[0] if users else None
         except Exception as e:
             if "404" in str(e) and "User not found" in str(e):
                 return None
