@@ -125,7 +125,7 @@ class SearchService:
             profile_ids: List[int],
             include_detailed: bool = False
     ) -> List[ProfilePreviewResponse]:
-        """Получает детальную информацию о профилях по их ID"""
+        """Получает детальную информацию о профилях по их ID (без возврата ID)"""
         if not profile_ids:
             return []
 
@@ -146,25 +146,21 @@ class SearchService:
                 detailed_result = await self.profile_db.execute(detailed_stmt)
                 detailed_profiles = {dp.basic_profile_id: dp for dp in detailed_result.scalars().all()}
 
-                # 3. Связываем в коде
+                # 3. Связываем в коде и возвращаем только безопасные поля
                 result_profiles = []
                 for profile in basic_profiles:
                     age = calculate_age(profile.date_of_birth)
                     detailed = detailed_profiles.get(profile.id)
 
                     result_profiles.append(ProfilePreviewResponse(
-                        user_id=profile.id,
-                        keycloak_id=profile.keycloak_id,
                         first_name=profile.first_name,
                         last_name=profile.last_name,
                         gender=profile.gender,
                         age=age,
                         city=profile.city,
                         online=profile.online,
-                        last_login_at=profile.last_login_at,
                         education=detailed.education if detailed else None,
                         hobbies=detailed.hobbies if detailed else None,
-                        about_me=detailed.about_me if detailed else None,
                         partner_preferences=detailed.partner_preferences if detailed else None
                     ))
                 return result_profiles
@@ -178,15 +174,12 @@ class SearchService:
                 for profile in profiles:
                     age = calculate_age(profile.date_of_birth)
                     result_profiles.append(ProfilePreviewResponse(
-                        user_id=profile.id,
-                        keycloak_id=profile.keycloak_id,
                         first_name=profile.first_name,
                         last_name=profile.last_name,
                         gender=profile.gender,
                         age=age,
                         city=profile.city,
-                        online=profile.online,
-                        last_login_at=profile.last_login_at
+                        online=profile.online
                     ))
                 return result_profiles
 
@@ -341,11 +334,10 @@ class SearchService:
             self,
             profiles: List[BasicProfile],
             include_detailed: bool = False
-    ) -> Tuple[List[int], List[ProfilePreviewResponse]]:
+    ) -> Tuple[List[ProfilePreviewResponse]]:  # ИЗМЕНЕНО: убрали возврат ID
         """
-        Конвертирует ORM объекты в Pydantic модели
+        Конвертирует ORM объекты в Pydantic модели (без ID)
         """
-        profile_ids = []
         profile_responses = []
 
         if include_detailed:
@@ -357,50 +349,41 @@ class SearchService:
             detailed_map = {dp.basic_profile_id: dp for dp in detailed_result.scalars().all()}
 
             for profile in profiles:
-                profile_ids.append(profile.id)
                 age = calculate_age(profile.date_of_birth)
                 detailed = detailed_map.get(profile.id)
 
                 profile_responses.append(ProfilePreviewResponse(
-                    user_id=profile.id,
-                    keycloak_id=profile.keycloak_id,
                     first_name=profile.first_name,
                     last_name=profile.last_name,
                     gender=profile.gender,
                     age=age,
                     city=profile.city,
                     online=profile.online,
-                    last_login_at=profile.last_login_at,
                     education=detailed.education if detailed else None,
                     hobbies=detailed.hobbies if detailed else None,
-                    about_me=detailed.about_me if detailed else None,
                     partner_preferences=detailed.partner_preferences if detailed else None
                 ))
         else:
             for profile in profiles:
-                profile_ids.append(profile.id)
                 age = calculate_age(profile.date_of_birth)
                 profile_responses.append(ProfilePreviewResponse(
-                    user_id=profile.id,
-                    keycloak_id=profile.keycloak_id,
                     first_name=profile.first_name,
                     last_name=profile.last_name,
                     gender=profile.gender,
                     age=age,
                     city=profile.city,
-                    online=profile.online,
-                    last_login_at=profile.last_login_at
+                    online=profile.online
                 ))
 
-        return profile_ids, profile_responses
+        return profile_responses  # ИЗМЕНЕНО: возвращаем только профили, без ID
 
     async def _get_next_page_profiles(
             self,
             session: SearchSession,
             page: int,
             limit: int
-    ) -> Tuple[List[int], List[ProfilePreviewResponse], bool, bool]:
-        """Получает следующую страницу непоказанных профилей"""
+    ) -> Tuple[List[ProfilePreviewResponse], bool, bool]:  # ИЗМЕНЕНО: убрали возврат ID
+        """Получает следующую страницу непоказанных профилей (без ID)"""
         all_results = session.results or []
         viewed = session.viewed_profiles or []
 
@@ -412,7 +395,7 @@ class SearchService:
         end_idx = start_idx + limit
 
         if start_idx >= len(available_profiles):
-            return [], [], False, page > 1
+            return [], False, page > 1
 
         page_profile_ids = available_profiles[start_idx:end_idx]
 
@@ -423,7 +406,7 @@ class SearchService:
         has_next = end_idx < len(available_profiles)
         has_previous = page > 1
 
-        return page_profile_ids, profiles, has_next, has_previous
+        return profiles, has_next, has_previous  # ИЗМЕНЕНО: возвращаем только профили
 
     async def classic_search(
             self,
@@ -468,35 +451,44 @@ class SearchService:
             if existing_session:
                 logger.info(f"Found existing search session {existing_session.id} for user {user_id}")
 
-                # Получаем следующую страницу
-                page_profile_ids, profiles, has_next, has_previous = await self._get_next_page_profiles(
+                # Получаем следующую страницу (только профили, без ID)
+                profiles, has_next, has_previous = await self._get_next_page_profiles(
                     existing_session,
                     page,
                     limit
                 )
 
-                if not page_profile_ids and page > 1:
+                if not profiles and page > 1:
                     # Если запрошенная страница пуста, возвращаем последнюю доступную
                     last_page = existing_session.total_pages
                     if last_page > 0:
-                        page_profile_ids, profiles, has_next, has_previous = await self._get_next_page_profiles(
+                        profiles, has_next, has_previous = await self._get_next_page_profiles(
                             existing_session,
                             last_page,
                             limit
                         )
                         page = last_page
 
-                if page_profile_ids:
-                    # Обновляем просмотренные профили
-                    current_viewed = existing_session.viewed_profiles or []
-                    existing_session.viewed_profiles = current_viewed + page_profile_ids
-                    existing_session.current_page = page
-                    existing_session.updated_at = datetime.utcnow()
-                    await self.own_db.commit()
+                if profiles:
+                    # Обновляем просмотренные профили (нужны ID для сохранения)
+                    # Получаем ID профилей для этой страницы
+                    all_results = existing_session.results or []
+                    viewed = existing_session.viewed_profiles or []
+                    available_profiles = [pid for pid in all_results if pid not in viewed]
+                    start_idx = (page - 1) * limit
+                    end_idx = start_idx + limit
+                    page_profile_ids = available_profiles[start_idx:end_idx] if start_idx < len(
+                        available_profiles) else []
+
+                    if page_profile_ids:
+                        current_viewed = existing_session.viewed_profiles or []
+                        existing_session.viewed_profiles = current_viewed + page_profile_ids
+                        existing_session.current_page = page
+                        existing_session.updated_at = datetime.utcnow()
+                        await self.own_db.commit()
 
                 return SearchResponse(
                     search_session_id=existing_session.id,
-                    user_ids=page_profile_ids,
                     profiles=profiles,
                     filters=search_filters,
                     created_at=existing_session.created_at,
@@ -527,10 +519,13 @@ class SearchService:
                 query, page, limit, include_detailed=False
             )
 
-            # Конвертируем в ответ
-            page_profile_ids, profile_responses = await self._convert_profiles_to_response(
+            # Конвертируем в ответ (без ID)
+            profile_responses = await self._convert_profiles_to_response(
                 profiles_page, include_detailed=False
             )
+
+            # Получаем ID профилей для текущей страницы (нужны для сохранения)
+            page_profile_ids = [p.id for p in profiles_page]
 
             # Сохраняем сессию
             search_session = SearchSession(
@@ -553,7 +548,6 @@ class SearchService:
 
             return SearchResponse(
                 search_session_id=search_session.id,
-                user_ids=page_profile_ids,
                 profiles=profile_responses,
                 filters=search_filters,
                 created_at=search_session.created_at,
@@ -627,57 +621,65 @@ class SearchService:
             if existing_session:
                 logger.info(f"Found existing targeted session {existing_session.id} for user {user_id}")
 
-                # Получаем следующую страницу
-                page_profile_ids, profiles, has_next, has_previous = await self._get_next_page_profiles(
+                # Получаем следующую страницу (только профили, без ID)
+                profiles, has_next, has_previous = await self._get_next_page_profiles(
                     existing_session,
                     search_params.page,
                     search_params.limit
                 )
 
-                if not page_profile_ids and search_params.page > 1:
+                if not profiles and search_params.page > 1:
                     # Если запрошенная страница пуста, возвращаем последнюю доступную
                     last_page = existing_session.total_pages
                     if last_page > 0:
-                        page_profile_ids, profiles, has_next, has_previous = await self._get_next_page_profiles(
+                        profiles, has_next, has_previous = await self._get_next_page_profiles(
                             existing_session,
                             last_page,
                             search_params.limit
                         )
                         search_params.page = last_page
 
-                if page_profile_ids:
-                    # Обновляем просмотренные профили
-                    current_viewed = existing_session.viewed_profiles or []
-                    existing_session.viewed_profiles = current_viewed + page_profile_ids
-                    existing_session.current_page = search_params.page
-                    existing_session.updated_at = datetime.utcnow()
-                    await self.own_db.commit()
+                if profiles:
+                    # Получаем ID профилей для этой страницы (нужны для сохранения)
+                    all_results = existing_session.results or []
+                    viewed = existing_session.viewed_profiles or []
+                    available_profiles = [pid for pid in all_results if pid not in viewed]
+                    start_idx = (search_params.page - 1) * search_params.limit
+                    end_idx = start_idx + search_params.limit
+                    page_profile_ids = available_profiles[start_idx:end_idx] if start_idx < len(
+                        available_profiles) else []
 
-                    # Проверяем блокировку после обновления
-                    is_locked, unlock_time, new_total_viewed, _ = await self._check_targeted_search_lock(user_id)
+                    if page_profile_ids:
+                        # Обновляем просмотренные профили
+                        current_viewed = existing_session.viewed_profiles or []
+                        existing_session.viewed_profiles = current_viewed + page_profile_ids
+                        existing_session.current_page = search_params.page
+                        existing_session.updated_at = datetime.utcnow()
+                        await self.own_db.commit()
 
-                    if is_locked:
-                        time_until_unlock = int((unlock_time - datetime.utcnow()).total_seconds())
+                        # Проверяем блокировку после обновления
+                        is_locked, unlock_time, new_total_viewed, _ = await self._check_targeted_search_lock(user_id)
 
-                        return SearchResponse(
-                            search_session_id=existing_session.id,
-                            user_ids=page_profile_ids,
-                            profiles=profiles,
-                            filters=search_filters,
-                            created_at=existing_session.created_at,
-                            current_page=search_params.page,
-                            total_pages=existing_session.total_pages,
-                            total_results=existing_session.total_results,
-                            has_next=False,
-                            has_previous=has_previous,
-                            locked_until=unlock_time,
-                            time_until_unlock=time_until_unlock,
-                            profiles_viewed=new_total_viewed
-                        )
+                        if is_locked:
+                            time_until_unlock = int((unlock_time - datetime.utcnow()).total_seconds())
+
+                            return SearchResponse(
+                                search_session_id=existing_session.id,
+                                profiles=profiles,
+                                filters=search_filters,
+                                created_at=existing_session.created_at,
+                                current_page=search_params.page,
+                                total_pages=existing_session.total_pages,
+                                total_results=existing_session.total_results,
+                                has_next=False,
+                                has_previous=has_previous,
+                                locked_until=unlock_time,
+                                time_until_unlock=time_until_unlock,
+                                profiles_viewed=new_total_viewed
+                            )
 
                 return SearchResponse(
                     search_session_id=existing_session.id,
-                    user_ids=page_profile_ids,
                     profiles=profiles,
                     filters=search_filters,
                     created_at=existing_session.created_at,
@@ -686,7 +688,7 @@ class SearchService:
                     total_results=existing_session.total_results,
                     has_next=has_next,
                     has_previous=has_previous,
-                    profiles_viewed=total_viewed + len(page_profile_ids) if page_profile_ids else total_viewed
+                    profiles_viewed=total_viewed + len(profiles) if profiles else total_viewed
                 )
 
             # Если нет существующей сессии - выполняем новый поиск
@@ -703,10 +705,13 @@ class SearchService:
                 query, search_params.page, search_params.limit, include_detailed=True
             )
 
-            # Конвертируем в ответ
-            page_profile_ids, profile_responses = await self._convert_profiles_to_response(
+            # Конвертируем в ответ (без ID)
+            profile_responses = await self._convert_profiles_to_response(
                 profiles_page, include_detailed=True
             )
+
+            # Получаем ID профилей для текущей страницы (нужны для сохранения)
+            page_profile_ids = [p.id for p in profiles_page]
 
             # Сохраняем сессию
             search_session = SearchSession(
@@ -732,7 +737,6 @@ class SearchService:
 
             response = SearchResponse(
                 search_session_id=search_session.id,
-                user_ids=page_profile_ids,
                 profiles=profile_responses,
                 filters=search_filters,
                 created_at=search_session.created_at,
@@ -770,7 +774,6 @@ class SearchService:
                 time_until_unlock = int((unlock_time - datetime.utcnow()).total_seconds())
 
             return SearchLockInfoResponse(
-                user_id=user_id,
                 search_type='targeted',
                 is_locked=is_locked,
                 profiles_viewed=total_viewed,
@@ -788,7 +791,7 @@ class SearchService:
             limit: int = 50,
             search_type: Optional[str] = None
     ) -> List[SearchSessionResponse]:
-        """Получение истории поисковых сессий пользователя"""
+        """Получение истории поисковых сессий пользователя (без ID)"""
         try:
             stmt = select(SearchSession).where(SearchSession.user_id == user_id)
 
@@ -805,13 +808,11 @@ class SearchService:
                     search_session_id=session.id,
                     search_type=session.search_type,
                     filters=session.filters,
-                    results=session.results or [],
-                    viewed_profiles=session.viewed_profiles or [],
-                    current_page=session.current_page,
-                    total_pages=session.total_pages,
-                    total_results=session.total_results,
                     created_at=session.created_at,
-                    updated_at=session.updated_at
+                    updated_at=session.updated_at,
+                    total_results=session.total_results,
+                    current_page=session.current_page,
+                    total_pages=session.total_pages
                 )
                 for session in sessions
             ]
@@ -833,13 +834,11 @@ class SearchService:
                 search_session_id=session.id,
                 search_type=session.search_type,
                 filters=session.filters,
-                results=session.results or [],
-                viewed_profiles=session.viewed_profiles or [],
-                current_page=session.current_page,
-                total_pages=session.total_pages,
-                total_results=session.total_results,
                 created_at=session.created_at,
-                updated_at=session.updated_at
+                updated_at=session.updated_at,
+                total_results=session.total_results,
+                current_page=session.current_page,
+                total_pages=session.total_pages
             )
         except SearchSessionNotFoundException:
             raise

@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field, validator
 
 
-# Request schemas
+# Request schemas (без изменений)
 class SearchRequest(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -11,8 +11,8 @@ class SearchRequest(BaseModel):
     min_age: Optional[int] = Field(None, ge=18, le=100, description="Минимальный возраст")
     max_age: Optional[int] = Field(None, ge=18, le=100, description="Максимальный возраст")
     city: Optional[str] = Field(None, description="Город для фильтрации")
-    page: int = Field(1, ge=1, description="Номер страницы")  # Добавлено
-    limit: int = Field(10, ge=1, le=50, description="Размер страницы")  # Добавлено
+    page: int = Field(1, ge=1, description="Номер страницы")
+    limit: int = Field(10, ge=1, le=50, description="Размер страницы")
 
     @validator('min_age')
     def validate_min_age(cls, v):
@@ -37,72 +37,68 @@ class TargetedSearchRequest(SearchRequest):
     online_only: Optional[bool] = Field(False, description="Только онлайн пользователи")
 
 
-# Response schemas
+# ИЗМЕНЕНО: Убраны все ID
 class ProfilePreviewResponse(BaseModel):
-    """Краткая информация о профиле для результатов поиска"""
+    """Краткая информация о профиле для результатов поиска (без ID)"""
     model_config = ConfigDict(from_attributes=True)
 
-    user_id: int
-    keycloak_id: str
     first_name: str
     last_name: str
     gender: str
     age: int
     city: str
     online: bool
-    last_login_at: Optional[datetime]
-    # Для таргетированного поиска
+    # Для таргетированного поиска (опционально)
     education: Optional[str] = None
     hobbies: Optional[str] = None
-    about_me: Optional[str] = None
     partner_preferences: Optional[str] = None
 
 
+# ИЗМЕНЕНО: Убраны user_ids и внутренние ID
 class SearchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    search_session_id: int
-    user_ids: List[int]
-    profiles: List[ProfilePreviewResponse] = []  # Добавлено
+    search_session_id: int  # Оставляем только ID сессии (нужен для пагинации)
+    profiles: List[ProfilePreviewResponse] = []
     filters: Dict[str, Any]
     created_at: datetime
-    # Добавленные поля для пагинации
+    # Информация о пагинации
     current_page: int = 1
     total_pages: int = 1
     total_results: int = 0
     has_next: bool = False
     has_previous: bool = False
-    # Поля для блокировки
+    # Информация о блокировке
     locked_until: Optional[datetime] = None
-    time_until_unlock: Optional[int] = None  # секунды до разблокировки
-    profiles_viewed: int = 0  # сколько уже просмотрено
+    time_until_unlock: Optional[int] = None
+    profiles_viewed: int = 0
 
 
+# ИЗМЕНЕНО: Убраны все ID из истории
 class SearchSessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     search_session_id: int
     search_type: str
     filters: Dict[str, Any]
-    results: List[int]
-    viewed_profiles: List[int] = []  # Добавлено
-    current_page: int = 1  # Добавлено
-    total_pages: int = 1  # Добавлено
-    total_results: int = 0  # Добавлено
     created_at: datetime
-    updated_at: Optional[datetime] = None  # Добавлено
+    updated_at: Optional[datetime] = None
+    # Только статистика, без ID
+    total_results: int = 0
+    current_page: int = 1
+    total_pages: int = 1
 
 
+# ИЗМЕНЕНО: Убраны user_id
 class SearchLockInfoResponse(BaseModel):
     """Информация о блокировке поиска"""
     model_config = ConfigDict(from_attributes=True)
 
-    user_id: int
     search_type: str
     is_locked: bool
     profiles_viewed: int
     locked_until: Optional[datetime] = None
-    time_until_unlock: Optional[int] = None  # секунды до разблокировки
+    time_until_unlock: Optional[int] = None
 
 
 class ErrorResponse(BaseModel):
