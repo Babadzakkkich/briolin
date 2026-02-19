@@ -131,8 +131,8 @@ class SearchService:
 
         try:
             if include_detailed:
-                # ИСПРАВЛЕНО: Получаем BasicProfile и DetailedProfile отдельными запросами
-                # и связываем их в коде (без использования relationship)
+                # Получаем BasicProfile и DetailedProfile отдельными запросами
+                # и связываем их в коде
 
                 # 1. Получаем BasicProfile
                 basic_stmt = select(BasicProfile).where(BasicProfile.id.in_(profile_ids))
@@ -241,7 +241,7 @@ class SearchService:
         """
         Строит ORM запрос для таргетированного поиска с фильтрацией по detailed_profiles
         """
-        # ИСПРАВЛЕНО: Используем явный JOIN вместо relationship
+        # Используем явный JOIN
         query = select(BasicProfile).join(
             DetailedProfile,
             BasicProfile.id == DetailedProfile.basic_profile_id,
@@ -323,7 +323,6 @@ class SearchService:
             total_results = count_result.scalar() or 0
 
             # Добавляем сортировку и пагинацию
-            # ИСПРАВЛЕНО: Не используем joinedload
             paginated_query = query.order_by(
                 BasicProfile.last_login_at.desc().nullslast(),
                 BasicProfile.id
