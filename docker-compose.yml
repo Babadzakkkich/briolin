@@ -160,6 +160,21 @@ services:
       timeout: 5s
       retries: 5
 
+  search-postgres:
+    image: postgres:17-alpine
+    container_name: search-postgres
+    env_file:
+      - search-service/.env
+    ports:
+      - "5439:5432"
+    networks:
+      - briolin-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U search_user -d search_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   testing-mongo:
     image: mongo:8.0
     container_name: testing-mongo
@@ -286,6 +301,26 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - briolin-network
+    restart: unless-stopped
+
+  search-service:
+    build:
+      context: .
+      dockerfile: search-service/Dockerfile
+    container_name: search-service
+    ports:
+      - "8006:8006"
+    env_file:
+      - search-service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
     volumes:
       - ./shared:/app/shared:ro
     networks:
