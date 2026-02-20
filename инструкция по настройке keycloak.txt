@@ -25,7 +25,7 @@ Realm Setting
 	Access tokens - Access Token Lifespan - 10 min
 
 	User profile
-		First name\Last name - Required field - On
+		First name\Last name - Required field - Off
 
 Users - Create Admin (admin\admin)
 	Role Mapping - Assing Role - Client\Realm - все галочки
