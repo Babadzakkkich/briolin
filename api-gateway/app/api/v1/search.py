@@ -17,7 +17,7 @@ security = HTTPBearer(auto_error=False)
 
 
 @router.post(
-    "/classic",  # Убрано {user_id} из пути
+    "/classic",
     response_model=SearchResponse,
     responses={
         400: {"model": ErrorResponse},
@@ -40,7 +40,7 @@ async def classic_search(
 
 
 @router.post(
-    "/targeted",  # Убрано {user_id} из пути
+    "/targeted",
     response_model=SearchResponse,
     responses={
         400: {"model": ErrorResponse},
@@ -64,7 +64,7 @@ async def targeted_search(
 
 
 @router.get(
-    "/lock-status",  # Убрано {user_id} из пути
+    "/lock-status",
     response_model=SearchLockInfoResponse,
     responses={
         401: {"model": ErrorResponse},
@@ -87,7 +87,7 @@ async def get_search_lock_status(
 
 
 @router.get(
-    "/history",  # Убрано {user_id} из пути
+    "/history",
     response_model=List[SearchSessionResponse],
     responses={
         401: {"model": ErrorResponse},
@@ -153,7 +153,7 @@ async def get_profiles_count(
 
 
 @router.delete(
-    "/history",  # Убрано {user_id} из пути
+    "/history",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         401: {"model": ErrorResponse},

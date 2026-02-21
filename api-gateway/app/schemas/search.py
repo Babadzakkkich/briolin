@@ -8,8 +8,8 @@ class SearchRequest(BaseModel):
     min_age: Optional[int] = Field(None, ge=18, le=100, description="Минимальный возраст")
     max_age: Optional[int] = Field(None, ge=18, le=100, description="Максимальный возраст")
     city: Optional[str] = Field(None, description="Город для фильтрации")
-    page: int = Field(1, ge=1, description="Номер страницы")  # ДОБАВЛЕНО
-    limit: int = Field(10, ge=1, le=50, description="Размер страницы")  # ДОБАВЛЕНО
+    page: int = Field(1, ge=1, description="Номер страницы")
+    limit: int = Field(10, ge=1, le=50, description="Размер страницы")
 
     @validator('min_age')
     def validate_min_age(cls, v):
@@ -33,15 +33,12 @@ class TargetedSearchRequest(SearchRequest):
 
 class ProfilePreviewResponse(BaseModel):
     """Краткая информация о профиле для результатов поиска"""
-    user_id: int
-    keycloak_id: str
     first_name: str
     last_name: str
     gender: str
     age: int
     city: str
     online: bool
-    last_login_at: Optional[datetime]
     # Для таргетированного поиска
     education: Optional[str] = None
     hobbies: Optional[str] = None
@@ -51,11 +48,9 @@ class ProfilePreviewResponse(BaseModel):
 
 class SearchResponse(BaseModel):
     search_session_id: int
-    user_ids: List[int]
-    profiles: List[ProfilePreviewResponse] = []  # ДОБАВЛЕНО
+    profiles: List[ProfilePreviewResponse] = []
     filters: Dict[str, Any]
     created_at: datetime
-    # ДОБАВЛЕННЫЕ ПОЛЯ
     current_page: int = 1
     total_pages: int = 1
     total_results: int = 0
@@ -70,23 +65,20 @@ class SearchSessionResponse(BaseModel):
     search_session_id: int
     search_type: str
     filters: Dict[str, Any]
-    results: List[int]
-    viewed_profiles: List[int] = []  # ДОБАВЛЕНО
-    current_page: int = 1  # ДОБАВЛЕНО
-    total_pages: int = 1  # ДОБАВЛЕНО
-    total_results: int = 0  # ДОБАВЛЕНО
     created_at: datetime
-    updated_at: Optional[datetime] = None  # ДОБАВЛЕНО
+    updated_at: Optional[datetime] = None
+    total_results: int = 0
+    current_page: int = 1
+    total_pages: int = 1
 
 
-class SearchLockInfoResponse(BaseModel):  # НОВАЯ СХЕМА
+class SearchLockInfoResponse(BaseModel):
     """Информация о блокировке поиска"""
-    user_id: int
     search_type: str
     is_locked: bool
     profiles_viewed: int
     locked_until: Optional[datetime] = None
-    time_until_unlock: Optional[int] = None  # секунды до разблокировки
+    time_until_unlock: Optional[int] = None
 
 
 class ErrorResponse(BaseModel):

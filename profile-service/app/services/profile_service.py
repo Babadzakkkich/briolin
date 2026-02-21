@@ -1,7 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from sqlalchemy import select, func
 from typing import Dict, Any, Optional, Tuple, List
+
+import sqlalchemy
 
 from app.database.models import BasicProfile, DetailedProfile
 from app.database.session import async_session_factory
@@ -485,3 +487,254 @@ class ProfileService:
         except Exception as e:
             logger.error(f"Failed to get user online status: {e}")
             return None
+    
+# ========== МЕТОДЫ ДЛЯ SEARCH-SERVICE ==========
+
+    async def get_profiles_batch(self, profile_ids: List[int]) -> List[Dict[str, Any]]:
+        """
+        Получение нескольких профилей по их ID
+        Используется search-service для batch-запроса
+        """
+        if not profile_ids:
+            return []
+        
+        try:
+            # Получаем базовые профили
+            stmt = select(BasicProfile).where(BasicProfile.id.in_(profile_ids))
+            result = await self.db.execute(stmt)
+            basic_profiles = result.scalars().all()
+            
+            if not basic_profiles:
+                return []
+            
+            # Получаем ID для запроса детальных профилей
+            basic_ids = [p.id for p in basic_profiles]
+            
+            # Получаем детальные профили
+            detailed_stmt = select(DetailedProfile).where(
+                DetailedProfile.basic_profile_id.in_(basic_ids)
+            )
+            detailed_result = await self.db.execute(detailed_stmt)
+            detailed_profiles = {dp.basic_profile_id: dp for dp in detailed_result.scalars().all()}
+            
+            # Формируем ответ
+            result_profiles = []
+            for profile in basic_profiles:
+                profile_data = {
+                    "basic": {
+                        "id": profile.id,
+                        "keycloak_id": profile.keycloak_id,
+                        "first_name": profile.first_name,
+                        "last_name": profile.last_name,
+                        "gender": profile.gender.value if hasattr(profile.gender, 'value') else profile.gender,
+                        "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+                        "city": profile.city,
+                        "online": profile.online,
+                        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+                        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+                        "last_login_at": profile.last_login_at.isoformat() if profile.last_login_at else None
+                    }
+                }
+                
+                detailed = detailed_profiles.get(profile.id)
+                if detailed:
+                    profile_data["detailed"] = {
+                        "id": detailed.id,
+                        "about_me": detailed.about_me,
+                        "education": detailed.education,
+                        "hobbies": detailed.hobbies,
+                        "partner_preferences": detailed.partner_preferences
+                    }
+                else:
+                    profile_data["detailed"] = None
+                
+                result_profiles.append(profile_data)
+            
+            return result_profiles
+            
+        except Exception as e:
+            logger.error(f"Failed to get profiles batch: {e}")
+            raise DatabaseException(f"Failed to get profiles batch: {str(e)}")
+
+
+    async def get_profiles_count(self) -> int:
+        """
+        Получение общего количества профилей
+        Используется search-service для статистики
+        """
+        try:
+            stmt = select(func.count()).select_from(BasicProfile)
+            result = await self.db.execute(stmt)
+            return result.scalar() or 0
+        except Exception as e:
+            logger.error(f"Failed to get profiles count: {e}")
+            raise DatabaseException(f"Failed to get profiles count: {str(e)}")
+
+
+    async def check_profiles_exist(self, profile_ids: List[int]) -> Dict[int, bool]:
+        """
+        Проверка существования профилей по их ID
+        Используется search-service для валидации
+        """
+        if not profile_ids:
+            return {}
+        
+        try:
+            stmt = select(BasicProfile.id).where(BasicProfile.id.in_(profile_ids))
+            result = await self.db.execute(stmt)
+            existing_ids = {row[0] for row in result.all()}
+            
+            return {pid: pid in existing_ids for pid in profile_ids}
+        except Exception as e:
+            logger.error(f"Failed to check profiles exist: {e}")
+            raise DatabaseException(f"Failed to check profiles exist: {str(e)}")
+
+
+    async def search_profiles(
+        self,
+        gender: Optional[str] = None,
+        min_age: Optional[int] = None,
+        max_age: Optional[int] = None,
+        city: Optional[str] = None,
+        education: Optional[str] = None,
+        hobbies_keywords: Optional[List[str]] = None,
+        partner_preferences: Optional[str] = None,
+        online_only: bool = False,
+        exclude_user_id: Optional[int] = None,
+        exclude_keycloak_id: Optional[str] = None,
+        page: int = 1,
+        limit: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Поиск профилей с фильтрацией
+        Основной метод для search-service
+        """
+        try:
+            # Базовый запрос
+            query = select(BasicProfile)
+            
+            # Присоединяем DetailedProfile если нужны фильтры по нему
+            if education or hobbies_keywords or partner_preferences:
+                query = query.outerjoin(
+                    DetailedProfile,
+                    BasicProfile.id == DetailedProfile.basic_profile_id
+                )
+            
+            # Условия фильтрации
+            conditions = []
+            
+            if gender:
+                conditions.append(BasicProfile.gender == gender)
+            
+            if city:
+                conditions.append(BasicProfile.city.ilike(f"%{city}%"))
+            
+            if online_only:
+                conditions.append(BasicProfile.online == True)
+            
+            if exclude_user_id:
+                conditions.append(BasicProfile.id != exclude_user_id)
+            
+            if exclude_keycloak_id:
+                conditions.append(BasicProfile.keycloak_id != exclude_keycloak_id)
+            
+            # Возрастная фильтрация
+            if min_age is not None or max_age is not None:
+                today = datetime.utcnow().date()
+                if min_age is not None:
+                    min_birth_date = date(today.year - min_age - 1, today.month, today.day)
+                    conditions.append(BasicProfile.date_of_birth <= min_birth_date)
+                if max_age is not None:
+                    max_birth_date = date(today.year - max_age, today.month, today.day)
+                    conditions.append(BasicProfile.date_of_birth >= max_birth_date)
+            
+            # Фильтры по detailed profile
+            if education:
+                conditions.append(DetailedProfile.education.ilike(f"%{education}%"))
+            
+            if partner_preferences:
+                conditions.append(DetailedProfile.partner_preferences.ilike(f"%{partner_preferences}%"))
+            
+            if hobbies_keywords:
+                hobby_conditions = []
+                for keyword in hobbies_keywords:
+                    if keyword and keyword.strip():
+                        hobby_conditions.append(
+                            DetailedProfile.hobbies.ilike(f"%{keyword.strip()}%")
+                        )
+                if hobby_conditions:
+                    conditions.append(sqlalchemy.or_(*hobby_conditions))
+            
+            # Применяем условия
+            if conditions:
+                query = query.where(sqlalchemy.and_(*conditions))
+            
+            # Получаем общее количество
+            count_query = select(func.count()).select_from(query.subquery())
+            count_result = await self.db.execute(count_query)
+            total = count_result.scalar() or 0
+            
+            # Добавляем пагинацию
+            paginated_query = query.order_by(
+                BasicProfile.last_login_at.desc().nullslast(),
+                BasicProfile.id
+            ).offset((page - 1) * limit).limit(limit)
+            
+            result = await self.db.execute(paginated_query)
+            profiles = result.scalars().all()
+            
+            # Получаем детальные профили для найденных
+            if profiles:
+                profile_ids = [p.id for p in profiles]
+                detailed_stmt = select(DetailedProfile).where(
+                    DetailedProfile.basic_profile_id.in_(profile_ids)
+                )
+                detailed_result = await self.db.execute(detailed_stmt)
+                detailed_map = {dp.basic_profile_id: dp for dp in detailed_result.scalars().all()}
+            else:
+                detailed_map = {}
+            
+            # Формируем результат
+            result_profiles = []
+            for profile in profiles:
+                profile_data = {
+                    "basic": {
+                        "id": profile.id,
+                        "keycloak_id": profile.keycloak_id,
+                        "first_name": profile.first_name,
+                        "last_name": profile.last_name,
+                        "gender": profile.gender.value if hasattr(profile.gender, 'value') else profile.gender,
+                        "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+                        "city": profile.city,
+                        "online": profile.online,
+                        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+                        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+                        "last_login_at": profile.last_login_at.isoformat() if profile.last_login_at else None
+                    }
+                }
+                
+                detailed = detailed_map.get(profile.id)
+                if detailed:
+                    profile_data["detailed"] = {
+                        "id": detailed.id,
+                        "about_me": detailed.about_me,
+                        "education": detailed.education,
+                        "hobbies": detailed.hobbies,
+                        "partner_preferences": detailed.partner_preferences
+                    }
+                else:
+                    profile_data["detailed"] = None
+                
+                result_profiles.append(profile_data)
+            
+            return {
+                "profiles": result_profiles,
+                "total": total,
+                "page": page,
+                "limit": limit,
+                "total_pages": (total + limit - 1) // limit if total > 0 else 1
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to search profiles: {e}")
+            raise DatabaseException(f"Failed to search profiles: {str(e)}")

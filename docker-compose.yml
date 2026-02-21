@@ -319,8 +319,6 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-      auth-service:
-        condition: service_started
     volumes:
       - ./shared:/app/shared:ro
     networks:

@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field, validator
 
@@ -48,11 +48,13 @@ class ProfilePreviewResponse(BaseModel):
     online: bool
     education: Optional[str] = None
     hobbies: Optional[str] = None
+    about_me: Optional[str] = None
     partner_preferences: Optional[str] = None
 
 
 class SearchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
     search_session_id: int
     profiles: List[ProfilePreviewResponse] = []
     filters: Dict[str, Any]
@@ -66,6 +68,7 @@ class SearchResponse(BaseModel):
     time_until_unlock: Optional[int] = None
     profiles_viewed: int = 0
 
+
 class SearchSessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,6 +80,7 @@ class SearchSessionResponse(BaseModel):
     total_results: int = 0
     current_page: int = 1
     total_pages: int = 1
+    user_id: int = Field(..., description="ID пользователя, которому принадлежит сессия")
 
 
 class SearchLockInfoResponse(BaseModel):
