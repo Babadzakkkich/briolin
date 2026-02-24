@@ -110,15 +110,28 @@ class ProfileSagaHandlers:
         
         detailed_data = payload.get("detailed_data", {})
         
-        # Получаем basic_profile_id из контекста
+        # Получаем basic_profile_id (может быть из контекста или напрямую из payload)
+        basic_profile_id = None
+        keycloak_id = None
+        
+        # Проверяем в контексте (для случая, когда создаем после basic)
         create_step_result = context.get("create_basic_profile", {})
         basic_profile_id = create_step_result.get("basic_profile_id")
         keycloak_id = create_step_result.get("keycloak_id")
         
+        # Если не нашли в контексте, проверяем в payload (для отдельного создания)
         if not basic_profile_id:
-            step_result = await self._get_step_result(saga_id, "create_basic_profile")
-            basic_profile_id = step_result.get("basic_profile_id")
-            keycloak_id = step_result.get("keycloak_id")
+            basic_profile_id = payload.get("basic_profile_id")
+            keycloak_id = payload.get("keycloak_id")
+        
+        # Если всё ещё нет, пробуем получить из БД
+        if not basic_profile_id and keycloak_id:
+            async with async_session_factory() as session:
+                stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
+                result = await session.execute(stmt)
+                basic = result.scalar_one_or_none()
+                if basic:
+                    basic_profile_id = basic.id
         
         if not basic_profile_id:
             error_msg = f"[SAGA {saga_id}] Cannot create detailed profile: missing basic_profile_id"

@@ -1,25 +1,37 @@
-from fastapi import APIRouter, Request, Depends, Response, Query, HTTPException, status
+from fastapi import APIRouter, Request, Depends, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Optional
 from app.services.http_client import http_client
 from app.schemas.profile import (
-    FullProfileCreate,
+    BasicProfileCreate,
+    DetailedProfileCreate,
     FullProfileUpdate,
     FullProfileResponse,
-    BasicProfileResponse,
-    ProfileListResponse
 )
 
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
 security = HTTPBearer(auto_error=False)
 
-@router.post("/", response_model=FullProfileResponse)
-async def create_profile(
-    profile_data: FullProfileCreate,
+@router.post("/basic", status_code=status.HTTP_202_ACCEPTED)
+async def create_basic_profile(
+    profile_data: BasicProfileCreate,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Создание полного профиля (basic + detailed)"""
+    """создание только базового профиля"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+@router.post("/detailed", status_code=status.HTTP_202_ACCEPTED)
+async def create_detailed_profile(
+    profile_data: DetailedProfileCreate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """создание только детального профиля"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

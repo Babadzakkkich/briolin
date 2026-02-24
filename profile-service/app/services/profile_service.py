@@ -9,7 +9,7 @@ from app.database.models import BasicProfile, DetailedProfile
 from app.database.session import async_session_factory
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.profile import (
-    FullProfileCreate, FullProfileUpdate
+    BasicProfileCreate, DetailedProfileCreate, FullProfileUpdate
 )
 from app.services.keycloak_client import KeycloakClient
 
@@ -43,28 +43,29 @@ class ProfileService:
         self.saga_worker = get_saga_worker()
 
     # ========== СОЗДАНИЕ ПРОФИЛЯ ==========
-    
-    async def create_full_profile(
+    async def create_basic_profile(
         self,
         keycloak_id: str,
-        profile_data: FullProfileCreate,
+        basic_data: BasicProfileCreate,
         current_user: dict
     ) -> Dict[str, Any]:
-        """АСИНХРОННОЕ создание полного профиля через SAGA"""
-        
+        """
+        АСИНХРОННОЕ создание только базового профиля через SAGA
+        """
         # Проверяем права пользователя
         if current_user["keycloak_id"] != keycloak_id:
             raise PermissionDeniedException("Cannot create profile for another user")
         
-        # Проверяем существование профиля (используем self.db!)
+        # Проверяем существование профиля
         existing = await self._get_basic_profile_by_keycloak_id(keycloak_id)
         if existing:
-            logger.info(f"Profile already exists for {keycloak_id}")
+            logger.info(f"Basic profile already exists for {keycloak_id}")
             full_profile = await self.get_full_profile_by_keycloak_id(keycloak_id)
             return {
                 "status": "success",
                 "profile": full_profile,
-                "already_exists": True
+                "already_exists": True,
+                "message": "Basic profile already exists"
             }
         
         # Генерируем ID саги
@@ -78,7 +79,7 @@ class ProfileService:
             event_type="saga.step.create_basic_profile",
             payload={
                 "keycloak_id": keycloak_id,
-                "basic_data": profile_data.basic.model_dump()
+                "basic_data": basic_data.model_dump()
             },
             headers={
                 "source_service": "profile-service",
@@ -86,23 +87,7 @@ class ProfileService:
             }
         )
         
-        # Шаг 2: Создание детального профиля
-        await self.saga_worker.create_saga_outbox(
-            saga_id=saga_id,
-            saga_name="profile_creation",
-            step_name="create_detailed_profile",
-            event_type="saga.step.create_detailed_profile",
-            payload={
-                "detailed_data": profile_data.detailed.model_dump()
-            },
-            headers={
-                "source_service": "profile-service",
-                "correlation_id": saga_id,
-                "depends_on": "create_basic_profile"
-            }
-        )
-        
-        # Шаг 3: Публикация события о создании профиля
+        # Шаг 2: Публикация события о создании базового профиля
         await self.saga_worker.create_saga_outbox(
             saga_id=saga_id,
             saga_name="profile_creation",
@@ -118,11 +103,93 @@ class ProfileService:
         
         await self.db.commit()
         
-        logger.info(f"Profile creation initiated for {keycloak_id} with saga_id: {saga_id}")
+        logger.info(f"Basic profile creation initiated for {keycloak_id} with saga_id: {saga_id}")
         
         return {
             "status": "accepted",
-            "message": "Profile creation initiated",
+            "message": "Basic profile creation initiated",
+            "saga_id": saga_id,
+            "check_status_url": f"/api/v1/profiles/saga/{saga_id}/status"
+        }
+
+
+    async def create_detailed_profile(
+        self,
+        keycloak_id: str,
+        detailed_data: DetailedProfileCreate,
+        current_user: dict
+    ) -> Dict[str, Any]:
+        """
+        АСИНХРОННОЕ создание только детального профиля через SAGA
+        """
+        # Проверяем права пользователя
+        if current_user["keycloak_id"] != keycloak_id:
+            raise PermissionDeniedException("Cannot create profile for another user")
+        
+        # Проверяем существование базового профиля
+        basic_profile = await self._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic_profile:
+            raise ProfileNotFoundException("Basic profile not found. Create basic profile first.")
+        
+        # Проверяем, существует ли уже детальный профиль
+        stmt = select(DetailedProfile).where(DetailedProfile.basic_profile_id == basic_profile.id)
+        result = await self.db.execute(stmt)
+        existing_detailed = result.scalar_one_or_none()
+        
+        if existing_detailed:
+            logger.info(f"Detailed profile already exists for {keycloak_id}")
+            full_profile = await self.get_full_profile_by_keycloak_id(keycloak_id)
+            return {
+                "status": "success",
+                "profile": full_profile,
+                "already_exists": True,
+                "message": "Detailed profile already exists"
+            }
+        
+        # Генерируем ID саги
+        saga_id = str(uuid.uuid4())
+        
+        # Шаг 1: Создание детального профиля (без зависимостей, т.к. basic уже есть)
+        await self.saga_worker.create_saga_outbox(
+            saga_id=saga_id,
+            saga_name="profile_creation",
+            step_name="create_detailed_profile",
+            event_type="saga.step.create_detailed_profile",
+            payload={
+                "keycloak_id": keycloak_id,
+                "basic_profile_id": basic_profile.id,
+                "detailed_data": detailed_data.model_dump()
+            },
+            headers={
+                "source_service": "profile-service",
+                "correlation_id": saga_id
+            }
+        )
+        
+        # Шаг 2: Публикация события об обновлении профиля (добавлен детальный)
+        await self.saga_worker.create_saga_outbox(
+            saga_id=saga_id,
+            saga_name="profile_creation",
+            step_name="publish_profile_updated",
+            event_type="saga.step.publish_profile_updated",
+            payload={
+                "keycloak_id": keycloak_id,
+                "updated_fields": {"detailed_profile_created": True}
+            },
+            headers={
+                "source_service": "profile-service",
+                "correlation_id": saga_id,
+                "depends_on": "create_detailed_profile"
+            }
+        )
+        
+        await self.db.commit()
+        
+        logger.info(f"Detailed profile creation initiated for {keycloak_id} with saga_id: {saga_id}")
+        
+        return {
+            "status": "accepted",
+            "message": "Detailed profile creation initiated",
             "saga_id": saga_id,
             "check_status_url": f"/api/v1/profiles/saga/{saga_id}/status"
         }

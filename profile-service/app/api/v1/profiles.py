@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 
 from app.services.profile_service import ProfileService
 from app.schemas.profile import (
-    FullProfileCreate, FullProfileUpdate,
+    BasicProfileCreate, DetailedProfileCreate, FullProfileCreate, FullProfileUpdate,
     FullProfileResponse
 )
 from app.dependencies import get_profile_service, get_current_user
@@ -23,22 +23,43 @@ async def get_saga_status(
         raise HTTPException(status_code=404, detail="Saga not found")
     return status
 
-@router.post("/", status_code=status.HTTP_202_ACCEPTED)
-async def create_profile(
-    profile_data: FullProfileCreate,
+@router.post("/basic", status_code=status.HTTP_202_ACCEPTED)
+async def create_basic_profile(
+    profile_data: BasicProfileCreate,
     current_user: dict = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service)
 ):
-    """АСИНХРОННОЕ создание полного профиля (basic + detailed)"""
+    """АСИНХРОННОЕ создание только базового профиля"""
     try:
-        result = await service.create_full_profile(
+        result = await service.create_basic_profile(
             keycloak_id=current_user["keycloak_id"],
-            profile_data=profile_data,
+            basic_data=profile_data,
             current_user=current_user
         )
         return result
     except Exception as e:
-        logger.error(f"Failed to create profile: {e}")
+        logger.error(f"Failed to create basic profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/detailed", status_code=status.HTTP_202_ACCEPTED)
+async def create_detailed_profile(
+    profile_data: DetailedProfileCreate,
+    current_user: dict = Depends(get_current_user),
+    service: ProfileService = Depends(get_profile_service)
+):
+    """АСИНХРОННОЕ создание только детального профиля"""
+    try:
+        result = await service.create_detailed_profile(
+            keycloak_id=current_user["keycloak_id"],
+            detailed_data=profile_data,
+            current_user=current_user
+        )
+        return result
+    except ProfileNotFoundException:
+        raise HTTPException(status_code=404, detail="Basic profile not found. Create basic profile first.")
+    except Exception as e:
+        logger.error(f"Failed to create detailed profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/me", response_model=FullProfileResponse)
