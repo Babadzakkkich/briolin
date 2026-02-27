@@ -5,18 +5,26 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Text } from "@/components/ui/Text";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { login } from "@/api/auth";
+import { useAuthStore } from "@/stores/authStore";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const setToken = useAuthStore((s) => s.setToken);
 
   const [username, setUsername] = useState<string>("");
   const [password, setPassword] = useState<string>("");
 
   const mutation = useMutation({
     mutationFn: () => login({ username, password }),
-    onSuccess: () => {
+
+    onSuccess: async (data) => {
+      setToken(data.access_token);
+
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+
       navigate("/registration-complete");
     },
     onError: (error: any) => {

@@ -15,7 +15,7 @@ export function RegisterPage() {
   const [password, setPassword] = useState<string>("");
 
   const mutation = useMutation({
-    mutationFn: () => register({ username, email, password }),
+    mutationFn: () => register({ username, email, password, role: ["user"] }),
     onSuccess: () => {
       navigate("/login");
     },

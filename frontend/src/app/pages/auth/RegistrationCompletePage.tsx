@@ -1,8 +1,8 @@
-import { MoveLeft } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { MoveLeft } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 
-import { Button } from '@/components/ui/Button';
-import { Text } from '@/components/ui/Text';
+import { Button } from "@/components/ui/Button";
+import { Text } from "@/components/ui/Text";
 
 export function RegistrationCompletePage() {
   const navigate = useNavigate();
@@ -29,7 +29,7 @@ export function RegistrationCompletePage() {
         <div className="h-20 md:h-40"></div>
         <Button
           variant="solid"
-          onClick={() => navigate('/login')}
+          onClick={() => navigate("/welcome/profile")}
           className="w-full md:w-3xs"
         >
           Подтвердить

@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 
 import { Logo } from "@/components/icons/Logo";
 import { Text } from "@/components/ui/Text";
-import { useEffect } from "react";
 
 export function Home() {
   return (

@@ -15,6 +15,7 @@ import { StartInterviewPage } from "@/app/pages/interview/StartInterviewPage";
 import { EndInterviewPage } from "@/app/pages/interview/EndInterviewPage";
 import { PayInterviewPage } from "@/app/pages/interview/PayInterviewPage";
 import { DetailsInterviewPage } from "@/app/pages/interview/DetailsInterviewPage";
+import { DashboardPage } from "@/app/pages/dashboard/DashboardPage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const router = createBrowserRouter([
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
   { path: "/registration-complete", element: <RegistrationCompletePage /> },
   { path: "/welcome/profile", element: <WelcomeProfile /> },
   { path: "/welcome/test", element: <TestPage /> },
+  { path: "/dashboard", element: <DashboardPage /> },
   { path: "/interview", element: <StartInterviewPage /> },
   { path: "/interview/appointment", element: <AppointmentInterviewPage /> },
   { path: "/interview/details", element: <DetailsInterviewPage /> },
