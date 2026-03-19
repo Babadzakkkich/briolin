@@ -1,44 +1,22 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from 'react-router';
+import ReactDOM from 'react-dom/client';
+import { IndexPage } from '@/pages';
+import { RegistrationPage } from '@/pages/auth/RegistrationPage';
+import { LoginPage } from '@/pages/auth/LoginPage';
+import { AppLayout } from '@/shared/layouts/AppLayout';
+import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
+import { OnboardingPage } from './features/onboarding/OnboardingPage';
 
-import { Home } from "@/app/Home";
-import { LoginPage } from "@/app/pages/auth/LoginPage";
-import { RegisterPage } from "@/app/pages/auth/RegisterPage";
-import { ResetPasswordPage } from "@/app/pages/auth/ResetPasswordPage";
-import { RegistrationCompletePage } from "@/app/pages/auth/RegistrationCompletePage";
-import { WelcomeProfile } from "@/app/pages/welcome/WelcomeProfile";
-import { TestPage } from "@/app/pages/welcome/TestPage";
-import { AppointmentInterviewPage } from "@/app/pages/interview/AppointmentInterviewPage";
-import { ResultInterviewPage } from "@/app/pages/interview/ResultInterviewPage";
-import { StartInterviewPage } from "@/app/pages/interview/StartInterviewPage";
-import { EndInterviewPage } from "@/app/pages/interview/EndInterviewPage";
-import { PayInterviewPage } from "@/app/pages/interview/PayInterviewPage";
-import { DetailsInterviewPage } from "@/app/pages/interview/DetailsInterviewPage";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
-const router = createBrowserRouter([
-  { path: "/", element: <Home /> },
-  { path: "/login", element: <LoginPage /> },
-  { path: "/register", element: <RegisterPage /> },
-  { path: "/reset-password", element: <ResetPasswordPage /> },
-  { path: "/registration-complete", element: <RegistrationCompletePage /> },
-  { path: "/welcome/profile", element: <WelcomeProfile /> },
-  { path: "/welcome/test", element: <TestPage /> },
-  { path: "/interview", element: <StartInterviewPage /> },
-  { path: "/interview/appointment", element: <AppointmentInterviewPage /> },
-  { path: "/interview/details", element: <DetailsInterviewPage /> },
-  { path: "/interview/result", element: <ResultInterviewPage /> },
-  { path: "/interview/end", element: <EndInterviewPage /> },
-  { path: "/interview/pay", element: <PayInterviewPage /> },
-]);
-
-const queryClient = new QueryClient();
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router}></RouterProvider>
-    </QueryClientProvider>
-  </StrictMode>,
+ReactDOM.createRoot(document.getElementById('root')!).render(
+    <BrowserRouter>
+        <Routes>
+            <Route element={<AppLayout />}>
+                <Route path='/' element={<IndexPage />} />
+                <Route path='/login' element={<LoginPage />} />
+                <Route path='/registration' element={<RegistrationPage />} />
+                <Route path='/forgot-password' element={<ForgotPasswordPage />} />
+                <Route path='/onboarding' element={<OnboardingPage />} />
+            </Route>
+        </Routes>
+    </BrowserRouter>,
 );

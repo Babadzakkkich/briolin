@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+@theme {
+    --color-accent: #dc4c4c;
+    --color-accent-hover: #c43e3e;
+    --color-destructive: #d94444;
+    --color-primary: #453729;
+    --color-surface: #f6f2ec;
+    --color-surface-secondary: #f0ebe3;
+    --color-border: #e8e0d6;
+    --color-secondary: #8a7b6b;
+    --color-muted: #b5a99a;
+
+    --font-inter: 'Inter';
+    --font-onest: 'Onest';
+}
+
+@layer base {
+    body {
+        @apply font-inter font-medium antialiased;
+    }
+}
