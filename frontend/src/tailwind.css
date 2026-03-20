@@ -1,22 +1,42 @@
 @import 'tailwindcss';
 
 @theme {
-    --color-accent: #dc4c4c;
-    --color-accent-hover: #c43e3e;
-    --color-destructive: #d94444;
-    --color-primary: #453729;
-    --color-surface: #f6f2ec;
-    --color-surface-secondary: #f0ebe3;
-    --color-border: #e8e0d6;
-    --color-secondary: #8a7b6b;
-    --color-muted: #b5a99a;
+  --color-accent: #dc4c4c;
+  --color-accent-hover: #c43e3e;
+  --color-destructive: #d94444;
+  --color-primary: #453729;
+  --color-surface: #f6f2ec;
+  --color-surface-secondary: #f0ebe3;
+  --color-border: #e8e0d6;
+  --color-secondary: #8a7b6b;
+  --color-muted: #b5a99a;
 
-    --font-inter: 'Inter';
-    --font-onest: 'Onest';
+  --color-success: #c8e6c9;
+  --color-error: #fdecea;
+  --color-warn: #fff3e0;
+  --color-info: #f0ebe3;
+
+  --font-inter: 'Inter';
+  --font-onest: 'Onest';
 }
 
 @layer base {
-    body {
-        @apply font-inter font-medium antialiased;
-    }
+  body {
+    @apply font-inter font-medium antialiased;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@utility animate-toast-in {
+  animation: toast-in 0.2s ease-out;
 }

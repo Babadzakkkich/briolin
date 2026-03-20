@@ -9,6 +9,8 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    networks:
+      - briolin-network
   # =========== INFRASTRUCTURE ===========
   keycloak-postgres:
     image: postgres:17-alpine
