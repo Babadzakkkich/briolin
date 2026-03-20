@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 interface JwtPayload {
     sub?: string;
@@ -24,17 +25,22 @@ interface AuthState {
     clear: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-    accessToken: null,
-    username: null,
-    isAuthenticated: false,
-    setAccessToken: (token) => {
-        const payload = token ? decodeJwt(token) : null;
-        set({
-            accessToken: token,
-            isAuthenticated: !!token,
-            username: payload?.preferred_username ?? null,
-        });
-    },
-    clear: () => set({ accessToken: null, isAuthenticated: false, username: null }),
-}));
+export const useAuthStore = create<AuthState>()(
+    persist(
+        (set) => ({
+            accessToken: null,
+            username: null,
+            isAuthenticated: false,
+            setAccessToken: (token) => {
+                const payload = token ? decodeJwt(token) : null;
+                set({
+                    accessToken: token,
+                    isAuthenticated: !!token,
+                    username: payload?.preferred_username ?? null,
+                });
+            },
+            clear: () => set({ accessToken: null, isAuthenticated: false, username: null }),
+        }),
+        { name: 'auth' },
+    ),
+);

@@ -8,9 +8,8 @@ export function useAuth() {
 
   const login = async (username: string, password: string) => {
     const { data } = await authApi.login({ username, password });
-    console.log(data);
     setAccessToken(data.access_token);
-    navigate('/');
+    navigate('/dashboard');
   };
 
   const register = async (email: string, username: string, password: string) => {

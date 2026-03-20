@@ -4,6 +4,7 @@ import { Button } from '@/shared/uikit/Button';
 import { ToastContainer } from '@/shared/toast/ToastContainer';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { useAuth } from '@/features/auth/useAuth';
+import { LogOutIcon } from 'lucide-react';
 
 function HeaderActions() {
   const { isAuthenticated, username } = useAuthStore();
@@ -13,8 +14,8 @@ function HeaderActions() {
     return (
       <div className='flex items-center gap-3'>
         <span className='font-inter text-primary text-[14px] font-medium'>{username}</span>
-        <Button variant='secondary' size='sm' onClick={logout}>
-          Выйти
+        <Button variant='secondary' size='sm' className='px-2!' onClick={logout}>
+          <LogOutIcon size={16} />
         </Button>
       </div>
     );
