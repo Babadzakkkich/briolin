@@ -1,4 +1,14 @@
 services:
+  frontend:
+    container_name: briolin-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.local
+    ports:
+      - "80:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
   # =========== INFRASTRUCTURE ===========
   keycloak-postgres:
     image: postgres:17-alpine
@@ -22,7 +32,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.4
     container_name: keycloak
-    command: start-dev
+    command: start-dev --import-realm
     ports:
       - "8080:8080"
     environment:
@@ -34,6 +44,13 @@ services:
       KC_DB_URL_DATABASE: keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
+    volumes:
+      - ./infrastructure/keycloak:/opt/keycloak/data/import
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     depends_on:
       keycloak-postgres:
         condition: service_healthy
@@ -86,6 +103,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ__USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ__PASSWORD:-guest}
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ__ERLANG__COOKIE:-erlang-cookie-super-strong}
     env_file:
       - api-gateway/.env
     volumes:
@@ -170,7 +188,7 @@ services:
     networks:
       - briolin-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U search_user -d search_db" ]
+      test: ["CMD-SHELL", "pg_isready -U search_user -d search_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -394,11 +412,12 @@ services:
       - init
 
 volumes:
-    keycloak-postgres-data:
-    redis-data:
-    redis-insight-data:
-    rabbitmq-data:
+  keycloak-postgres-data:
+  keycloak-data:
+  redis-data:
+  redis-insight-data:
+  rabbitmq-data:
 
 networks:
-    briolin-network:
-        driver: bridge
+  briolin-network:
+    driver: bridge
