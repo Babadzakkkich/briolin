@@ -1,17 +1,8 @@
-from fastapi import APIRouter, Request, Depends, Response
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Request, Response
 from app.services.http_client import http_client
-from app.schemas.auth import (
-    UserRegister, 
-    UserLogin, 
-    RefreshRequest, 
-    LogoutRequest, 
-    UserResponse,
-    TokenResponse,
-)
+from app.schemas.auth import UserRegister, UserLogin, UserResponse, TokenResponse
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-security = HTTPBearer(auto_error=False)
 
 @router.post("/register", response_model=UserResponse)
 async def register_user(
@@ -41,10 +32,9 @@ async def login_user(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
-    refresh_data: RefreshRequest,
     request: Request
 ):
-    """Обновление токена"""
+    """Обновление токена (refresh_token читается из httponly cookie)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -54,11 +44,9 @@ async def refresh_token(
 
 @router.post("/logout")
 async def logout_user(
-    logout_data: LogoutRequest,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request
 ):
-    """Выход из системы"""
+    """Выход из системы (refresh_token читается из httponly cookie)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

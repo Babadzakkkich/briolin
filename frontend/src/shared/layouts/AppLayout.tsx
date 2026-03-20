@@ -2,6 +2,39 @@ import { Link, Outlet } from 'react-router-dom';
 import { LogoIcon } from '@/shared/icons/Logo';
 import { Button } from '@/shared/uikit/Button';
 import { ToastContainer } from '@/shared/toast/ToastContainer';
+import { useAuthStore } from '@/shared/stores/authStore';
+import { useAuth } from '@/features/auth/useAuth';
+
+function HeaderActions() {
+  const { isAuthenticated, username } = useAuthStore();
+  const { logout } = useAuth();
+
+  if (isAuthenticated) {
+    return (
+      <div className='flex items-center gap-3'>
+        <span className='font-inter text-primary text-[14px] font-medium'>{username}</span>
+        <Button variant='secondary' size='sm' onClick={logout}>
+          Выйти
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className='flex gap-2'>
+      <Link to='/login'>
+        <Button variant='primary' size='sm'>
+          Войти
+        </Button>
+      </Link>
+      <Link to='/registration'>
+        <Button variant='secondary' size='sm'>
+          Регистрация
+        </Button>
+      </Link>
+    </div>
+  );
+}
 
 export function AppLayout() {
   return (
@@ -15,18 +48,7 @@ export function AppLayout() {
                 <span className='font-onest text-primary text-xl font-medium'>Бриолин</span>
               </div>
             </Link>
-            <div className='flex gap-2'>
-              <Link to='/login'>
-                <Button variant='primary' size='sm'>
-                  Войти
-                </Button>
-              </Link>
-              <Link to='/register'>
-                <Button variant='secondary' size='sm'>
-                  Регистрация
-                </Button>
-              </Link>
-            </div>
+            <HeaderActions />
           </div>
         </header>
         <main className='flex-1'>

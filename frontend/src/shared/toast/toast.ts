@@ -14,7 +14,7 @@ interface ToastStore {
   remove: (id: string) => void;
 }
 
-const DURATION = 1000000;
+const DURATION = 4000;
 
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
