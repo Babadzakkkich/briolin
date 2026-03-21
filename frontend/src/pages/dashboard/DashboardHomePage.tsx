@@ -95,13 +95,11 @@ export function DashboardHomePage() {
             {username ?? 'Привет'}
           </h1>
         </div>
-
         <div className='mb-6 grid grid-cols-3 gap-3'>
           <StatCard label='Новых сообщений' value='0' />
           <StatCard label='Совпадений' value='0' />
           <StatCard label='Просмотров профиля' value='0' />
         </div>
-
         <div className='grid grid-cols-2 gap-3'>
           <FeatureCard
             to='/dashboard/cupidon'

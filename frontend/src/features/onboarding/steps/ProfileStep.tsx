@@ -3,15 +3,46 @@ import { Button } from '@/shared/uikit/Button';
 import { Input } from '@/shared/uikit/Input';
 import { RadioCardGroup } from '@/shared/uikit/RadioCardGroup';
 import { Text } from '@/shared/uikit/Text';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { StepProps } from '../OnboardingPage';
 import { toast } from '@/shared/toast/toast';
+import { profileApi } from '@/features/profile/api';
+import { DatePickerField } from '@/shared/uikit/DatePicker';
 
 const GENDER_OPTIONS = ['Мужской', 'Женский'];
 
 export function ProfileStep({ onNext }: StepProps) {
-  const [gender, setGender] = useState('Мужской');
-  toast.success('Заполните профиль');
+  useEffect(() => {
+    toast.info('Заполните профиль');
+  }, []);
+
+  const maxBirthDate = new Date();
+  maxBirthDate.setFullYear(maxBirthDate.getFullYear() - 18);
+  const maxBirthDateStr = maxBirthDate.toISOString().split('T')[0];
+
+  function handleSubmit() {
+    profileApi
+      .createBasicProfile({
+        first_name: firstName,
+        last_name: lastName,
+        gender: gender === 'Мужской' ? 'male' : 'female',
+        city,
+        date_of_birth: new Date(birthDate),
+      })
+      .then(() => {
+        toast.success('Профиль успешно создан');
+        onNext();
+      })
+      .catch(() => {
+        toast.error('Ошибка при создании профиля');
+      });
+  }
+
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [gender, setGender] = useState<string>('Мужской');
+  const [city, setCity] = useState('');
+  const [birthDate, setBirthDate] = useState(maxBirthDate.toISOString().split('T')[0]);
 
   return (
     <>
@@ -36,21 +67,43 @@ export function ProfileStep({ onNext }: StepProps) {
           </div>
         </div>
         <div className='flex flex-col gap-4'>
-          <div className='flex gap-4'>
-            <Input label='Имя' placeholder='Введите ваше имя' />
-            <Input label='Фамилия' placeholder='Введите вашу фамилию' />
-          </div>
-          <div className='flex gap-4'>
-            <Input label='Имя' placeholder='Введите ваше имя' />
-            <Input label='Фамилия' placeholder='Введите вашу фамилию' />
+          <div className='grid grid-cols-2 gap-4'>
+            <Input
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              label='Имя'
+              placeholder='Введите ваше имя'
+            />
+            <Input
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              label='Фамилия'
+              placeholder='Введите вашу фамилию'
+            />
+            <Input
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              label='Город'
+              placeholder='Например, Москва'
+            />
+            <DatePickerField
+              label='Дата рождения'
+              max={maxBirthDateStr}
+              value={birthDate}
+              onChange={setBirthDate}
+            />
           </div>
           <div className='flex flex-col gap-2'>
             <label className='font-inter text-primary text-[12px] font-medium'>Пол</label>
-            <RadioCardGroup items={GENDER_OPTIONS} value={gender} onChange={setGender} />
+            <RadioCardGroup
+              items={GENDER_OPTIONS}
+              value={gender}
+              onChange={setGender}
+            />
           </div>
         </div>
         <div className='flex flex-col gap-4 text-center'>
-          <Button onClick={onNext}>Далее</Button>
+          <Button onClick={handleSubmit}>Далее</Button>
         </div>
       </div>
     </>

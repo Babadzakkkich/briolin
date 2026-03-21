@@ -1,3 +1,3 @@
 export function ServicesPage() {
-  return <></>;
+  return <>Услуги</>;
 }

@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { authApi } from './api';
+import { profileApi } from '@/features/profile/api';
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -9,7 +10,12 @@ export function useAuth() {
   const login = async (username: string, password: string) => {
     const { data } = await authApi.login({ username, password });
     setAccessToken(data.access_token);
-    navigate('/dashboard');
+    try {
+      await profileApi.getMe();
+      navigate('/dashboard');
+    } catch {
+      navigate('/onboarding');
+    }
   };
 
   const register = async (email: string, username: string, password: string) => {

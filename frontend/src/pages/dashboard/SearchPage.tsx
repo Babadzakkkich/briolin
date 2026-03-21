@@ -1,3 +1,3 @@
 export function SearchPage() {
-  return <></>;
+  return <>Поиск</>;
 }
