@@ -98,6 +98,16 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+  
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: briolin-mailhog
+    ports:
+      - "1025:1025"   # SMTP порт (подключается к email-service)
+      - "8025:8025"   # Веб-интерфейс для просмотра писем
+    networks:
+      - briolin-network
+    restart: unless-stopped
 
   # =========== DATABASES ===========
   auth-postgres:
@@ -341,6 +351,24 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - briolin-network
+    restart: unless-stopped
+
+  email-service:
+    build:
+      context: .
+      dockerfile: email-service/Dockerfile
+    container_name: email-service
+    ports:
+      - "8007:8007"
+    env_file:
+      - email-service/.env
+    depends_on:
       rabbitmq:
         condition: service_healthy
     volumes:
