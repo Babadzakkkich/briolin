@@ -5,6 +5,7 @@ import { LoginPage } from '@/pages/auth/LoginPage';
 import { AppLayout } from '@/shared/layouts/AppLayout';
 import { DashboardLayout } from '@/shared/layouts/DashboardLayout';
 import { AuthGuard } from '@/features/auth/AuthGuard';
+import { TestGuard } from '@/features/auth/TestGuard';
 import { RegistrationPage } from '@/pages/auth/RegistrationPage';
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { OnboardingPage } from '@/features/onboarding/OnboardingPage';
@@ -30,14 +31,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </Route>
       </Route>
       <Route path='/dashboard' element={<AuthGuard />}>
-        <Route element={<DashboardLayout />}>
-          <Route index element={<DashboardHomePage />} />
-          <Route path='profile' element={<ProfilePage />} />
-          <Route path='messages' element={<MessagesPage />} />
-          <Route path='services' element={<ServicesPage />} />
-          <Route path='search' element={<SearchPage />} />
-          <Route path='cupidon' element={<CupidonPage />} />
-          <Route path='fortune' element={<FortunePage />} />
+        <Route element={<TestGuard />}>
+          <Route element={<DashboardLayout />}>
+            <Route index element={<DashboardHomePage />} />
+            <Route path='profile' element={<ProfilePage />} />
+            <Route path='messages' element={<MessagesPage />} />
+            <Route path='services' element={<ServicesPage />} />
+            <Route path='search' element={<SearchPage />} />
+            <Route path='cupidon' element={<CupidonPage />} />
+            <Route path='fortune' element={<FortunePage />} />
+          </Route>
         </Route>
       </Route>
     </Routes>

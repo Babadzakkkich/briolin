@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useAuthStore } from '@/shared/stores/authStore';
+import { useProfileStore } from '@/shared/stores/profileStore';
 import {
   Briefcase,
   Dice5,
@@ -76,7 +76,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 export function DashboardHomePage() {
-  const username = useAuthStore((s) => s.username);
+  const { firstName, lastName } = useProfileStore();
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -92,7 +92,7 @@ export function DashboardHomePage() {
         <div className='mb-8'>
           <p className='text-secondary text-sm'>{greeting()}</p>
           <h1 className='font-onest text-primary mt-0.5 text-3xl font-medium'>
-            {username ?? 'Привет'}
+            {firstName && lastName ? `${firstName} ${lastName}` : (firstName ?? '—')}
           </h1>
         </div>
         <div className='mb-6 grid grid-cols-3 gap-3'>

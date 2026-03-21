@@ -42,7 +42,25 @@ export interface TestCompleteResponse {
   };
 }
 
+export interface TestHistoryItem {
+  session_id: string;
+  test_name: string;
+  completed_at: string;
+  total_score: number;
+  percentage: number;
+  passed: boolean;
+}
+
+export interface TestHistory {
+  history: TestHistoryItem[];
+  total: number;
+}
+
 export const testingApi = {
+  getHistory: () =>
+    apiClient.get<TestHistory>('/api/v1/tests/history'),
+
+
   start: () =>
     apiClient.post<TestStartResponse>('/api/v1/tests/start', {}),
 

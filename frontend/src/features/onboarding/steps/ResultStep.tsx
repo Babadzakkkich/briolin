@@ -1,49 +1,76 @@
-import { AvatarUpload } from '@/features/AvatarUpload';
 import { Button } from '@/shared/uikit/Button';
-import { Input } from '@/shared/uikit/Input';
 import { Text } from '@/shared/uikit/Text';
 import type { StepProps } from '../OnboardingPage';
+import { CircleCheck, CircleX } from 'lucide-react';
 
-export function ResultStep({ onNext }: StepProps) {
+interface TestResults {
+  total_score: number;
+  max_possible_score: number;
+  percentage: number;
+  passed: boolean;
+}
+
+export function ResultStep({ onNext, onRetry, data }: StepProps) {
+  const results = data as TestResults | undefined;
+  const passed = results?.passed ?? false;
+  const percentage = results ? Math.round(results.percentage) : null;
+
   return (
-    <>
-      <div className='border-border flex w-120 flex-col gap-8 rounded-lg border bg-white px-8 py-8'>
-        <div className='flex flex-col text-center'>
+    <div className='border-border flex w-120 flex-col gap-8 rounded-lg border bg-white px-8 py-8'>
+      <div className='flex flex-col items-center gap-4 text-center'>
+        <div
+          className={[
+            'flex h-20 w-20 items-center justify-center rounded-full text-4xl',
+            passed ? 'bg-accent/10' : 'bg-destructive/10',
+          ].join(' ')}
+        >
+          <div className='text-accent'>
+            {passed ? <CircleCheck size={36} /> : <CircleX size={36} />}
+          </div>
+        </div>
+
+        <div className='flex flex-col gap-1'>
           <Text variant='h2' as='h2'>
-            Заполните профиль
+            {passed ? 'Тест пройден!' : 'Тест не пройден'}
           </Text>
           <Text variant='p' as='p'>
-            Расскажите нам о Вас подробнее
+            {passed
+              ? 'Отлично! Вы готовы к поиску совместимых людей.'
+              : 'К сожалению, результат ниже необходимого порога.'}
           </Text>
         </div>
-        <div className='flex w-full gap-4'>
-          <AvatarUpload />
-          <div className='flex flex-col justify-between py-4'>
-            <Text variant='p' as='p'>
-              Загрузите фото
-            </Text>
-            <Text variant='p-sm' as='p'>
-              JPG или PNG до 5МБ
-            </Text>
+
+        {percentage !== null && (
+          <div className='flex w-full flex-col gap-2'>
+            <div className='flex justify-between'>
+              <span className='font-inter text-secondary text-[12px]'>Результат</span>
+              <span
+                className={[
+                  'font-inter text-[12px] font-medium',
+                  passed ? 'text-accent' : 'text-destructive',
+                ].join(' ')}
+              >
+                {percentage}%
+              </span>
+            </div>
+            <div className='bg-border h-2 w-full rounded-full'>
+              <div
+                className={[
+                  'h-full rounded-full transition-all',
+                  passed ? 'bg-accent' : 'bg-destructive',
+                ].join(' ')}
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
           </div>
-        </div>
-        <div className='flex flex-col gap-4'>
-          <div className='flex gap-4'>
-            <Input label='Имя' placeholder='Введите ваше имя' />
-            <Input label='Фамилия' placeholder='Введите вашу фамилию' />
-          </div>
-          <div className='flex gap-4'>
-            <Input label='Имя' placeholder='Введите ваше имя' />
-            <Input label='Фамилия' placeholder='Введите вашу фамилию' />
-          </div>
-          <div className='flex flex-col gap-2'>
-            <label className='font-inter text-primary text-[12px] font-medium'>Пол</label>
-          </div>
-        </div>
-        <div className='flex flex-col gap-4 text-center'>
-          <Button onClick={onNext}>Завершить</Button>
-        </div>
+        )}
       </div>
-    </>
+
+      {passed ? (
+        <Button onClick={() => onNext()}>Перейти в приложение</Button>
+      ) : (
+        <Button variant='outline' onClick={onRetry}>Пройти тест заново</Button>
+      )}
+    </div>
   );
 }
