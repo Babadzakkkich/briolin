@@ -51,7 +51,9 @@ export function TestStep({ onNext }: StepProps<unknown>) {
   if (loading) {
     return (
       <div className='border-border flex w-120 items-center justify-center rounded-lg border bg-white px-8 py-16'>
-        <Text variant='p' as='p'>Загрузка теста...</Text>
+        <Text variant='p' as='p'>
+          Загрузка теста...
+        </Text>
       </div>
     );
   }
@@ -59,19 +61,24 @@ export function TestStep({ onNext }: StepProps<unknown>) {
   return (
     <div className='border-border flex w-120 flex-col gap-6 rounded-lg border bg-white px-8 py-8'>
       <div className='flex flex-col gap-2 text-center'>
-        <Text variant='h2' as='h2'>Тест совместимости</Text>
-        <Text variant='p-sm' as='p'>Вопрос {currentIndex + 1} из {questions.length}</Text>
+        <Text variant='h2' as='h2'>
+          Тест совместимости
+        </Text>
+        <Text variant='p-sm' as='p'>
+          Вопрос {currentIndex + 1} из {questions.length}
+        </Text>
       </div>
 
-      {/* прогресс-бар */}
-      <div className='h-1.5 w-full rounded-full bg-border'>
+      <div className='bg-border h-1.5 w-full rounded-full'>
         <div
-          className='h-full rounded-full bg-accent transition-all'
+          className='bg-accent h-full rounded-full transition-all'
           style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
         />
       </div>
 
-      <Text variant='p' as='p'>{current.text}</Text>
+      <Text variant='p' as='p'>
+        {current.text}
+      </Text>
 
       {current.question_type === 'multiple_choice' && (
         <div className='flex flex-col gap-2'>
@@ -151,10 +158,7 @@ export function TestStep({ onNext }: StepProps<unknown>) {
         </div>
       )}
 
-      <Button
-        onClick={handleNext}
-        disabled={selectedAnswer === null || submitting}
-      >
+      <Button onClick={handleNext} disabled={selectedAnswer === null || submitting}>
         {isLast ? 'Завершить' : 'Далее'}
       </Button>
     </div>

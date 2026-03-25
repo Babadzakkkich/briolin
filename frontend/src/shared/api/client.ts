@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { useAuthStore } from '@/shared/stores/authStore';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
@@ -8,7 +8,6 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
-// Отдельный экземпляр для refresh — без интерцепторов, без токена
 const refreshClient = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
@@ -35,6 +34,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
+    console.log(original);
 
     const isAuthEndpoint =
       original?.url?.includes('/api/v1/auth/login') ||
