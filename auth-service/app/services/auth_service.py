@@ -1,5 +1,7 @@
 import uuid
 import asyncio
+import json
+import aio_pika
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Dict, Any, List, Optional
@@ -17,6 +19,7 @@ from app.core.exceptions import (
     ValidationException,
     DatabaseException
 )
+from app.core.config import settings
 from app.core.logger import logger
 from shared.saga.worker import SagaWorker
 from shared.saga.models import SagaInstance, SagaStatus
@@ -42,6 +45,56 @@ class AuthService:
         self.kc = kc_client
         self.event_service = get_event_service()
         self.saga_worker = saga_worker
+        self._email_channel = None
+        self._email_connection = None
+
+    # ========== ОТПРАВКА EMAIL ==========
+    
+    async def _send_email_notification(self, email_type: str, to_email: str, **kwargs):
+        """Отправить уведомление в email-сервис через RabbitMQ"""
+        try:
+            if not self._email_channel:
+                connection = await aio_pika.connect_robust(
+                    f"amqp://{settings.rabbitmq.user}:{settings.rabbitmq.password}@{settings.rabbitmq.host}:{settings.rabbitmq.port}/"
+                )
+                self._email_channel = await connection.channel()
+                await self._email_channel.declare_queue("email.notifications", durable=True)
+                self._email_connection = connection
+            
+            message = {
+                "type": email_type,
+                "to": to_email,
+                **kwargs
+            }
+            
+            await self._email_channel.default_exchange.publish(
+                aio_pika.Message(
+                    body=json.dumps(message).encode(),
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                ),
+                routing_key="email.notifications"
+            )
+            logger.info(f"Email notification queued: {email_type} -> {to_email}")
+            
+        except Exception as e:
+            logger.error(f"Failed to queue email notification: {e}")
+    
+    async def send_welcome_email(self, email: str, username: str):
+        """Отправить приветственное письмо после регистрации"""
+        await self._send_email_notification(
+            "welcome",
+            email,
+            name=username
+        )
+    
+    async def send_login_notification(self, email: str, username: str):
+        """Отправить уведомление о входе"""
+        await self._send_email_notification(
+            "login",
+            email,
+            name=username,
+            timestamp=datetime.utcnow().isoformat()
+        )
 
     # ========== РЕГИСТРАЦИЯ ==========
     
@@ -502,6 +555,10 @@ class AuthService:
                 if not user:
                     logger.error(f"User {keycloak_id} exists in Keycloak but not in auth-db")
                     raise DatabaseException("User account incomplete. Please contact support.")
+                
+                # ========== ОТПРАВКА EMAIL О ВХОДЕ ==========
+                await self.send_login_notification(user.email, user_login.username)
+                # ===========================================
             
             return token_response
             

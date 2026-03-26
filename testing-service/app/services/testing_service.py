@@ -1,5 +1,7 @@
 import uuid
 import json
+import aio_pika
+import httpx
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +35,86 @@ class TestingService:
         self.test_generator = get_test_generator()
         self.scoring_service = get_scoring_service()
         self.event_service = get_testing_event_service()
+        self._email_channel = None
+        self._email_connection = None
+    
+    # ========== ОТПРАВКА EMAIL ==========
+    
+    async def _send_email_notification(self, email_type: str, to_email: str, **kwargs):
+        """Отправить уведомление в email-сервис через RabbitMQ"""
+        try:
+            if not self._email_channel:
+                connection = await aio_pika.connect_robust(
+                    f"amqp://{settings.rabbitmq.user}:{settings.rabbitmq.password}@{settings.rabbitmq.host}:{settings.rabbitmq.port}/"
+                )
+                self._email_channel = await connection.channel()
+                await self._email_channel.declare_queue("email.notifications", durable=True)
+                self._email_connection = connection
+            
+            message = {
+                "type": email_type,
+                "to": to_email,
+                **kwargs
+            }
+            
+            await self._email_channel.default_exchange.publish(
+                aio_pika.Message(
+                    body=json.dumps(message).encode(),
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                ),
+                routing_key="email.notifications"
+            )
+            logger.info(f"Email notification queued: {email_type} -> {to_email}")
+            
+        except Exception as e:
+            logger.error(f"Failed to queue email notification: {e}")
+    
+    async def send_test_results_email(self, email: str, name: str, test_name: str, score: int, total: int):
+        """Отправить письмо с результатами теста"""
+        percentage = round((score / total) * 100, 1) if total > 0 else 0
+        
+        await self._send_email_notification(
+            "test_complete",
+            email,
+            name=name,
+            test_name=test_name,
+            score=score,
+            total=total,
+            percentage=percentage
+        )
+    
+    async def _get_user_info(self, keycloak_id: str) -> Optional[Dict[str, Any]]:
+        """Получить информацию о пользователе из auth-service"""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"http://auth-service:8001/api/v1/users/{keycloak_id}",
+                    timeout=5.0
+                )
+                if response.status_code == 200:
+                    user_data = response.json()
+                    return {
+                        "email": user_data.get("email"),
+                        "name": user_data.get("username", "User"),
+                        "keycloak_id": keycloak_id
+                    }
+                else:
+                    logger.warning(f"Auth-service returned {response.status_code} for user {keycloak_id}")
+        except httpx.TimeoutException:
+            logger.error(f"Timeout getting user info for {keycloak_id}")
+        except httpx.ConnectError:
+            logger.error(f"Connection error to auth-service for user {keycloak_id}")
+        except Exception as e:
+            logger.error(f"Failed to get user info from auth-service: {e}")
+        
+        # Fallback на заглушку
+        logger.warning(f"Using fallback email for user {keycloak_id}")
+        return {
+            "email": f"user_{keycloak_id[:8]}@example.com",
+            "name": "User"
+        }
+    
+    # ========== ОСНОВНЫЕ МЕТОДЫ ==========
     
     async def start_new_test(self, keycloak_id: str) -> Dict[str, Any]:
         """Начало нового теста для пользователя"""
@@ -150,7 +232,9 @@ class TestingService:
     async def complete_test(
         self,
         session_id: uuid.UUID,
-        keycloak_id: str
+        keycloak_id: str,
+        user_email: Optional[str] = None,
+        user_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """Завершение теста и подсчет результатов"""
         
@@ -205,6 +289,36 @@ class TestingService:
         await self.db.commit()
         await self.db.refresh(test_session)
         await self.db.refresh(test_result)
+        
+        # ========== ОТПРАВКА EMAIL С РЕЗУЛЬТАТАМИ ТЕСТА ==========
+        try:
+            # Сначала пытаемся использовать email из токена
+            if user_email:
+                await self.send_test_results_email(
+                    email=user_email,
+                    name=user_name or "User",
+                    test_name="Dating Readiness Test",
+                    score=test_result.total_score,
+                    total=test_result.max_possible_score
+                )
+                logger.info(f"Test results email sent to {user_email} from token")
+            else:
+                # Если в токене нет email, делаем запрос к auth-service
+                user_info = await self._get_user_info(keycloak_id)
+                if user_info and user_info.get("email"):
+                    await self.send_test_results_email(
+                        email=user_info["email"],
+                        name=user_info.get("name", "User"),
+                        test_name="Dating Readiness Test",
+                        score=test_result.total_score,
+                        total=test_result.max_possible_score
+                    )
+                    logger.info(f"Test results email sent to {user_info['email']} from auth-service")
+                else:
+                    logger.warning(f"No email found for user {keycloak_id}, skipping email")
+        except Exception as e:
+            logger.error(f"Failed to send test results email: {e}")
+        # =========================================================
         
         # Публикуем событие о завершении теста
         try:
@@ -322,6 +436,8 @@ class TestingService:
             "average_score": average_score,
             "last_test_date": last_test_date.isoformat() if last_test_date else None
         }
+    
+    # ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
     
     async def _get_test_session_with_result(
         self,

@@ -94,15 +94,23 @@ async def complete_test(
     session_id: uuid.UUID,
     complete_data: TestCompleteRequest = Body(...),
     service: TestingService = Depends(get_testing_service),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)  # Это ваша функция
 ):
     """Завершить тест и получить результаты"""
     try:
         keycloak_id = current_user.get("keycloak_id")
+        user_email = current_user.get("email")           # email из токена
+        user_name = current_user.get("username") or current_user.get("name") or "User"
+        
         if not keycloak_id:
             raise HTTPException(status_code=401, detail="User not authenticated")
         
-        result = await service.complete_test(session_id, keycloak_id)
+        result = await service.complete_test(
+            session_id=session_id,
+            keycloak_id=keycloak_id,
+            user_email=user_email,
+            user_name=user_name
+        )
         return result
         
     except TestingException as e:

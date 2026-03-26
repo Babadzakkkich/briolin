@@ -1,19 +1,25 @@
 import uuid
+import json
+import aio_pika
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from app.services.keycloak_client import KeycloakClient
 from app.database.session import async_session_factory
 from app.database.models import User
+from app.core.config import settings
 from app.core.logger import logger
 from sqlalchemy import select, and_
 from shared.saga.models import SagaOutbox, SagaStatus
+
 
 class AuthSagaHandlers:
     """Обработчики шагов SAGA для auth-service"""
     
     def __init__(self):
         self.kc_client = KeycloakClient()
+        self._email_channel = None
+        self._email_connection = None
     
     async def _get_step_result(self, saga_id: str, step_name: str) -> Dict[str, Any]:
         """Вспомогательный метод для получения результата шага"""
@@ -26,6 +32,37 @@ class AuthSagaHandlers:
             if instance and instance.step_results:
                 return instance.step_results.get(step_name, {})
             return {}
+    
+    # ========== ОТПРАВКА EMAIL ==========
+    
+    async def _send_email_notification(self, email_type: str, to_email: str, **kwargs):
+        """Отправить уведомление в email-сервис через RabbitMQ"""
+        try:
+            if not self._email_channel:
+                connection = await aio_pika.connect_robust(
+                    f"amqp://{settings.rabbitmq.user}:{settings.rabbitmq.password}@{settings.rabbitmq.host}:{settings.rabbitmq.port}/"
+                )
+                self._email_channel = await connection.channel()
+                await self._email_channel.declare_queue("email.notifications", durable=True)
+                self._email_connection = connection
+            
+            message = {
+                "type": email_type,
+                "to": to_email,
+                **kwargs
+            }
+            
+            await self._email_channel.default_exchange.publish(
+                aio_pika.Message(
+                    body=json.dumps(message).encode(),
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                ),
+                routing_key="email.notifications"
+            )
+            logger.info(f"Email notification queued: {email_type} -> {to_email}")
+            
+        except Exception as e:
+            logger.error(f"Failed to queue email notification: {e}")
     
     # ========== ОСНОВНЫЕ ШАГИ ==========
     
@@ -104,6 +141,18 @@ class AuthSagaHandlers:
             await session.refresh(new_user)
             
             logger.info(f"[SAGA {saga_id}] User created in auth-db: {new_user.id}")
+            
+            # ========== ОТПРАВКА ПРИВЕТСТВЕННОГО EMAIL ==========
+            try:
+                await self._send_email_notification(
+                    "welcome",
+                    new_user.email,
+                    name=payload.get("username", "User")
+                )
+                logger.info(f"[SAGA {saga_id}] Welcome email queued for {new_user.email}")
+            except Exception as e:
+                logger.error(f"[SAGA {saga_id}] Failed to queue welcome email: {e}")
+            # ===================================================
             
             return {
                 "status": "success",
