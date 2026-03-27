@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useAuthStore } from '@/shared/stores/authStore';
-import type { WsMessage } from './types';
+import { useAuthStore } from '@/entities/session';
+import type { WsMessage } from '@/entities/message';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 const WS_BASE = API_URL.replace(/^https?/, (m: string) => (m === 'https' ? 'wss' : 'ws'));

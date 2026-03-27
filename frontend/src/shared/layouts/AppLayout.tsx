@@ -2,7 +2,7 @@ import { Link, Outlet } from 'react-router-dom';
 import { LogoIcon } from '@/shared/icons/Logo';
 import { Button } from '@/shared/uikit/Button';
 import { ToastContainer } from '@/shared/toast/ToastContainer';
-import { useAuthStore } from '@/shared/stores/authStore';
+import { useAuthStore } from '@/entities/session';
 import { useAuth } from '@/features/auth/useAuth';
 import { LogOutIcon } from 'lucide-react';
 

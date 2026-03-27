@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/shared/uikit/Button';
 import { Text } from '@/shared/uikit/Text';
-import { useAuthStore } from '@/shared/stores/authStore';
+import { useAuthStore } from '@/entities/session';
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 

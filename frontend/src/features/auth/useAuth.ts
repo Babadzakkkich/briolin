@@ -1,9 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/shared/stores/authStore';
-import { useProfileStore } from '@/shared/stores/profileStore';
-import { authApi } from './api';
-import { profileApi } from '@/features/profile/api';
-import { testingApi } from '@/features/testing/api';
+import { useAuthStore, sessionApi } from '@/entities/session';
+import { useProfileStore, profileApi } from '@/entities/profile';
+import { testSessionApi } from '@/entities/test-session';
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -11,7 +9,7 @@ export function useAuth() {
   const { setProfile, clear: clearProfile } = useProfileStore();
 
   const login = async (username: string, password: string) => {
-    const { data } = await authApi.login({ username, password });
+    const { data } = await sessionApi.login({ username, password });
     setAccessToken(data.access_token);
 
     try {
@@ -23,7 +21,7 @@ export function useAuth() {
     }
 
     try {
-      const { data } = await testingApi.getHistory();
+      const { data } = await testSessionApi.getHistory();
       const hasPassed = data.history.some((item) => item.passed);
       if (hasPassed) {
         navigate('/dashboard');
@@ -37,7 +35,7 @@ export function useAuth() {
 
   const register = async (email: string, username: string, password: string) => {
     try {
-      await authApi.register({ email, username, password });
+      await sessionApi.register({ email, username, password });
     } catch (error) {
       console.error(error);
       return;
@@ -47,7 +45,7 @@ export function useAuth() {
 
   const logout = async () => {
     try {
-      await authApi.logout();
+      await sessionApi.logout();
     } finally {
       clearAuth();
       clearProfile();

@@ -1,13 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-
-interface JwtPayload {
-  sub?: string;
-  preferred_username?: string;
-  email?: string;
-  given_name?: string;
-  family_name?: string;
-}
+import type { JwtPayload } from './types';
 
 const decodeJwt = (token: string): JwtPayload | null => {
   try {

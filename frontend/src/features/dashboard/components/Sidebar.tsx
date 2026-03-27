@@ -1,17 +1,18 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { LogoIcon } from '@/shared/icons/Logo';
-import { authApi } from '@/features/auth/api';
-import { useAuthStore } from '@/shared/stores/authStore';
+import { sessionApi, useAuthStore } from '@/entities/session';
 import {
   Briefcase,
   Dice5,
   LogOut,
   MessageCircle,
-  Search,
+  SlidersHorizontal,
+  Target,
   User,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
+import { useProfileStore } from '@/entities/profile';
 
 export function SidebarItem({
   to,
@@ -43,13 +44,14 @@ export function SidebarItem({
 }
 
 function UserCard() {
-  const username = useAuthStore((s) => s.username);
+  const firstName = useProfileStore((p) => p.firstName);
+  const lastName = useProfileStore((p) => p.lastName);
   const clear = useAuthStore((s) => s.clear);
   const navigate = useNavigate();
-  const initials = username ? username.slice(0, 2).toUpperCase() : '?';
+  const initials = firstName && lastName ? `${firstName[0]}${lastName[0]}`.toUpperCase() : '?';
 
   const handleLogout = async () => {
-    await authApi.logout().catch(() => {});
+    await sessionApi.logout().catch(() => {});
     clear();
     navigate('/login');
   };
@@ -59,7 +61,9 @@ function UserCard() {
       <div className='bg-accent/15 text-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold'>
         {initials}
       </div>
-      <span className='text-primary truncate text-sm font-medium'>{username ?? '—'}</span>
+      <span className='text-primary truncate text-sm font-medium'>
+        {firstName && lastName ? `${firstName} ${lastName}` : '—'}
+      </span>
       <button
         onClick={handleLogout}
         className='text-secondary hover:text-primary hover:bg-muted/15 ml-auto cursor-pointer rounded-lg p-1.5 transition-colors duration-75'
@@ -73,7 +77,7 @@ function UserCard() {
 
 export function Sidebar() {
   return (
-    <nav className='border-border flex w-60 flex-col gap-10 border-r bg-white pt-10 pb-4'>
+    <nav className='border-border flex h-screen w-70 shrink-0 flex-col gap-10 border-r bg-white pt-10 pb-4'>
       <Link to='/'>
         <div className='flex items-center justify-center gap-2'>
           <LogoIcon />
@@ -90,8 +94,11 @@ export function Sidebar() {
         <SidebarItem to='/dashboard/services' icon={Briefcase}>
           Услуги
         </SidebarItem>
-        <SidebarItem to='/dashboard/search' icon={Search}>
-          Поиск
+        <SidebarItem to='/dashboard/search/classic' icon={SlidersHorizontal}>
+          Классический поиск
+        </SidebarItem>
+        <SidebarItem to='/dashboard/search/targeted' icon={Target}>
+          Таргетированный поиск
         </SidebarItem>
         <SidebarItem to='/dashboard/cupidon' icon={Zap}>
           Купидон

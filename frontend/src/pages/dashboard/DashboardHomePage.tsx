@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useProfileStore } from '@/shared/stores/profileStore';
+import { useProfileStore } from '@/entities/profile';
 import {
   Briefcase,
   Dice5,

@@ -14,7 +14,8 @@ import { ProfilePage } from '@/pages/dashboard/ProfilePage';
 import { MessagesPage } from '@/pages/dashboard/MessagesPage';
 import { ServicesPage } from '@/pages/dashboard/ServicesPage';
 import { CupidonPage } from '@/pages/dashboard/CupidonPage';
-import { SearchPage } from '@/pages/dashboard/SearchPage';
+import { ClassicSearchPage } from '@/pages/dashboard/ClassicSearchPage';
+import { TargetedSearchPage } from '@/pages/dashboard/TargetedSearchPage';
 import { FortunePage } from '@/pages/dashboard/FortunePage';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -37,7 +38,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path='profile' element={<ProfilePage />} />
             <Route path='messages' element={<MessagesPage />} />
             <Route path='services' element={<ServicesPage />} />
-            <Route path='search' element={<SearchPage />} />
+            <Route path='search/classic' element={<ClassicSearchPage />} />
+            <Route path='search/targeted' element={<TargetedSearchPage />} />
             <Route path='cupidon' element={<CupidonPage />} />
             <Route path='fortune' element={<FortunePage />} />
           </Route>

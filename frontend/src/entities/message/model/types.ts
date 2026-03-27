@@ -1,16 +1,5 @@
-export type ChatType = 'DIRECT' | 'GROUP';
-export type ChatStatus = 'ACTIVE' | 'ARCHIVED' | 'BLOCKED';
 export type MessageType = 'text' | 'image' | 'file' | 'audio' | 'video';
 export type MessageStatus = 'SENT' | 'DELIVERED' | 'FAILED';
-
-export interface ChatParticipant {
-  keycloak_id: string;
-  display_name: string;
-  username: string;
-  avatar_url?: string;
-  is_admin: boolean;
-  joined_at: string;
-}
 
 export interface MessageReadStatus {
   keycloak_id: string;
@@ -35,27 +24,6 @@ export interface Message {
   read_by: MessageReadStatus[];
   read_count: number;
   is_read_by_me: boolean;
-}
-
-export interface Chat {
-  id: string;
-  type: ChatType;
-  status: ChatStatus;
-  name?: string;
-  description?: string;
-  avatar_url?: string;
-  participants: ChatParticipant[];
-  created_at: string;
-  updated_at: string;
-  last_message?: Message;
-  unread_count: number;
-}
-
-export interface ChatListResponse {
-  chats: Chat[];
-  total: number;
-  page: number;
-  size: number;
 }
 
 export interface MessageListResponse {

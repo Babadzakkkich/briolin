@@ -1,46 +1,50 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 
-from app.core.config import settings
-from app.core.logger import logger
-from app.database.session import dispose_engine, engine
-from app.database.models import Base
-from app.core.exceptions import TestingException
-from app.core.exception_handlers import testing_exception_handler, global_exception_handler
 from app.api.v1 import router as api_router
-from app.services.rabbitmq import rabbitmq_publisher, rabbitmq_consumer
+from app.core.config import settings
+from app.core.exception_handlers import (
+    global_exception_handler,
+    testing_exception_handler,
+)
+from app.core.exceptions import TestingException
+from app.core.logger import logger
+from app.database.models import Base
+from app.database.session import dispose_engine, engine
+from app.services.rabbitmq import rabbitmq_consumer, rabbitmq_publisher
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Testing Service...")
-    
+
     # Инициализация БД
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     # Подключение к RabbitMQ
     try:
         await rabbitmq_publisher.connect()
         await rabbitmq_consumer.connect()
-        
-        
+
+
         logger.info("Testing Service started successfully with RabbitMQ")
     except Exception as e:
         logger.error(f"Failed to connect to RabbitMQ: {e}")
-    
+
     yield
-    
+
     logger.info("Shutting down Testing Service...")
-    
+
     # Отключение от RabbitMQ
     try:
         await rabbitmq_consumer.disconnect()
         await rabbitmq_publisher.disconnect()
     except Exception as e:
         logger.error(f"Error disconnecting from RabbitMQ: {e}")
-    
+
     # Закрытие соединений с БД
     await dispose_engine()
 
@@ -56,7 +60,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost", "http://127.0.0.1"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

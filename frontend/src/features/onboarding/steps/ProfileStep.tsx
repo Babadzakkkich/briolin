@@ -1,4 +1,4 @@
-import { AvatarUpload } from '@/features/AvatarUpload';
+import { AvatarUpload } from '@/entities/profile';
 import { Button } from '@/shared/uikit/Button';
 import { Input } from '@/shared/uikit/Input';
 import { RadioCardGroup } from '@/shared/uikit/RadioCardGroup';
@@ -6,7 +6,7 @@ import { Text } from '@/shared/uikit/Text';
 import { useEffect, useState } from 'react';
 import type { StepProps } from '../OnboardingPage';
 import { toast } from '@/shared/toast/toast';
-import { profileApi } from '@/features/profile/api';
+import { profileApi } from '@/entities/profile';
 import { DatePickerField } from '@/shared/uikit/DatePicker';
 
 const GENDER_OPTIONS = ['Мужской', 'Женский'];

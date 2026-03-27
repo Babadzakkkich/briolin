@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/shared/uikit/Button';
 import { Text } from '@/shared/uikit/Text';
-import { testingApi, type Question } from '@/features/testing/api';
+import { testSessionApi, type Question } from '@/entities/test-session';
 import { toast } from '@/shared/toast/toast';
 import type { StepProps } from '../OnboardingPage';
 
@@ -14,7 +14,7 @@ export function TestStep({ onNext }: StepProps<unknown>) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    testingApi
+    testSessionApi
       .start()
       .then(({ data }) => {
         setSessionId(data.session_id);
@@ -32,10 +32,10 @@ export function TestStep({ onNext }: StepProps<unknown>) {
 
     setSubmitting(true);
     try {
-      await testingApi.submitAnswer(sessionId, current.id, selectedAnswer);
+      await testSessionApi.submitAnswer(sessionId, current.id, selectedAnswer);
 
       if (isLast) {
-        const { data: result } = await testingApi.complete(sessionId);
+        const { data: result } = await testSessionApi.complete(sessionId);
         onNext(result.results);
       } else {
         setCurrentIndex((i) => i + 1);

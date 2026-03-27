@@ -1,5 +1,3 @@
-import { apiClient } from '@/shared/api/client';
-
 export interface AnswerOption {
   id: string;
   text: string;
@@ -32,14 +30,16 @@ export interface AnswerSubmitResponse {
   total_questions: number;
 }
 
+export interface TestResults {
+  total_score: number;
+  max_possible_score: number;
+  percentage: number;
+  passed: boolean;
+}
+
 export interface TestCompleteResponse {
   session_id: string;
-  results: {
-    total_score: number;
-    max_possible_score: number;
-    percentage: number;
-    passed: boolean;
-  };
+  results: TestResults;
 }
 
 export interface TestHistoryItem {
@@ -55,21 +55,3 @@ export interface TestHistory {
   history: TestHistoryItem[];
   total: number;
 }
-
-export const testingApi = {
-  getHistory: () =>
-    apiClient.get<TestHistory>('/api/v1/tests/history'),
-
-
-  start: () =>
-    apiClient.post<TestStartResponse>('/api/v1/tests/start', {}),
-
-  submitAnswer: (sessionId: string, questionId: string, answer: string | number | boolean) =>
-    apiClient.post<AnswerSubmitResponse>(
-      `/api/v1/tests/${sessionId}/answers/${questionId}`,
-      { answer },
-    ),
-
-  complete: (sessionId: string) =>
-    apiClient.post<TestCompleteResponse>(`/api/v1/tests/${sessionId}/complete`, {}),
-};

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAuthStore } from '@/shared/stores/authStore';
-import { authApi } from './api';
+import { useAuthStore, sessionApi } from '@/entities/session';
 
 export function AuthGuard() {
   const { accessToken, setAccessToken } = useAuthStore();
@@ -9,7 +8,7 @@ export function AuthGuard() {
 
   useEffect(() => {
     if (accessToken) return;
-    authApi
+    sessionApi
       .refresh()
       .then(({ data }) => setAccessToken(data.access_token))
       .catch(() => {})

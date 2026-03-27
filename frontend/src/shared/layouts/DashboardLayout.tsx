@@ -5,9 +5,11 @@ import { ToastContainer } from '@/shared/toast/ToastContainer';
 export function DashboardLayout() {
   return (
     <>
-      <div className='bg-surface flex min-h-screen'>
+      <div className='bg-surface flex h-screen overflow-hidden'>
         <Sidebar />
-        <Outlet />
+        <div className='flex flex-1 flex-col overflow-hidden'>
+          <Outlet />
+        </div>
       </div>
       <ToastContainer />
     </>
