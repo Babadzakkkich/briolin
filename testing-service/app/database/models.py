@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, timedelta
-from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey, Float, JSON
+from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey, Float, JSON, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -35,6 +35,21 @@ class TestSession(Base):
             return False
         expiry_time = self.started_at + timedelta(minutes=self.time_limit_minutes)
         return datetime.utcnow() > expiry_time
+    
+    def get_time_left_seconds(self) -> int:
+        """Возвращает количество оставшихся секунд"""
+        if not self.started_at:
+            return self.time_limit_minutes * 60
+        expiry_time = self.started_at + timedelta(minutes=self.time_limit_minutes)
+        time_left = (expiry_time - datetime.utcnow()).total_seconds()
+        return max(0, int(time_left))
+
+Index(
+    'ix_unique_active_session',
+    TestSession.keycloak_id,
+    postgresql_where=(TestSession.status == TestStatus.IN_PROGRESS),
+    unique=True
+)
 
 class TestResult(Base):
     __tablename__ = "test_results"

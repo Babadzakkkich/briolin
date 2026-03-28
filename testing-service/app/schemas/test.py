@@ -27,6 +27,7 @@ class TestStartResponse(BaseModel):
     questions: List[Dict[str, Any]]
     started_at: datetime
     expires_at: datetime
+    time_left_seconds: int
 
 class AnswerSubmitRequest(BaseModel):
     answer: Union[str, int, bool, Dict[str, Any]] = Field(...)
@@ -99,4 +100,34 @@ class AdminQuestionResponse(BaseModel):
     updated_at: datetime
 
 class ErrorResponse(BaseModel):
-    detail: str
+    detail: Union[str, Dict[str, Any]]
+
+
+class CurrentTestQuestion(BaseModel):
+    id: str
+    text: str
+    question_type: QuestionType
+    difficulty: str
+    category: str
+    tags: List[str]
+    options: List[Dict[str, Any]]
+    min_value: Optional[int] = None
+    max_value: Optional[int] = None
+    labels: Optional[Dict[int, str]] = None
+    answered: bool = Field(False, description="Был ли дан ответ на этот вопрос")
+    saved_answer: Optional[Any] = Field(None, description="Сохраненный ответ пользователя")
+
+
+class CurrentTestResponse(BaseModel):
+    """Ответ с текущим тестом пользователя"""
+    session_id: str
+    test_name: str
+    description: str
+    status: str
+    started_at: datetime
+    expires_at: datetime
+    time_left_seconds: int
+    time_limit_minutes: int
+    total_questions: int
+    answered_questions: int
+    questions: List[CurrentTestQuestion]

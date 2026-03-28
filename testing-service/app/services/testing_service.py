@@ -3,10 +3,10 @@ import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.logger import logger
@@ -15,7 +15,8 @@ from app.core.exceptions import (
     TestAlreadyCompletedException,
     DailyLimitExceededException,
     TestTimeLimitExceededException,
-    DatabaseException
+    DatabaseException,
+    ActiveTestSessionExistsException
 )
 from app.database.models import TestSession, TestResult, TestStatus
 from app.database.session import mongo
@@ -34,8 +35,104 @@ class TestingService:
         self.scoring_service = get_scoring_service()
         self.event_service = get_testing_event_service()
     
+    async def _get_active_session(self, keycloak_id: str) -> Optional[TestSession]:
+        """Получение активной сессии теста для пользователя"""
+        query = select(TestSession).options(
+            selectinload(TestSession.result)
+        ).where(
+            and_(
+                TestSession.keycloak_id == keycloak_id,
+                TestSession.status == TestStatus.IN_PROGRESS
+            )
+        )
+        result = await self.db.execute(query)
+        session = result.scalar_one_or_none()
+        
+        # Проверяем не истекла ли сессия
+        if session and session.is_expired():
+            session.status = TestStatus.EXPIRED
+            await self.db.commit()
+            return None
+        
+        return session
+    
+    async def get_current_test(self, keycloak_id: str) -> Optional[Dict[str, Any]]:
+        """Получение текущего активного теста пользователя"""
+        active_session = await self._get_active_session(keycloak_id)
+        
+        if not active_session:
+            return None
+        
+        # Получаем вопросы для отображения
+        questions = await self.test_generator.get_questions_by_ids(
+            active_session.questions_order
+        )
+        
+        # СОХРАНЯЕМ ПОРЯДОК - создаем словарь для быстрого доступа по ID
+        questions_dict = {q.id: q for q in questions}
+        
+        # Формируем вопросы для клиента в правильном порядке из questions_order
+        questions_for_client = []
+        for question_id in active_session.questions_order:
+            question = questions_dict.get(question_id)
+            if not question:
+                logger.warning(f"Question {question_id} not found in database")
+                continue
+                
+            question_dict = question.dict()
+            
+            # Убираем чувствительную информацию
+            if "options" in question_dict:
+                for option in question_dict["options"]:
+                    option.pop("score", None)
+                    option.pop("is_correct", None)
+            
+            # Добавляем информацию о том, отвечен ли вопрос
+            question_dict["answered"] = question.id in (active_session.user_answers or {})
+            
+            # Добавляем сохраненный ответ, если есть
+            if active_session.user_answers and question.id in active_session.user_answers:
+                question_dict["saved_answer"] = active_session.user_answers[question.id]
+            
+            questions_for_client.append(question_dict)
+        
+        # Получаем шаблон теста для названия
+        template = await self.test_generator.get_active_test_template()
+        
+        status_value = active_session.status
+        if hasattr(status_value, 'value'):
+            status_value = status_value.value
+        elif isinstance(status_value, str):
+            status_value = status_value
+        else:
+            status_value = str(status_value)
+        
+        return {
+            "session_id": str(active_session.id),
+            "test_name": template.name,
+            "description": template.description,
+            "status": status_value,
+            "started_at": active_session.started_at.isoformat(),
+            "expires_at": (
+                active_session.started_at + timedelta(minutes=active_session.time_limit_minutes)
+            ).isoformat(),
+            "time_left_seconds": active_session.get_time_left_seconds(),
+            "time_limit_minutes": active_session.time_limit_minutes,
+            "total_questions": len(active_session.questions_order),
+            "answered_questions": len(active_session.user_answers or {}),
+            "questions": questions_for_client
+        }
+    
     async def start_new_test(self, keycloak_id: str) -> Dict[str, Any]:
         """Начало нового теста для пользователя"""
+        
+        # Проверяем наличие активной сессии
+        active_session = await self._get_active_session(keycloak_id)
+        if active_session:
+            raise ActiveTestSessionExistsException(
+                f"Active test session already exists: {active_session.id}",
+                session_id=str(active_session.id)
+            )
         
         # Проверяем дневной лимит
         daily_attempts = await self._get_daily_attempts(keycloak_id)
@@ -50,34 +147,58 @@ class TestingService:
         # Генерируем вопросы для теста
         questions = await self.test_generator.generate_test_questions(template)
         
+        # Сохраняем порядок вопросов
+        questions_order = [q.id for q in questions]
+        
         # Создаем сессию теста
         test_session = TestSession(
             keycloak_id=keycloak_id,
             test_template_id=template.id,
             status=TestStatus.IN_PROGRESS,
             time_limit_minutes=template.time_limit_minutes,
-            questions_order=[q.id for q in questions],
+            questions_order=questions_order,  # Сохраняем порядок
             user_answers={}
         )
         
-        self.db.add(test_session)
-        await self.db.commit()
-        await self.db.refresh(test_session)
+        try:
+            self.db.add(test_session)
+            await self.db.commit()
+            await self.db.refresh(test_session)
+        except IntegrityError as e:
+            await self.db.rollback()
+            # Если нарушено уникальное ограничение - значит активная сессия уже существует
+            if "unique_active_session" in str(e):
+                active = await self._get_active_session(keycloak_id)
+                if active:
+                    raise ActiveTestSessionExistsException(
+                        f"Active test session already exists: {active.id}",
+                        session_id=str(active.id)
+                    )
+            raise
         
         logger.info(f"Test session started for user {keycloak_id}: {test_session.id}")
         
-        # Формируем вопросы для отправки клиенту (без баллов)
+        # Публикуем событие начала теста
+        try:
+            await self.event_service.publish_test_started(
+                keycloak_id=keycloak_id,
+                session_id=str(test_session.id),
+                test_template_id=template.id
+            )
+        except Exception as e:
+            logger.error(f"Failed to publish test started event: {e}")
+        
+        # Формируем вопросы для отправки клиенту (без баллов) в правильном порядке
         questions_for_client = []
         for question in questions:
             question_dict = question.dict()
             
             if "options" in question_dict:
                 for option in question_dict["options"]:
-                    if "score" in option:
-                        del option["score"]
-                    if "is_correct" in option:
-                        del option["is_correct"]
+                    option.pop("score", None)
+                    option.pop("is_correct", None)
             
+            question_dict["answered"] = False
             questions_for_client.append(question_dict)
         
         return {
@@ -89,7 +210,8 @@ class TestingService:
             "started_at": test_session.started_at.isoformat(),
             "expires_at": (
                 test_session.started_at + timedelta(minutes=template.time_limit_minutes)
-            ).isoformat()
+            ).isoformat(),
+            "time_left_seconds": test_session.get_time_left_seconds()
         }
     
     async def submit_answer(

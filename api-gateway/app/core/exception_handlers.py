@@ -3,8 +3,9 @@ from fastapi.responses import JSONResponse
 from app.core.exceptions import GatewayException
 from app.core.logger import logger
 
+
 async def gateway_exception_handler(request: Request, exc: GatewayException):
-    """Обработчик для всех GatewayException"""
+    """Обработчик для GatewayException"""
     if exc.status_code >= 500:
         logger.error(f"Gateway exception: {exc.detail}", exc_info=True)
     else:
@@ -15,9 +16,9 @@ async def gateway_exception_handler(request: Request, exc: GatewayException):
         content={"detail": exc.detail}
     )
 
+
 async def global_exception_handler(request: Request, exc: Exception):
     """Глобальный обработчик для всех исключений"""
-    # Если это уже GatewayException, пропускаем
     if isinstance(exc, GatewayException):
         return await gateway_exception_handler(request, exc)
     

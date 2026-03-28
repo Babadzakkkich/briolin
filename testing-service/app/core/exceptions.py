@@ -44,3 +44,9 @@ class MongoDBException(TestingException):
     """Ошибка MongoDB"""
     def __init__(self, message: str = "MongoDB error"):
         super().__init__(message=message, status_code=500)
+
+class ActiveTestSessionExistsException(TestingException):
+    """Активная сессия теста уже существует"""
+    def __init__(self, message: str = "Active test session already exists", session_id: str = None):
+        self.session_id = session_id
+        super().__init__(message=message, status_code=409)
