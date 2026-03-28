@@ -31,7 +31,13 @@ class UserResponse(BaseModel):
     keycloak_id: str
     email: EmailStr
     is_active: bool
-    
+
+class AsyncOperationResponse(BaseModel):
+    status: str = Field(..., description="Статус операции (accepted)")
+    message: str = Field(..., description="Сообщение о статусе")
+    saga_id: str = Field(..., description="ID саги для отслеживания")
+    check_status_url: str = Field(..., description="URL для проверки статуса")
+
 class SagaStepInfo(BaseModel):
     name: str
     status: str
@@ -48,4 +54,6 @@ class SagaStatusResponse(BaseModel):
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
     steps: List[SagaStepInfo] = []
-    result: Optional[Dict[str, Any]] = None
+    step_results: Optional[Dict[str, Any]] = None
+    profile: Optional[Dict[str, Any]] = None
+    user: Optional[Dict[str, Any]] = None

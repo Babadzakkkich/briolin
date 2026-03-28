@@ -7,12 +7,28 @@ from app.schemas.user import (
     UserPublic, 
     UserList, 
     UserRolesUpdate, 
-    UserMeResponse
+    UserMeResponse,
+    SagaStatusResponse,
+    AsyncOperationResponse
 )
 from shared.schemas.shared import UserRole
 
 router = APIRouter(prefix="/users", tags=["Users"])
 security = HTTPBearer(auto_error=False)
+
+@router.get("/saga/{saga_id}/status", response_model=SagaStatusResponse)
+async def get_saga_status(
+    saga_id: str,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Получение статуса операции по ID саги"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
 
 @router.get("/", response_model=UserList)
 async def list_users(
@@ -84,14 +100,18 @@ async def get_user_by_email(
         headers=dict(response.headers)
     )
 
-@router.put("/{keycloak_id}", response_model=UserPublic)
+@router.put(
+    "/{keycloak_id}", 
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=AsyncOperationResponse
+)
 async def update_user(
     keycloak_id: str,
     user_data: UserBase,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Обновить данные пользователя"""
+    """АСИНХРОННОЕ обновление данных пользователя"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -99,14 +119,18 @@ async def update_user(
         headers=dict(response.headers)
     )
 
-@router.put("/{keycloak_id}/roles", response_model=UserPublic)
+@router.put(
+    "/{keycloak_id}/roles", 
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=AsyncOperationResponse
+)
 async def update_user_roles(
     keycloak_id: str,
     roles_data: UserRolesUpdate,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Обновить роли пользователя (только для админов)"""
+    """АСИНХРОННОЕ обновление ролей пользователя (только для админов)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -114,13 +138,17 @@ async def update_user_roles(
         headers=dict(response.headers)
     )
 
-@router.delete("/{keycloak_id}")
+@router.delete(
+    "/{keycloak_id}", 
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=AsyncOperationResponse
+)
 async def delete_user(
     keycloak_id: str,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Удалить пользователя (только для админов)"""
+    """АСИНХРОННОЕ удаление пользователя (только для админов)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -128,13 +156,17 @@ async def delete_user(
         headers=dict(response.headers)
     )
 
-@router.patch("/{keycloak_id}/toggle-status", response_model=UserPublic)
+@router.patch(
+    "/{keycloak_id}/toggle-status", 
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=AsyncOperationResponse
+)
 async def toggle_user_status(
     keycloak_id: str,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Переключить статус активности пользователя (только для админов)"""
+    """АСИНХРОННОЕ переключение статуса активности пользователя (только для админов)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

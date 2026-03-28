@@ -52,10 +52,14 @@ class AuthService:
         except Exception as e:
             raise ValidationException(f"Invalid registration data: {str(e)}")
         
-        # Проверки существования
-        existing_keycloak = self.kc.get_user_by_email(user_register.email)
-        if existing_keycloak:
+        # Проверки существования - ДОБАВЛЕНА ПРОВЕРКА USERNAME
+        existing_by_email = self.kc.get_user_by_email(user_register.email)
+        if existing_by_email:
             raise UserAlreadyExistsException(f"User with email {user_register.email} already exists")
+        
+        existing_by_username = self.kc.get_user_by_username(user_register.username)
+        if existing_by_username:
+            raise UserAlreadyExistsException(f"User with username {user_register.username} already exists")
         
         stmt = select(User).where(User.email == user_register.email)
         result = await self.db.execute(stmt)

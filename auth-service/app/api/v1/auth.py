@@ -14,7 +14,7 @@ async def get_saga_status(
     status = await service.get_saga_status(saga_id)
     return status
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_202_ACCEPTED)
 async def register_user(
     request: Request,
     service: AuthService = Depends(get_auth_service)

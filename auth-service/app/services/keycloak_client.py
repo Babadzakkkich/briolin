@@ -339,7 +339,6 @@ class KeycloakClient:
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Получение пользователя по username"""
         try:
-            # В некоторых версиях нужно использовать get_users с фильтром
             users = self.admin.get_users({"username": username})
             return users[0] if users else None
         except Exception as e:
