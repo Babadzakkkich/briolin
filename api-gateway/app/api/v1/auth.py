@@ -7,21 +7,19 @@ from app.schemas.auth import (
     RefreshRequest, 
     LogoutRequest, 
     UserResponse,
-    TokenResponse,
-    SagaStatusResponse,
-    AsyncOperationResponse
+    TokenResponse
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 security = HTTPBearer(auto_error=False)
 
-@router.get("/saga/{saga_id}/status", response_model=SagaStatusResponse)
-async def get_saga_status(
-    saga_id: str,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+
+@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=UserResponse)
+async def register_user(
+    user_data: UserRegister,
+    request: Request
 ):
-    """Получение статуса операции по ID саги"""
+    """СИНХРОННАЯ регистрация нового пользователя"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -29,22 +27,6 @@ async def get_saga_status(
         headers=dict(response.headers)
     )
 
-@router.post(
-    "/register", 
-    status_code=status.HTTP_202_ACCEPTED,
-    response_model=AsyncOperationResponse
-)
-async def register_user(
-    user_data: UserRegister,
-    request: Request
-):
-    """АСИНХРОННАЯ регистрация нового пользователя"""
-    response = await http_client.proxy_request(request)
-    return Response(
-        content=response.content,
-        status_code=response.status_code,
-        headers=dict(response.headers)
-    )
 
 @router.post("/login", response_model=TokenResponse)
 async def login_user(
@@ -59,6 +41,7 @@ async def login_user(
         headers=dict(response.headers)
     )
 
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
     refresh_data: RefreshRequest,
@@ -71,6 +54,7 @@ async def refresh_token(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
 
 @router.post("/logout")
 async def logout_user(
@@ -86,11 +70,12 @@ async def logout_user(
         headers=dict(response.headers)
     )
 
+
 @router.post("/validate")
 async def validate_token(
     request: Request
 ):
-    """Валидация токена (для совместимости)"""
+    """Валидация токена"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

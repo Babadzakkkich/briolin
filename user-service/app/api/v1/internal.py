@@ -8,25 +8,23 @@ from app.core.logger import logger
 
 router = APIRouter(prefix="/internal", tags=["Internal"])
 
+
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserProfileResponse)
 async def create_user_profile(
     data: UserProfileCreate,
     service: UserService = Depends(get_user_service)
 ):
+    """
+    Синхронное создание профиля пользователя.
+    Используется auth-service при регистрации.
+    """
     try:
-        user = await service.create_user_profile(data)
-        return UserProfileResponse(
-            keycloak_id=user.keycloak_id,
-            username=user.username,
-            email=user.email,
-            roles=user.roles,
-            is_active=user.is_active,
-            is_test_passed=user.is_test_passed,
-            created_at=user.created_at
-        )
+        result = await service.create_user_profile_sync(data)
+        return result
     except Exception as e:
         logger.error(f"Failed to create user profile: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create user profile")
+
 
 @router.get("/users/{keycloak_id}", response_model=UserProfileResponse)
 async def get_user_by_keycloak_id(
@@ -41,7 +39,7 @@ async def get_user_by_keycloak_id(
         keycloak_id=user.keycloak_id,
         username=user.username,
         email=user.email,
-        roles=user.roles,
+        roles=[role.value for role in user.roles],
         is_active=user.is_active,
         is_test_passed=user.is_test_passed,
         created_at=user.created_at

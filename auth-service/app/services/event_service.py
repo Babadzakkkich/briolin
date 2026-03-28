@@ -28,38 +28,6 @@ class EventService:
         
         return success
     
-    async def publish_user_registered(
-        self,
-        keycloak_id: str,
-        email: str,
-        username: str,
-        role: str,
-        correlation_id: str = None
-    ) -> bool:
-        """Публикация события регистрации пользователя"""
-        try:
-            correlation_id = correlation_id or str(uuid.uuid4())
-            
-            event = BaseEvent(
-                event_id=str(uuid.uuid4()),
-                event_type=EventType.USER_REGISTERED,
-                source_service=settings.service_name,
-                correlation_id=correlation_id,
-                user_data={
-                    "keycloak_id": keycloak_id,
-                    "email": email,
-                    "username": username,
-                    "role": role,
-                    "is_active": True
-                }
-            )
-            
-            return await self._publish_event(event)
-            
-        except Exception as e:
-            logger.error(f"Error publishing USER_REGISTERED event: {e}")
-            return False
-    
     async def publish_user_profile_updated(
         self,
         keycloak_id: str,

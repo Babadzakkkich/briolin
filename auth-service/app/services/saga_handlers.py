@@ -9,6 +9,7 @@ from app.core.logger import logger
 from sqlalchemy import select, and_
 from shared.saga.models import SagaOutbox, SagaStatus
 
+
 class AuthSagaHandlers:
     """Обработчики шагов SAGA для auth-service"""
     
@@ -29,87 +30,8 @@ class AuthSagaHandlers:
     
     # ========== ОСНОВНЫЕ ШАГИ ==========
     
-    async def handle_create_keycloak_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Шаг: Создание пользователя в Keycloak"""
-        payload = data.get("payload", {})
-        saga_id = data.get("saga_id")
-        
-        logger.info(f"[SAGA {saga_id}] Creating user in Keycloak: {payload.get('email')}")
-        
-        try:
-            keycloak_id, _ = self.kc_client.create_user_with_compensation(
-                email=payload["email"],
-                username=payload["username"],
-                password=payload["password"],
-                role=payload.get("role", "user")
-            )
-            
-            result = {
-                "status": "success",
-                "keycloak_id": keycloak_id,
-                "email": payload["email"],
-                "username": payload["username"],
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            
-            logger.info(f"[SAGA {saga_id}] User created in Keycloak: {keycloak_id}")
-            return result
-            
-        except Exception as e:
-            logger.error(f"[SAGA {saga_id}] Failed to create user in Keycloak: {e}")
-            raise
-    
-    async def handle_create_auth_db_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Шаг: Создание пользователя в auth-db"""
-        payload = data.get("payload", {})
-        saga_id = data.get("saga_id")
-        context = data.get("context", {})
-        
-        logger.info(f"[SAGA {saga_id}] Creating user in auth-db")
-        
-        # Получаем keycloak_id из контекста
-        keycloak_step_result = context.get("create_keycloak_user", {})
-        keycloak_id = keycloak_step_result.get("keycloak_id")
-        
-        if not keycloak_id:
-            keycloak_result = await self._get_step_result(saga_id, "create_keycloak_user")
-            keycloak_id = keycloak_result.get("keycloak_id")
-        
-        if not keycloak_id:
-            error_msg = f"[SAGA {saga_id}] Cannot create auth-db user: missing keycloak_id"
-            logger.error(error_msg)
-            raise Exception(error_msg)
-        
-        async with async_session_factory() as session:
-            stmt = select(User).where(User.keycloak_id == keycloak_id)
-            result = await session.execute(stmt)
-            existing = result.scalar_one_or_none()
-            
-            if existing:
-                logger.warning(f"[SAGA {saga_id}] User already exists in auth-db: {keycloak_id}")
-                return {
-                    "status": "success",
-                    "user_id": existing.id,
-                    "keycloak_id": keycloak_id,
-                    "already_exists": True
-                }
-            
-            new_user = User(
-                keycloak_id=keycloak_id,
-                email=payload["email"],
-                is_active=True
-            )
-            session.add(new_user)
-            await session.commit()
-            await session.refresh(new_user)
-            
-            logger.info(f"[SAGA {saga_id}] User created in auth-db: {new_user.id}")
-            
-            return {
-                "status": "success",
-                "user_id": new_user.id,
-                "keycloak_id": keycloak_id
-            }
+    # Удалены handle_create_keycloak_user и handle_create_auth_db_user,
+    # так как регистрация теперь синхронная
     
     async def handle_update_keycloak_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Шаг: Обновление пользователя в Keycloak"""
@@ -237,47 +159,7 @@ class AuthSagaHandlers:
     
     # ========== ШАГИ ПУБЛИКАЦИИ СОБЫТИЙ ==========
     
-    async def handle_publish_user_registered(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Шаг: Публикация USER_REGISTERED"""
-        payload = data.get("payload", {})
-        saga_id = data.get("saga_id")
-        context = data.get("context", {})
-        
-        logger.info(f"[SAGA {saga_id}] Publishing USER_REGISTERED event")
-        
-        keycloak_step = context.get("create_keycloak_user", {})
-        keycloak_id = keycloak_step.get("keycloak_id")
-        
-        if not keycloak_id:
-            keycloak_result = await self._get_step_result(saga_id, "create_keycloak_user")
-            keycloak_id = keycloak_result.get("keycloak_id")
-        
-        if not keycloak_id:
-            error_msg = f"[SAGA {saga_id}] Missing keycloak_id for event publication"
-            logger.error(error_msg)
-            raise Exception(error_msg)
-        
-        email = payload.get("email")
-        username = payload.get("username")
-        
-        from app.services.event_service import get_event_service
-        event_service = get_event_service()
-        
-        success = await event_service.publish_user_registered(
-            keycloak_id=keycloak_id,
-            email=email,
-            username=username,
-            role="user",
-            correlation_id=saga_id
-        )
-        
-        if not success:
-            error_msg = f"[SAGA {saga_id}] Failed to publish USER_REGISTERED event"
-            logger.error(error_msg)
-            raise Exception(error_msg)
-        
-        logger.info(f"[SAGA {saga_id}] USER_REGISTERED event published")
-        return {"status": "success", "event_published": True, "keycloak_id": keycloak_id}
+    # Удален handle_publish_user_registered
     
     async def handle_publish_user_profile_updated(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Шаг: Публикация USER_PROFILE_UPDATED"""
@@ -427,53 +309,14 @@ class AuthSagaHandlers:
     
     # ========== КОМПЕНСАЦИИ ==========
     
-    async def handle_compensate_create_keycloak_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Компенсация: удаление пользователя из Keycloak"""
-        payload = data.get("payload", {})
-        saga_id = data.get("saga_id")
-        context = data.get("context", {})
-        
-        create_step = context.get("create_keycloak_user", {})
-        keycloak_id = create_step.get("keycloak_id") or payload.get("keycloak_id")
-        
-        if not keycloak_id:
-            logger.warning(f"[SAGA {saga_id}] No keycloak_id for compensation")
-            return {"status": "success", "reason": "no_keycloak_id"}
-        
-        logger.info(f"[SAGA {saga_id}] Compensating: deleting user from Keycloak: {keycloak_id}")
-        
-        try:
-            success = self.kc_client.delete_user_from_keycloak(keycloak_id)
-            return {"status": "success" if success else "failed", "keycloak_id": keycloak_id}
-        except Exception as e:
-            logger.error(f"[SAGA {saga_id}] Compensation failed: {e}")
-            return {"status": "failed", "error": str(e)}
+    # Удалены handle_compensate_create_keycloak_user и handle_compensate_create_auth_db_user
     
-    async def handle_compensate_create_auth_db_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Компенсация: удаление пользователя из auth-db"""
-        payload = data.get("payload", {})
-        saga_id = data.get("saga_id")
-        context = data.get("context", {})
-        
-        create_step = context.get("create_keycloak_user", {})
-        keycloak_id = create_step.get("keycloak_id") or payload.get("keycloak_id")
-        
-        if not keycloak_id:
-            logger.warning(f"[SAGA {saga_id}] No keycloak_id for auth-db compensation")
-            return {"status": "success", "reason": "no_keycloak_id"}
-        
-        logger.info(f"[SAGA {saga_id}] Compensating: deleting user from auth-db: {keycloak_id}")
-        
-        async with async_session_factory() as session:
-            stmt = select(User).where(User.keycloak_id == keycloak_id)
-            result = await session.execute(stmt)
-            user = result.scalar_one_or_none()
-            
-            if user:
-                await session.delete(user)
-                await session.commit()
-                logger.info(f"[SAGA {saga_id}] User deleted from auth-db")
-                return {"status": "success", "deleted": True}
-            else:
-                logger.warning(f"[SAGA {saga_id}] User not found in auth-db")
-                return {"status": "success", "deleted": False}
+    async def handle_compensate_update_keycloak_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Компенсация: восстановление данных в Keycloak"""
+        # Реализация при необходимости
+        return {"status": "success"}
+    
+    async def handle_compensate_update_auth_db_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Компенсация: восстановление данных в auth-db"""
+        # Реализация при необходимости
+        return {"status": "success"}

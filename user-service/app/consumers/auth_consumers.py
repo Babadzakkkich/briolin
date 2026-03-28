@@ -14,61 +14,6 @@ from app.core.config import settings
 from app.core.logger import logger
 from app.services.saga_worker import get_saga_worker
 
-async def handle_user_registered(event: Dict[str, Any]) -> bool:
-    """Обработка события регистрации пользователя из auth-service"""
-    try:
-        from shared.events.schemas import BaseEvent
-        base_event = BaseEvent(**event)
-        
-        # Проверяем, не обрабатывали ли мы уже это событие
-        if base_event.is_processed_by(settings.service_name):
-            logger.debug(f"Event {base_event.event_id[:8]} already processed by user-service")
-            return True
-        
-        user_data = event.get("user_data", {})
-        source_service = base_event.source_service
-        correlation_id = base_event.correlation_id
-        
-        logger.info(f"Processing user registration event from {source_service}: {user_data.get('email')}")
-        
-        required_fields = ["keycloak_id", "email", "username", "role"]
-        for field in required_fields:
-            if field not in user_data:
-                logger.error(f"Missing required field {field} in user registration event")
-                return False
-        
-        # Используем UserService для асинхронного создания профиля через SAGA
-        async with async_session_factory() as session:
-            from app.services.keycloak_client import KeycloakClient
-            kc_client = KeycloakClient()
-            user_service = UserService(session, kc_client)
-            
-            profile_data = UserProfileCreate(
-                keycloak_id=user_data["keycloak_id"],
-                email=user_data["email"],
-                username=user_data["username"],
-                role=UserRole(user_data["role"])
-            )
-            
-            # create_user_profile теперь возвращает 202 Accepted с saga_id
-            result = await user_service.create_user_profile(profile_data)
-            
-            if result.get("status") == "accepted":
-                logger.info(
-                    f"User profile creation initiated for {user_data['username']} "
-                    f"with saga_id: {result['saga_id']}"
-                )
-                return True
-            elif result.get("already_exists"):
-                logger.info(f"User profile already exists for {user_data['username']}")
-                return True
-            else:
-                logger.error(f"Failed to initiate user profile creation for: {user_data['username']}")
-                return False
-                
-    except Exception as e:
-        logger.error(f"Error handling user registration event: {e}", exc_info=True)
-        return False
 
 async def handle_user_profile_updated(event: Dict[str, Any]) -> bool:
     """Обработка события подтверждения обновления профиля пользователя из auth-service"""
@@ -117,6 +62,7 @@ async def handle_user_profile_updated(event: Dict[str, Any]) -> bool:
         logger.error(f"Error handling user profile update confirmation: {e}")
         return False
 
+
 async def handle_user_status_changed(event: Dict[str, Any]) -> bool:
     """Обработка события подтверждения изменения статуса пользователя из auth-service"""
     try:
@@ -162,6 +108,7 @@ async def handle_user_status_changed(event: Dict[str, Any]) -> bool:
     except Exception as e:
         logger.error(f"Error handling user status change confirmation: {e}")
         return False
+
 
 async def handle_user_roles_updated(event: Dict[str, Any]) -> bool:
     """Обработка события подтверждения обновления ролей пользователя из auth-service"""
@@ -226,6 +173,7 @@ async def handle_user_roles_updated(event: Dict[str, Any]) -> bool:
         logger.error(f"Error handling user roles update confirmation: {e}")
         return False
 
+
 async def handle_user_deleted(event: Dict[str, Any]) -> bool:
     """Обработка события подтверждения удаления пользователя из auth-service"""
     try:
@@ -275,46 +223,11 @@ async def handle_user_deleted(event: Dict[str, Any]) -> bool:
         logger.error(f"Error handling user deletion confirmation: {e}", exc_info=True)
         return False
 
-async def handle_user_deleted_confirmation(event: Dict[str, Any]) -> bool:
-    """Обработка подтверждения удаления пользователя из auth-service"""
-    try:
-        from shared.events.schemas import BaseEvent
-        
-        base_event = BaseEvent(**event)
-        
-        # Проверяем, не обрабатывали ли мы уже это событие
-        if base_event.is_processed_by(settings.service_name):
-            logger.debug(f"Event {base_event.event_id[:8]} already processed by user-service")
-            return True
-        
-        user_data = event.get("user_data", {})
-        keycloak_id = user_data.get("keycloak_id")
-        correlation_id = base_event.correlation_id
-        
-        if not keycloak_id:
-            logger.error("Missing keycloak_id in user deletion confirmation")
-            return False
-        
-        logger.info(f"Received deletion confirmation for {keycloak_id} (correlation: {correlation_id})")
-        
-        # Если есть correlation_id, можем отметить сагу как завершённую
-        # Но это необязательно, так как удаление уже выполнилось независимо
-        
-        return True
-            
-    except Exception as e:
-        logger.error(f"Error handling user deletion confirmation: {e}", exc_info=True)
-        return False
 
 async def register(consumer):
     """Регистрация consumers для событий от auth-service"""
     try:
-        # Регистрируем обработчики для событий регистрации
-        await consumer.consume_user_events(
-            event_type=EventType.USER_REGISTERED,
-            callback=handle_user_registered
-        )
-        
+        # Удалена регистрация USER_REGISTERED
         await consumer.consume_user_events(
             event_type=EventType.USER_PROFILE_UPDATED,
             callback=handle_user_profile_updated
