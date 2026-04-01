@@ -5,7 +5,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.services.testing_service import TestingService
 from app.dependencies import get_testing_service, get_current_user
-from app.core.exceptions import TestingException
+from app.core.exceptions import TestingException, ActiveTestSessionExistsException
 from app.core.logger import logger
 from app.schemas.test import (
     TestStartRequest,
@@ -18,18 +18,86 @@ from app.schemas.test import (
     TestHistoryResponse,
     UserTestStatistics,
     AdminQuestionResponse,
-    ErrorResponse
+    ErrorResponse,
+    CurrentTestResponse
 )
 
 router = APIRouter(prefix="/tests", tags=["Tests"])
 security = HTTPBearer(auto_error=False)
 
 
+@router.get(
+    "/current",
+    response_model=CurrentTestResponse,
+    responses={
+        200: {"description": "Current test session data"},
+        401: {"model": ErrorResponse},
+        404: {"description": "No active test session"},
+        500: {"model": ErrorResponse}
+    },
+    summary="Получение текущего теста",
+    description="""
+    Возвращает информацию о текущем активном тесте пользователя.
+    
+    Если у пользователя есть активная сессия теста, возвращает:
+    - Данные теста (название, описание)
+    - Вопросы с уже сохраненными ответами
+    - Оставшееся время
+    - Прогресс прохождения
+    
+    Если активной сессии нет, возвращает 404.
+    
+    Это позволяет пользователю продолжить тест после прерывания.
+    """
+)
+async def get_current_test(
+    service: TestingService = Depends(get_testing_service),
+    current_user: dict = Depends(get_current_user)
+):
+    """Получить текущий активный тест пользователя"""
+    try:
+        keycloak_id = current_user.get("keycloak_id")
+        if not keycloak_id:
+            raise HTTPException(status_code=401, detail="User not authenticated")
+        
+        result = await service.get_current_test(keycloak_id)
+        
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active test session found"
+            )
+        
+        return result
+        
+    except TestingException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting current test: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.post(
     "/start",
     status_code=status.HTTP_201_CREATED,
     response_model=TestStartResponse,
-    responses={401: {"model": ErrorResponse}, 429: {"model": ErrorResponse}, 500: {"model": ErrorResponse}}
+    responses={
+        401: {"model": ErrorResponse},
+        409: {"model": ErrorResponse, "description": "Active test session already exists"},
+        429: {"model": ErrorResponse},
+        500: {"model": ErrorResponse}
+    },
+    summary="Начать новый тест",
+    description="""
+    Начинает новый тест для пользователя.
+    
+    **Важно:** Пользователь может иметь только одну активную сессию теста.
+    Если активная сессия уже существует, возвращается ошибка 409.
+    
+    Для продолжения существующего теста используйте GET /tests/current
+    """
 )
 async def start_test(
     test_data: TestStartRequest = Body(...),
@@ -45,6 +113,15 @@ async def start_test(
         result = await service.start_new_test(keycloak_id)
         return result
         
+    except ActiveTestSessionExistsException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={
+                "message": e.message,
+                "session_id": e.session_id,
+                "action": "use GET /tests/current to resume existing test"
+            }
+        )
     except TestingException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
@@ -215,10 +292,8 @@ async def get_question(
             if "admin" not in user_roles:
                 if "options" in question_dict:
                     for option in question_dict["options"]:
-                        if "score_impact" in option:
-                            del option["score_impact"]
-                        if "is_correct" in option:
-                            del option["is_correct"]
+                        option.pop("score_impact", None)
+                        option.pop("is_correct", None)
         
         return AdminQuestionResponse(**question_dict)
         

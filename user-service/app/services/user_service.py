@@ -35,9 +35,9 @@ class UserService:
         self.saga_worker = get_saga_worker()
 
     # ========== СОЗДАНИЕ ПРОФИЛЯ ==========
-    
-    async def create_user_profile(self, data) -> Dict[str, Any]:
-        """АСИНХРОННОЕ создание профиля пользователя через SAGA"""
+        
+    async def create_user_profile_sync(self, data) -> Dict[str, Any]:
+        """СИНХРОННОЕ создание профиля пользователя (для auth-service)"""
         
         # Проверяем, не существует ли уже пользователь
         stmt = select(User).where(
@@ -54,73 +54,48 @@ class UserService:
             if existing.keycloak_id == data.keycloak_id:
                 logger.info(f"User already exists: {data.keycloak_id}")
                 return {
-                    "status": "success",
-                    "user": existing,
-                    "already_exists": True
+                    "keycloak_id": existing.keycloak_id,
+                    "username": existing.username,
+                    "email": existing.email,
+                    "roles": [role.value for role in existing.roles],
+                    "is_active": existing.is_active,
+                    "is_test_passed": existing.is_test_passed,
+                    "created_at": existing.created_at
                 }
             else:
                 raise UserAlreadyExistsException("Email or username already taken")
         
-        # Генерируем ID саги
-        saga_id = str(uuid.uuid4())
-        
-        # Шаг 1: Создание в user-db
-        await self.saga_worker.create_saga_outbox(
-            saga_id=saga_id,
-            saga_name="user_profile_creation",
-            step_name="create_user_profile",
-            event_type="saga.step.create_user_profile",
-            payload={
-                "keycloak_id": data.keycloak_id,
-                "email": data.email,
-                "username": data.username,
-                "role": data.role.value if hasattr(data.role, 'value') else data.role
-            },
-            headers={
-                "source_service": "user-service",
-                "correlation_id": saga_id
-            }
+        # Создаем пользователя
+        new_user = User(
+            keycloak_id=data.keycloak_id,
+            username=data.username,
+            email=data.email,
+            is_active=True,
+            is_test_passed=False
         )
+        self.db.add(new_user)
+        await self.db.flush()
         
-        # Шаг 2: Назначение роли (зависит от первого шага)
-        await self.saga_worker.create_saga_outbox(
-            saga_id=saga_id,
-            saga_name="user_profile_creation",
-            step_name="assign_user_role",
-            event_type="saga.step.assign_user_role",
-            payload={
-                "role": data.role.value if hasattr(data.role, 'value') else data.role
-            },
-            headers={
-                "source_service": "user-service",
-                "correlation_id": saga_id,
-                "depends_on": "create_user_profile"
-            }
+        # Назначаем роль
+        role_assignment = UserRoleAssignment(
+            user_id=new_user.id,
+            role=UserRole(data.role)
         )
+        self.db.add(role_assignment)
         
-        # Шаг 3: Публикация USER_PROFILE_CREATED (зависит от первого шага)
-        await self.saga_worker.create_saga_outbox(
-            saga_id=saga_id,
-            saga_name="user_profile_creation",
-            step_name="publish_user_profile_created",
-            event_type="saga.step.publish_user_profile_created",
-            payload={
-                "role": data.role.value if hasattr(data.role, 'value') else data.role
-            },
-            headers={
-                "source_service": "user-service",
-                "correlation_id": saga_id,
-                "depends_on": "create_user_profile"
-            }
-        )
+        await self.db.commit()
+        await self.db.refresh(new_user)
         
-        logger.info(f"User profile creation initiated for {data.keycloak_id} with saga_id: {saga_id}")
+        logger.info(f"User profile created synchronously: {new_user.id} ({data.keycloak_id})")
         
         return {
-            "status": "accepted",
-            "message": "User profile creation initiated",
-            "saga_id": saga_id,
-            "check_status_url": f"/api/v1/users/saga/{saga_id}/status"
+            "keycloak_id": new_user.keycloak_id,
+            "username": new_user.username,
+            "email": new_user.email,
+            "roles": [role.value for role in new_user.roles],
+            "is_active": new_user.is_active,
+            "is_test_passed": new_user.is_test_passed,
+            "created_at": new_user.created_at
         }
     
     # ========== ОБНОВЛЕНИЕ ПРОФИЛЯ ==========

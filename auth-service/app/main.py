@@ -15,6 +15,7 @@ from app.consumers import register_consumers
 from app.services.saga_worker import get_saga_worker
 from app.services.saga_handlers import AuthSagaHandlers
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Auth Service...")
@@ -46,31 +47,24 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to register consumers: {e}")
     
-    # Инициализация и запуск SAGA воркера
+    # Инициализация и запуск SAGA воркера (для обновлений, удалений и т.д.)
     try:
         saga_worker = get_saga_worker()
         
         # Регистрируем обработчики шагов
         handlers = AuthSagaHandlers()
 
-        # Основные шаги
-        saga_worker.register_step_handler("create_keycloak_user", handlers.handle_create_keycloak_user)
-        saga_worker.register_step_handler("create_auth_db_user", handlers.handle_create_auth_db_user)
+        # Основные шаги (регистрация больше не используется)
         saga_worker.register_step_handler("update_keycloak_user", handlers.handle_update_keycloak_user)
         saga_worker.register_step_handler("update_auth_db_user", handlers.handle_update_auth_db_user)
         saga_worker.register_step_handler("delete_keycloak_user", handlers.handle_delete_keycloak_user)
         saga_worker.register_step_handler("delete_auth_db_user", handlers.handle_delete_auth_db_user)
 
-        # Шаги публикации событий
-        saga_worker.register_step_handler("publish_user_registered", handlers.handle_publish_user_registered)
+        # Шаги публикации событий (регистрация больше не используется)
         saga_worker.register_step_handler("publish_user_profile_updated", handlers.handle_publish_user_profile_updated)
         saga_worker.register_step_handler("publish_user_status_changed", handlers.handle_publish_user_status_changed)
         saga_worker.register_step_handler("publish_user_roles_updated", handlers.handle_publish_user_roles_updated)
         saga_worker.register_step_handler("publish_user_deleted", handlers.handle_publish_user_deleted)
-
-        # Компенсации
-        saga_worker.register_step_handler("compensate_create_keycloak_user", handlers.handle_compensate_create_keycloak_user)
-        saga_worker.register_step_handler("compensate_create_auth_db_user", handlers.handle_compensate_create_auth_db_user)
         
         # Запускаем воркер
         await saga_worker.start()
@@ -104,6 +98,7 @@ async def lifespan(app: FastAPI):
     await dispose_engine()
     logger.info("Auth Service shutdown complete")
 
+
 app = FastAPI(
     title=settings.app_name,
     lifespan=lifespan,
@@ -123,6 +118,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api/v1")
+
 
 @app.get("/health")
 async def health_check():

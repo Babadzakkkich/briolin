@@ -1,6 +1,6 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from app.core.exceptions import TestingException
+from app.core.exceptions import TestingException, ActiveTestSessionExistsException
 from app.core.logger import logger
 
 async def testing_exception_handler(request: Request, exc: TestingException):
@@ -10,9 +10,18 @@ async def testing_exception_handler(request: Request, exc: TestingException):
     else:
         logger.warning(f"Testing exception: {exc.message}")
     
+    if isinstance(exc, ActiveTestSessionExistsException):
+        content = {
+            "detail": exc.message,
+            "session_id": exc.session_id,
+            "action": "use GET /tests/current to resume existing test"
+        }
+    else:
+        content = {"detail": exc.message}
+    
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.message}
+        content=content
     )
 
 async def global_exception_handler(request: Request, exc: Exception):

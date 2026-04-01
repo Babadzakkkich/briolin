@@ -22,3 +22,8 @@ class AuthorizationException(GatewayException):
     """Ошибка авторизации"""
     def __init__(self, detail: str = "Not authorized"):
         super().__init__(detail=detail, status_code=403)
+        
+class TestingServiceException(GatewayException):
+    """Базовое исключение для ошибок testing-service"""
+    def __init__(self, detail: str, status_code: int = 400):
+        super().__init__(detail=detail, status_code=status_code)

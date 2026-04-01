@@ -1,30 +1,42 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from app.services.auth_service import AuthService
 from app.dependencies import get_auth_service
-
-REFRESH_COOKIE = "refresh_token"
-REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 дней
+from app.core.exceptions import UserAlreadyExistsException, ValidationException
+from app.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-@router.get("/saga/{saga_id}/status")
-async def get_saga_status(
-    saga_id: str,
-    service: AuthService = Depends(get_auth_service)
-):
-    """Получение статуса регистрации по ID саги"""
-    status = await service.get_saga_status(saga_id)
-    return status
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=UserResponse)
 async def register_user(
-    request: Request,
+    user_data: UserRegister,
     service: AuthService = Depends(get_auth_service)
 ):
-    """Регистрация нового пользователя (публичный эндпоинт)"""
-    return await service.register(await request.json())
+    """
+    СИНХРОННАЯ регистрация нового пользователя.
+    Возвращает созданного пользователя с кодом 201.
+    """
+    try:
+        result = await service.register(user_data.model_dump())
+        return result
+    except UserAlreadyExistsException as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=e.message
+        )
+    except ValidationException as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=e.message
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
-@router.post("/login")
+
+@router.post("/login", response_model=TokenResponse)
 async def login_user(
     request: Request,
     response: Response,
@@ -47,6 +59,7 @@ async def login_user(
         "token_type": token_data["token_type"],
         "expires_in": token_data["expires_in"],
     }
+
 
 @router.post("/refresh")
 async def refresh_token(
@@ -75,6 +88,7 @@ async def refresh_token(
         "expires_in": token_data["expires_in"],
     }
 
+
 @router.post("/logout")
 async def logout_user(
     request: Request,
@@ -90,12 +104,13 @@ async def logout_user(
     response.delete_cookie(REFRESH_COOKIE)
     return {"message": "Successfully logged out"}
 
+
 @router.post("/validate")
 async def validate_token(
     request: Request,
     service: AuthService = Depends(get_auth_service)
 ):
-    """Валидация токена (публичный эндпоинт - Gateway сам проверяет)"""
+    """Валидация токена"""
     body = await request.json()
     token = body.get("token")
     if not token:
