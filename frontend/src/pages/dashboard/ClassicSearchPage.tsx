@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Clock, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { searchApi, ProfileCard, SearchSkeleton, LockBanner } from '@/entities/search';
 import type { SearchResponse, SearchLockInfo } from '@/entities/search';
@@ -51,6 +52,7 @@ function Pagination({
 }
 
 export function ClassicSearchPage() {
+  const navigate = useNavigate();
   const [gender, setGender] = useState<string | undefined>(undefined);
   const [minAge, setMinAge] = useState('');
   const [maxAge, setMaxAge] = useState('');
@@ -140,7 +142,7 @@ export function ClassicSearchPage() {
                   key={i}
                   profile={p}
                   onLike={() => toast.info(`Лайк — ${p.first_name}`)}
-                  onView={() => toast.info(`Профиль: ${p.first_name} ${p.last_name}`)}
+                  onView={() => navigate('/dashboard/users/' + p.keycloak_id, { state: { profile: p } })}
                 />
               ))}
             </div>

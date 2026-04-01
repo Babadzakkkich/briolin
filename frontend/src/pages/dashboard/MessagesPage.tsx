@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
 import { chatApi } from '@/entities/chat';
 import { messageApi } from '@/entities/message';
@@ -36,11 +37,14 @@ function SelectChatPlaceholder() {
 }
 
 export function MessagesPage() {
+  const location = useLocation();
   const accessToken = useAuthStore((s) => s.accessToken);
   const keycloakId = useMemo(() => decodeKeycloakId(accessToken), [accessToken]);
 
   const [chats, setChats] = useState<Chat[]>([]);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(
+    (location.state as { chatId?: string } | null)?.chatId ?? null,
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');

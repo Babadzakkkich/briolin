@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { LogoIcon } from '@/shared/icons/Logo';
 import { sessionApi, useAuthStore } from '@/entities/session';
+import { profileApi, useProfileStore } from '@/entities/profile';
 import {
   Briefcase,
   Dice5,
@@ -12,7 +14,6 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
-import { useProfileStore } from '@/entities/profile';
 
 export function SidebarItem({
   to,
@@ -46,13 +47,29 @@ export function SidebarItem({
 function UserCard() {
   const firstName = useProfileStore((p) => p.firstName);
   const lastName = useProfileStore((p) => p.lastName);
+  const setProfile = useProfileStore((p) => p.setProfile);
   const clear = useAuthStore((s) => s.clear);
+  const clearProfile = useProfileStore((p) => p.clear);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const navigate = useNavigate();
-  const initials = firstName && lastName ? `${firstName[0]}${lastName[0]}`.toUpperCase() : '?';
+
+  useEffect(() => {
+    if (isAuthenticated && !firstName) {
+      profileApi.getMe().then((res) => setProfile(res.data.basic)).catch(() => {});
+    }
+  }, [isAuthenticated, firstName, setProfile]);
+
+  const initials =
+    firstName && lastName
+      ? `${firstName[0]}${lastName[0]}`.toUpperCase()
+      : firstName
+        ? firstName[0].toUpperCase()
+        : '?';
 
   const handleLogout = async () => {
     await sessionApi.logout().catch(() => {});
     clear();
+    clearProfile();
     navigate('/login');
   };
 
@@ -61,9 +78,15 @@ function UserCard() {
       <div className='bg-accent/15 text-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold'>
         {initials}
       </div>
-      <span className='text-primary truncate text-sm font-medium'>
-        {firstName && lastName ? `${firstName} ${lastName}` : '—'}
-      </span>
+      <div className='min-w-0 flex-1'>
+        {firstName ? (
+          <span className='text-primary block truncate text-sm font-medium'>
+            {lastName ? `${firstName} ${lastName}` : firstName}
+          </span>
+        ) : (
+          <div className='bg-surface h-3.5 w-24 animate-pulse rounded' />
+        )}
+      </div>
       <button
         onClick={handleLogout}
         className='text-secondary hover:text-primary hover:bg-muted/15 ml-auto cursor-pointer rounded-lg p-1.5 transition-colors duration-75'

@@ -5,8 +5,8 @@ export const chatApi = {
   getChats: (params?: { skip?: number; limit?: number; chat_type?: string; status?: string }) =>
     apiClient.get<ChatListResponse>('/api/v1/chats/', { params }).then((r) => r.data),
 
-  createDirectChat: (participantId: string) =>
+  createDirectChat: (participantKeycloakId: string) =>
     apiClient
-      .post<Chat>('/api/v1/chats/chats/', { type: 'DIRECT', participant_ids: [participantId] })
+      .post<Chat>('/api/v1/chats/', { type: 'direct', participant_ids: [participantKeycloakId] })
       .then((r) => r.data),
 };

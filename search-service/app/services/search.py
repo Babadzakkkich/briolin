@@ -151,6 +151,7 @@ class SearchService:
                         pass
 
                 result_profiles.append(ProfilePreviewResponse(
+                    keycloak_id=basic.get("keycloak_id", ""),
                     first_name=basic.get("first_name", ""),
                     last_name=basic.get("last_name", ""),
                     gender=basic.get("gender", ""),
@@ -223,6 +224,7 @@ class SearchService:
                         pass
 
                 profiles.append(ProfilePreviewResponse(
+                    keycloak_id=basic.get("keycloak_id", ""),
                     first_name=basic.get("first_name", ""),
                     last_name=basic.get("last_name", ""),
                     gender=basic.get("gender", ""),

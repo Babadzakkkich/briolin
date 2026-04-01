@@ -16,6 +16,7 @@ import { ServicesPage } from '@/pages/dashboard/ServicesPage';
 import { CupidonPage } from '@/pages/dashboard/CupidonPage';
 import { ClassicSearchPage } from '@/pages/dashboard/ClassicSearchPage';
 import { TargetedSearchPage } from '@/pages/dashboard/TargetedSearchPage';
+import { UserProfilePage } from '@/pages/dashboard/UserProfilePage';
 import { FortunePage } from '@/pages/dashboard/FortunePage';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -40,6 +41,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path='services' element={<ServicesPage />} />
             <Route path='search/classic' element={<ClassicSearchPage />} />
             <Route path='search/targeted' element={<TargetedSearchPage />} />
+            <Route path='users/:keycloakId' element={<UserProfilePage />} />
             <Route path='cupidon' element={<CupidonPage />} />
             <Route path='fortune' element={<FortunePage />} />
           </Route>

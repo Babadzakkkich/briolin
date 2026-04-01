@@ -1,10 +1,12 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { searchApi, ProfileCard, SearchSkeleton, LockBanner } from '@/entities/search';
 import type { SearchResponse, SearchLockInfo } from '@/entities/search';
 import { TargetedFilterForm } from '@/features/search/ui/TargetedFilterForm';
 import { toast } from '@/shared/toast/toast';
 
 export function TargetedSearchPage() {
+  const navigate = useNavigate();
   const [hobbies, setHobbies] = useState('');
   const [education, setEducation] = useState('');
   const [city, setCity] = useState('');
@@ -109,8 +111,8 @@ export function TargetedSearchPage() {
                     <ProfileCard
                       key={i}
                       profile={p}
-                      onLike={() => toast.info(`Байс — ${p.first_name}`)}
-                      onView={() => toast.info(`Профиль: ${p.first_name} ${p.last_name}`)}
+                      onLike={() => toast.info(`Лайк — ${p.first_name}`)}
+                      onView={() => navigate('/dashboard/users/' + p.keycloak_id, { state: { profile: p } })}
                     />
                   ))}
                 </div>

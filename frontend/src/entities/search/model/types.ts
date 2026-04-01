@@ -15,6 +15,7 @@ export interface TargetedSearchRequest extends SearchRequest {
 }
 
 export interface ProfilePreview {
+  keycloak_id: string;
   first_name: string;
   last_name: string;
   gender: string;

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 interface ProfileState {
   firstName: string | null;
@@ -16,20 +17,25 @@ interface ProfileState {
   clear: () => void;
 }
 
-export const useProfileStore = create<ProfileState>((set) => ({
-  firstName: null,
-  lastName: null,
-  city: null,
-  gender: null,
-  dateOfBirth: null,
-  setProfile: (profile) =>
-    set({
-      firstName: profile.first_name,
-      lastName: profile.last_name,
-      city: profile.city,
-      gender: profile.gender,
-      dateOfBirth: profile.date_of_birth,
+export const useProfileStore = create<ProfileState>()(
+  persist(
+    (set) => ({
+      firstName: null,
+      lastName: null,
+      city: null,
+      gender: null,
+      dateOfBirth: null,
+      setProfile: (profile) =>
+        set({
+          firstName: profile.first_name,
+          lastName: profile.last_name,
+          city: profile.city,
+          gender: profile.gender,
+          dateOfBirth: profile.date_of_birth,
+        }),
+      clear: () =>
+        set({ firstName: null, lastName: null, city: null, gender: null, dateOfBirth: null }),
     }),
-  clear: () =>
-    set({ firstName: null, lastName: null, city: null, gender: null, dateOfBirth: null }),
-}));
+    { name: 'profile' },
+  ),
+);
