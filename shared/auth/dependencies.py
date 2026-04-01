@@ -68,3 +68,13 @@ def require_test_passed():
             )
         return current_user
     return test_checker
+
+def require_admin():
+    async def admin_checker(current_user: dict = Depends(get_current_user)):
+        if "admin" not in current_user.get("roles", []):
+            raise HTTPException(
+                status_code=403,
+                detail="Admin privileges required"
+            )
+        return current_user
+    return admin_checker

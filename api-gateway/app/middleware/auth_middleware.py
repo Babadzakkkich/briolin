@@ -2,12 +2,10 @@ import logging
 import re
 import asyncio
 from typing import Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
-from jose import jwt
+from datetime import datetime
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.websockets import WebSocket
 
 from app.services.keycloak_client import keycloak_client
 from app.services.auth_service_client import auth_service_client
@@ -26,10 +24,10 @@ PUBLIC_ENDPOINTS = [
     re.compile(r'^/docs.*$'),
     re.compile(r'^/redoc.*$'),
     re.compile(r'^/openapi\.json$'),
-    re.compile(r'^/ws/stats$'),  # Статистика WebSocket публична
+    re.compile(r'^/ws/stats$'),
 ]
 
-# WebSocket эндпоинты (требуют специальной обработки)
+# WebSocket эндпоинты
 WS_ENDPOINTS = [
     re.compile(r'^/ws$'),
     re.compile(r'^/ws/.*$'),
@@ -218,11 +216,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """
         Основной метод middleware.
-        Обрабатывает HTTP запросы и WebSocket upgrade запросы.
+        Обрабатывает HTTP запросы.
         """
         path = request.url.path
         method = request.method
 
+        # OPTIONS запросы пропускаем (CORS preflight)
         if method == "OPTIONS":
             logger.debug(f"Preflight request: {path}")
             return await call_next(request)
@@ -230,29 +229,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         is_public = self._is_public_endpoint(path)
         is_websocket = self._is_websocket_endpoint(path)
 
-        # Логируем каждый запрос
+        # Логируем запрос
         logger.info(f"Incoming request: {method} {path}")
-        if logger.isEnabledFor(logging.DEBUG):
-            auth_headers = {}
-            for key, value in request.headers.items():
-                if key.lower().startswith(('authorization', 'x-internal', 'x-token')):
-                    if 'token' in key.lower() and len(value) > 30:
-                        auth_headers[key] = f"{value[:30]}..."
-                    else:
-                        auth_headers[key] = value
-            if auth_headers:
-                logger.debug(f"Auth headers: {auth_headers}")
 
+        # Публичные эндпоинты
         if is_public:
             logger.debug(f"Public endpoint accessed: {path}")
             return await call_next(request)
 
-        # Для WebSocket эндпоинтов проверяем токен, но не требуем его в заголовках
-        # (токен может быть в query параметрах)
+        # WebSocket эндпоинты (аутентификация обрабатывается в самом эндпоинте)
         if is_websocket:
             logger.debug(f"WebSocket endpoint detected: {path}")
-            # WebSocket аутентификация обрабатывается в самом эндпоинте
-            # или через query параметры
             return await call_next(request)
 
         # Стандартная HTTP аутентификация
@@ -298,6 +285,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     key_lower = key.lower()
                     if key_lower not in [b"authorization", b"x-internal-token", b"x-token-signature"]:
                         new_headers.append((key, value))
+                
                 new_headers.append((b"x-internal-token", internal_token.encode()))
                 new_headers.append((b"x-token-signature", signature.encode()))
                 request.scope["headers"] = new_headers
@@ -311,6 +299,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     f"token expires in: {time_left:.0f}s)"
                 )
 
+            # 8. Передаем запрос дальше
             return await call_next(request)
 
         except AuthenticationException as e:

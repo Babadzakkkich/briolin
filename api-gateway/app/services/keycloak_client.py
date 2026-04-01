@@ -1,4 +1,3 @@
-# APP/SERVICES/KEYCLOAK_CLIENT.PY (api-gateway)
 from keycloak import KeycloakOpenID
 from keycloak.exceptions import KeycloakError
 from typing import Dict, Any

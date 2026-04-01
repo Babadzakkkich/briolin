@@ -46,6 +46,32 @@ services:
         condition: service_healthy
     networks:
       - briolin-network
+  
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    container_name: briolin-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BROWSER: "on"
+      MINIO_UPDATE: "off"
+    env_file:
+      - media-service/.env
+    volumes:
+      - minio-data:/data
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -168,21 +194,6 @@ services:
       timeout: 5s
       retries: 5
 
-  search-postgres:
-    image: postgres:17-alpine
-    container_name: search-postgres
-    env_file:
-      - search-service/.env
-    ports:
-      - "5439:5432"
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U search_user -d search_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   testing-mongo:
     image: mongo:8.0
     container_name: testing-mongo
@@ -221,6 +232,21 @@ services:
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
       interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  search-postgres:
+    image: postgres:17-alpine
+    container_name: search-postgres
+    env_file:
+      - search-service/.env
+    ports:
+      - "5439:5432"
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U search_user -d search_db"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
@@ -315,6 +341,30 @@ services:
       - briolin-network
     restart: unless-stopped
 
+  chat-service:
+    build:
+      context: .
+      dockerfile: chat-service/Dockerfile
+    container_name: chat-service
+    ports:
+      - "8005:8005"
+    env_file:
+      - chat-service/.env
+    depends_on:
+      chat-postgres:
+        condition: service_healthy
+      chat-mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - briolin-network
+    restart: unless-stopped
+
   search-service:
     build:
       context: .
@@ -332,22 +382,18 @@ services:
     networks:
       - briolin-network
     restart: unless-stopped
-
-  chat-service:
+  
+  media-service:
     build:
       context: .
-      dockerfile: chat-service/Dockerfile
-    container_name: chat-service
+      dockerfile: media-service/Dockerfile
+    container_name: media-service
     ports:
-      - "8005:8005"
+      - "8007:8007"
     env_file:
-      - chat-service/.env
+      - media-service/.env
     depends_on:
-      chat-postgres:
-        condition: service_healthy
-      chat-mongo:
-        condition: service_healthy
-      redis:
+      minio:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -376,6 +422,10 @@ services:
       testing-service:
         condition: service_started
       chat-service:
+        condition: service_started
+      search-service:
+        condition: service_started
+      media-service:
         condition: service_started
       redis:
         condition: service_healthy
@@ -407,6 +457,8 @@ volumes:
   redis-data:
   redis-insight-data:
   rabbitmq-data:
+  minio-data:
+    driver: local
 
 networks:
   briolin-network:

@@ -40,6 +40,7 @@ class ServicesConfig(BaseSettings):
     chat: str
     chat_ws: str
     search: str
+    media: str
 
 
 class CacheConfig(BaseSettings):

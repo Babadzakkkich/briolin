@@ -19,6 +19,8 @@ class BasicProfile(Base):
     date_of_birth: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     city: Mapped[str] = mapped_column(String, nullable=False)
     online: Mapped[bool] = mapped_column(Boolean, default=False)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, 
