@@ -8,7 +8,7 @@ from app.schemas.profile import (
 )
 from app.dependencies import get_profile_service, get_current_user
 from app.core.logger import logger
-from app.core.exceptions import ProfileNotFoundException
+from app.core.exceptions import PermissionDeniedException, ProfileNotFoundException, ProfileAlreadyExistsException
 
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
 
@@ -23,13 +23,16 @@ async def get_saga_status(
         raise HTTPException(status_code=404, detail="Saga not found")
     return status
 
-@router.post("/basic", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/basic", status_code=status.HTTP_201_CREATED, response_model=FullProfileResponse)
 async def create_basic_profile(
     profile_data: BasicProfileCreate,
     current_user: dict = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service)
 ):
-    """АСИНХРОННОЕ создание только базового профиля"""
+    """
+    СИНХРОННОЕ создание базового профиля
+    Возвращает созданный профиль
+    """
     try:
         result = await service.create_basic_profile(
             keycloak_id=current_user["keycloak_id"],
@@ -37,18 +40,26 @@ async def create_basic_profile(
             current_user=current_user
         )
         return result
+    except PermissionDeniedException as e:
+        raise HTTPException(status_code=403, detail=e.message)
+    except ProfileAlreadyExistsException as e:
+        # Если профиль уже существует, возвращаем его с кодом 200
+        return result
     except Exception as e:
         logger.error(f"Failed to create basic profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/detailed", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/detailed", status_code=status.HTTP_201_CREATED, response_model=FullProfileResponse)
 async def create_detailed_profile(
     profile_data: DetailedProfileCreate,
     current_user: dict = Depends(get_current_user),
     service: ProfileService = Depends(get_profile_service)
 ):
-    """АСИНХРОННОЕ создание только детального профиля"""
+    """
+    СИНХРОННОЕ создание детального профиля
+    Возвращает полный профиль
+    """
     try:
         result = await service.create_detailed_profile(
             keycloak_id=current_user["keycloak_id"],
@@ -56,8 +67,10 @@ async def create_detailed_profile(
             current_user=current_user
         )
         return result
-    except ProfileNotFoundException:
-        raise HTTPException(status_code=404, detail="Basic profile not found. Create basic profile first.")
+    except ProfileNotFoundException as e:
+        raise HTTPException(status_code=404, detail=e.message)
+    except PermissionDeniedException as e:
+        raise HTTPException(status_code=403, detail=e.message)
     except Exception as e:
         logger.error(f"Failed to create detailed profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))

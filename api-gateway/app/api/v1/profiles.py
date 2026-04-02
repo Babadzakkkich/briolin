@@ -29,15 +29,15 @@ async def get_saga_status(
 
 @router.post(
     "/basic", 
-    status_code=status.HTTP_202_ACCEPTED,
-    response_model=AsyncOperationResponse
+    status_code=status.HTTP_201_CREATED,
+    response_model=FullProfileResponse
 )
 async def create_basic_profile(
     profile_data: BasicProfileCreate,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """АСИНХРОННОЕ создание только базового профиля"""
+    """СИНХРОННОЕ создание базового профиля"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -45,17 +45,18 @@ async def create_basic_profile(
         headers=dict(response.headers)
     )
 
+
 @router.post(
     "/detailed", 
-    status_code=status.HTTP_202_ACCEPTED,
-    response_model=AsyncOperationResponse
+    status_code=status.HTTP_201_CREATED,
+    response_model=FullProfileResponse
 )
 async def create_detailed_profile(
     profile_data: DetailedProfileCreate,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """АСИНХРОННОЕ создание только детального профиля"""
+    """СИНХРОННОЕ создание детального профиля"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

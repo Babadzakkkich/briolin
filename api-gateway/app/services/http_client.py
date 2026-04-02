@@ -66,19 +66,15 @@ class HTTPClient:
         
         service_url = self._get_service_url(path)
         
-        # Формируем URL для целевого сервиса
         target_url = urljoin(service_url.rstrip("/") + "/", path.lstrip("/"))
         
-        # Формируем заголовки
         headers = {}
-        
-        # Копируем оригинальные заголовки (кроме host и content-length)
         for header_name, header_value in request.headers.items():
             header_name_lower = header_name.lower()
-            if header_name_lower not in ['host', 'content-length', 'content-type']:
+
+            if header_name_lower not in ['host', 'content-length']:
                 headers[header_name] = header_value
         
-        # Передаем внутренний токен если есть
         internal_token = request.headers.get("x-internal-token")
         signature = request.headers.get("x-token-signature")
         
@@ -87,26 +83,19 @@ class HTTPClient:
             headers["x-token-signature"] = signature
             logger.debug(f"Proxying with internal token: {internal_token[:30]}...")
         
-        # Определяем тип содержимого
         content_type = request.headers.get("content-type", "")
         
-        # Для multipart/form-data используем form_data
         if "multipart/form-data" in content_type:
-            # Не передаем content-type, httpx сам установит правильный с boundary
             if "content-type" in headers:
                 del headers["content-type"]
             
-            # Получаем form data из request
             form_data = await request.form()
             
-            # Создаем multipart данные для отправки
             files = []
             data = {}
             
             for key, value in form_data.items():
-                # Проверяем, является ли значение файлом по наличию атрибутов
                 if hasattr(value, 'filename') and hasattr(value, 'read') and hasattr(value, 'content_type'):
-                    # Это файл - читаем содержимое
                     file_content = await value.read()
                     files.append(
                         (key, (value.filename, file_content, value.content_type))
@@ -137,17 +126,20 @@ class HTTPClient:
                 logger.error(f"Error proxying multipart request: {e}", exc_info=True)
                 raise
         
-        # Для обычных запросов
+        # Для обычных запросов (включая JSON)
         body = None
         if request.method in ["POST", "PUT", "PATCH"]:
             try:
                 body_bytes = await request.body()
                 if body_bytes:
+                    # Логируем тело запроса для отладки
                     try:
                         body_json = json.loads(body_bytes.decode())
-                        logger.debug(f"Request body: {body_json}")
-                    except:
-                        pass
+                        logger.debug(f"Request body (JSON): {body_json}")
+                    except json.JSONDecodeError:
+                        logger.debug(f"Request body (non-JSON): {body_bytes[:200]}...")
+                    except Exception as e:
+                        logger.debug(f"Request body (raw): {body_bytes[:200]}...")
                     body = body_bytes
             except RuntimeError as e:
                 if "Stream consumed" in str(e):
@@ -162,7 +154,7 @@ class HTTPClient:
                 response = await client.request(
                     method=request.method,
                     url=target_url,
-                    headers=headers,
+                    headers=headers,  # Теперь включает Content-Type
                     content=body,
                     params=request.query_params
                 )
@@ -173,8 +165,13 @@ class HTTPClient:
         except httpx.ConnectError:
             logger.error(f"Cannot connect to service at {service_url}")
             raise ServiceUnavailableException("service")
+        except httpx.TimeoutException:
+            logger.error(f"Timeout connecting to service at {service_url}")
+            raise ServiceUnavailableException("service")
         except Exception as e:
-            logger.error(f"Error proxying request: {e}")
+            logger.error(f"Error proxying request: {e}", exc_info=True)
             raise ServiceUnavailableException("service")
 
+
+# Глобальный экземпляр клиента
 http_client = HTTPClient()
