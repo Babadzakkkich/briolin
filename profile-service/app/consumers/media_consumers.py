@@ -1,3 +1,4 @@
+# profile-service/app/consumers/media_consumers.py
 from datetime import datetime
 from typing import Dict, Any
 
@@ -109,6 +110,59 @@ async def handle_avatar_deleted(event: Dict[str, Any]) -> bool:
         return False
 
 
+async def handle_avatar_updated(event: Dict[str, Any]) -> bool:
+    try:
+        base_event = BaseEvent(**event)
+        
+        if base_event.is_processed_by(settings.service_name):
+            logger.debug(f"Event {base_event.event_id[:8]} already processed")
+            return True
+        
+        user_data = event.get("user_data", {})
+        keycloak_id = user_data.get("keycloak_id")
+        avatar_id = user_data.get("avatar_id")
+        is_current = user_data.get("is_current", False)
+        
+        if not keycloak_id:
+            logger.error("Missing keycloak_id in AVATAR_UPDATED event")
+            return False
+        
+        # Нас интересует только установка аватарки как текущей
+        if not is_current:
+            logger.debug(f"Skipping avatar update for {keycloak_id} - not setting as current")
+            return True
+        
+        logger.info(f"Processing AVATAR_UPDATED for {keycloak_id}, new current avatar: {avatar_id}")
+        
+        # Формируем URL для доступа к аватарке
+        avatar_url = f"/media/avatar/{keycloak_id}?avatar_id={avatar_id}"
+        thumbnail_url = f"/media/avatar/{keycloak_id}/thumbnail?avatar_id={avatar_id}"
+        
+        async with async_session_factory() as session:
+            stmt = (
+                update(BasicProfile)
+                .where(BasicProfile.keycloak_id == keycloak_id)
+                .values(
+                    avatar_url=avatar_url,
+                    thumbnail_url=thumbnail_url,
+                    updated_at=datetime.utcnow()
+                )
+            )
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            if result.rowcount == 0:
+                logger.warning(f"Profile not found for user {keycloak_id}")
+                return True
+        
+        logger.info(f"Updated avatar URLs for user {keycloak_id} to {avatar_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error handling avatar updated event: {e}", exc_info=True)
+        return False
+
+
 async def register(consumer):
     """Регистрация consumers для событий от media-service"""
     try:
@@ -120,6 +174,12 @@ async def register(consumer):
         await consumer.consume_user_events(
             event_type=EventType.AVATAR_DELETED,
             callback=handle_avatar_deleted
+        )
+        
+        # НОВЫЙ consumer для события обновления аватарки
+        await consumer.consume_user_events(
+            event_type=EventType.AVATAR_UPDATED,
+            callback=handle_avatar_updated
         )
         
         logger.info("Media event consumers registered successfully in profile-service")

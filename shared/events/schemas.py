@@ -16,6 +16,7 @@ class EventType(str, Enum):
     # События аватарок
     AVATAR_UPLOADED = "avatar.uploaded"
     AVATAR_DELETED = "avatar.deleted"
+    AVATAR_UPDATED = "avatar.updated"
     
     # События статуса
     USER_STATUS_CHANGE_REQUESTED = "user.status_change_requested"

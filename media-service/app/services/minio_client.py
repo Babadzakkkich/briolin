@@ -1,4 +1,6 @@
+# app/services/minio_client.py
 import io
+import json
 from typing import Optional, Tuple, BinaryIO
 from minio import Minio
 from minio.error import S3Error
@@ -35,7 +37,6 @@ class MinIOClient:
                     self._client.make_bucket(self._bucket)
                     logger.info(f"Created bucket: {self._bucket}")
                     
-                    # Устанавливаем политику публичного доступа для чтения
                     policy = {
                         "Version": "2012-10-17",
                         "Statement": [
@@ -47,7 +48,9 @@ class MinIOClient:
                             }
                         ]
                     }
-                    self._client.set_bucket_policy(self._bucket, policy)
+                    policy_json = json.dumps(policy)
+                    self._client.set_bucket_policy(self._bucket, policy_json)
+                    logger.info(f"Set public read policy for bucket: {self._bucket}")
                     
             except Exception as e:
                 logger.error(f"Failed to connect to MinIO: {e}")

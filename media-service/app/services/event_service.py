@@ -95,6 +95,42 @@ class EventService:
         except Exception as e:
             logger.error(f"Error publishing avatar deleted event: {e}")
             return False
+    
+    async def publish_avatar_updated(
+        self,
+        keycloak_id: str,
+        avatar_id: str,
+        is_current: bool = True,
+        correlation_id: Optional[str] = None
+    ) -> bool:
+        """Публикует событие об обновлении аватарки (смена текущей)"""
+        try:
+            correlation_id = correlation_id or str(uuid.uuid4())
+            
+            event = BaseEvent(
+                event_id=str(uuid.uuid4()),
+                event_type=EventType.AVATAR_UPDATED,
+                source_service=settings.service_name,
+                correlation_id=correlation_id,
+                user_data={
+                    "keycloak_id": keycloak_id,
+                    "avatar_id": avatar_id,
+                    "is_current": is_current
+                }
+            )
+            
+            success = await self.publisher.publish_event(event)
+            
+            if success:
+                logger.info(f"Published AVATAR_UPDATED event for {keycloak_id}")
+            else:
+                logger.error(f"Failed to publish AVATAR_UPDATED event")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error publishing avatar updated event: {e}")
+            return False
 
 
 # Глобальный экземпляр

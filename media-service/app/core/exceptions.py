@@ -35,3 +35,10 @@ class MinIOConnectionError(MediaServiceException):
 class ImageProcessingException(MediaServiceException):
     def __init__(self, message: str = "Image processing failed"):
         super().__init__(message=message, status_code=422)
+        
+class MaxAvatarsExceededException(MediaServiceException):
+    def __init__(self, max_avatars: int):
+        super().__init__(
+            message=f"Maximum {max_avatars} avatars per user exceeded",
+            status_code=400
+        )

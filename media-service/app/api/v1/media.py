@@ -1,18 +1,21 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
-from typing import Optional
+# app/api/v1/media.py
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Query
+from typing import List, Optional
 
-from app.services.media_service import get_media_service, MediaService
-from app.dependencies import get_current_user, validate_file
+from app.services.media_service import MediaService
+from app.dependencies import get_current_user, validate_file, get_media_service, require_admin
 from app.core.logger import logger
 from app.core.exceptions import (
     FileTooLargeException,
     UnsupportedMediaTypeException,
     ImageProcessingException,
-    FileNotFoundException
+    FileNotFoundException,
+    MaxAvatarsExceededException
 )
 from app.schemas.media import (
     AvatarUploadResponse,
     AvatarDeleteResponse,
+    AvatarResponse,
     ErrorResponse
 )
 
@@ -24,7 +27,7 @@ router = APIRouter(prefix="/media", tags=["Media"])
     status_code=status.HTTP_201_CREATED,
     response_model=AvatarUploadResponse,
     responses={
-        400: {"model": ErrorResponse, "description": "Invalid file"},
+        400: {"model": ErrorResponse, "description": "Invalid file or max avatars exceeded"},
         401: {"model": ErrorResponse, "description": "Unauthorized"},
         413: {"model": ErrorResponse, "description": "File too large"},
         415: {"model": ErrorResponse, "description": "Unsupported media type"},
@@ -45,6 +48,7 @@ async def upload_avatar(
     - Максимальный размер: 5MB
     - Изображение автоматически конвертируется в WebP
     - Создается thumbnail (200x200)
+    - Максимум 10 аватарок на пользователя
     """
     try:
         # Валидация файла
@@ -60,6 +64,8 @@ async def upload_avatar(
         
         return result
         
+    except MaxAvatarsExceededException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
     except FileTooLargeException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except UnsupportedMediaTypeException as e:
@@ -69,6 +75,50 @@ async def upload_avatar(
     except Exception as e:
         logger.error(f"Failed to upload avatar: {e}")
         raise HTTPException(status_code=500, detail="Failed to upload avatar")
+
+
+@router.get(
+    "/avatars",
+    response_model=List[AvatarResponse],
+    summary="Get all user avatars",
+    description="Получить все аватарки текущего пользователя"
+)
+async def get_my_avatars(
+    current_user: dict = Depends(get_current_user),
+    media_service: MediaService = Depends(get_media_service),
+    include_deleted: bool = Query(False, description="Включить удаленные аватарки"),
+    limit: int = Query(20, ge=1, le=50, description="Количество на странице"),
+    offset: int = Query(0, ge=0, description="Смещение")
+):
+    """Получить все аватарки текущего пользователя"""
+    return await media_service.get_user_avatars(
+        keycloak_id=current_user["keycloak_id"],
+        include_deleted=include_deleted,
+        limit=limit,
+        offset=offset
+    )
+
+
+@router.put(
+    "/avatar/{avatar_id}/set-current",
+    summary="Set current avatar",
+    description="Установить аватарку как текущую"
+)
+async def set_current_avatar(
+    avatar_id: str,
+    current_user: dict = Depends(get_current_user),
+    media_service: MediaService = Depends(get_media_service)
+):
+    """Установить аватарку как текущую"""
+    success = await media_service.set_current_avatar(
+        keycloak_id=current_user["keycloak_id"],
+        avatar_id=avatar_id
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    
+    return {"message": "Current avatar updated"}
 
 
 @router.get(
@@ -164,10 +214,11 @@ async def delete_avatar(
     media_service: MediaService = Depends(get_media_service)
 ):
     """
-    Удаление аватарки пользователя
+    Удаление аватарки пользователя (soft delete)
     
-    - Если удаляется текущая аватарка, профиль пользователя будет обновлен
-    - Если удаляется старая аватарка, просто удаляются файлы
+    - Если удаляется текущая аватарка, следующая по дате загрузки становится текущей
+    - Аватарка помечается как удаленная, но файлы остаются в MinIO
+    - Для полного удаления нужны права администратора
     """
     try:
         result = await media_service.delete_avatar(
@@ -182,3 +233,26 @@ async def delete_avatar(
     except Exception as e:
         logger.error(f"Failed to delete avatar: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete avatar")
+
+
+@router.delete(
+    "/avatar/{avatar_id}/permanent",
+    status_code=status.HTTP_200_OK,
+    summary="Permanently delete avatar",
+    description="Полное удаление аватарки (только для администраторов)"
+)
+async def delete_avatar_permanent(
+    avatar_id: str,
+    current_user: dict = Depends(require_admin()),
+    media_service: MediaService = Depends(get_media_service)
+):
+    """Полное удаление аватарки (только администраторы)"""
+    success = await media_service.hard_delete_avatar(
+        keycloak_id=current_user["keycloak_id"],
+        avatar_id=avatar_id
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Avatar not found")
+    
+    return {"message": "Avatar permanently deleted"}

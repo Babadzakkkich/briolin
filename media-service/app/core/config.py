@@ -1,5 +1,31 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+from urllib.parse import quote_plus
+
+
+class DatabaseConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="MEDIA__DB__",
+        case_sensitive=False,
+    )
+    
+    user: str = "media_user"
+    password: str = "media_password"
+    host: str = "media-postgres"
+    port: int = 5432
+    name: str = "media_db"
+    
+    echo: bool = False
+    pool_size: int = 20
+    max_overflow: int = 10
+
+    @property
+    def url(self):
+        return (
+            f"postgresql+asyncpg://{self.user}:{quote_plus(self.password)}"
+            f"@{self.host}:{self.port}/{self.name}"
+        )
 
 
 class MinIOConfig(BaseSettings):
@@ -33,8 +59,7 @@ class MediaServiceConfig(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8007
     
-    # Ограничения на загрузку
-    max_file_size: int = 5 * 1024 * 1024  # 5MB
+    max_file_size: int = 5 * 1024 * 1024
     allowed_mime_types: list = [
         "image/jpeg",
         "image/png",
@@ -44,10 +69,13 @@ class MediaServiceConfig(BaseSettings):
     max_width: int = 2000
     max_height: int = 2000
     thumbnail_size: int = 200
+    
+    max_avatars_per_user: int = 10
 
 
 class Settings:
     def __init__(self):
+        self.db = DatabaseConfig()
         self.minio = MinIOConfig()
         self.service = MediaServiceConfig()
     

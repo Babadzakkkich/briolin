@@ -249,6 +249,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  
+  media-postgres:
+    image: postgres:17-alpine
+    container_name: media-postgres
+    env_file:
+      - media-service/.env
+    ports:
+      - "5440:5432"
+    networks:
+      - briolin-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U media_user -d media_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # =========== SERVICES ===========
   auth-service:
@@ -393,6 +408,8 @@ services:
     env_file:
       - media-service/.env
     depends_on:
+      media-postgres:
+        condition: service_healthy
       minio:
         condition: service_healthy
       rabbitmq:

@@ -1,3 +1,4 @@
+# app/main.py
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,11 +9,16 @@ from app.core.exceptions import MediaServiceException
 from app.core.exception_handlers import media_exception_handler, global_exception_handler
 from app.api.v1 import router as api_router
 from app.services.rabbitmq import rabbitmq_publisher, rabbitmq_consumer
+from app.database.session import dispose_engine, engine
+from app.database.models import Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Media Service...")
+    
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     
     # Подключение к RabbitMQ
     rabbitmq_connected = False
@@ -35,6 +41,9 @@ async def lifespan(app: FastAPI):
             await rabbitmq_publisher.disconnect()
         except Exception as e:
             logger.error(f"Error disconnecting from RabbitMQ: {e}")
+    
+    await dispose_engine()
+    logger.info("Media Service shutdown complete")
 
 
 app = FastAPI(
