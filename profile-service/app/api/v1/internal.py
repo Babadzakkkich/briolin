@@ -22,21 +22,20 @@ async def get_profiles_count(
         logger.error(f"Failed to get profiles count: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/profiles/batch")
 async def get_profiles_batch(
-    request: Dict[str, List[int]] = Body(..., example={"profile_ids": [1, 2, 3]}),
+    request: Dict[str, List[str]] = Body(..., example={"keycloak_ids": ["uuid-1", "uuid-2"]}),
     service: ProfileService = Depends(get_profile_service)
 ):
     """
-    Внутренний эндпоинт для получения нескольких профилей по ID
+    Внутренний эндпоинт для получения нескольких профилей по Keycloak ID
     """
     try:
-        profile_ids = request.get("profile_ids", [])
-        if not profile_ids:
+        keycloak_ids = request.get("keycloak_ids", [])
+        if not keycloak_ids:
             return {"profiles": []}
         
-        profiles = await service.get_profiles_batch(profile_ids)
+        profiles = await service.get_profiles_batch_by_keycloak_ids(keycloak_ids)
         return {"profiles": profiles}
     except Exception as e:
         logger.error(f"Failed to get profiles batch: {e}")

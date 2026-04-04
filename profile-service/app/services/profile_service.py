@@ -529,34 +529,29 @@ class ProfileService:
     
 # ========== МЕТОДЫ ДЛЯ SEARCH-SERVICE ==========
 
-    async def get_profiles_batch(self, profile_ids: List[int]) -> List[Dict[str, Any]]:
+    async def get_profiles_batch_by_keycloak_ids(self, keycloak_ids: List[str]) -> List[Dict[str, Any]]:
         """
-        Получение нескольких профилей по их ID
-        Используется search-service для batch-запроса
+        Получение нескольких профилей по Keycloak ID
         """
-        if not profile_ids:
+        if not keycloak_ids:
             return []
         
         try:
-            # Получаем базовые профили
-            stmt = select(BasicProfile).where(BasicProfile.id.in_(profile_ids))
+            stmt = select(BasicProfile).where(BasicProfile.keycloak_id.in_(keycloak_ids))
             result = await self.db.execute(stmt)
             basic_profiles = result.scalars().all()
             
             if not basic_profiles:
                 return []
             
-            # Получаем ID для запроса детальных профилей
             basic_ids = [p.id for p in basic_profiles]
             
-            # Получаем детальные профили
             detailed_stmt = select(DetailedProfile).where(
                 DetailedProfile.basic_profile_id.in_(basic_ids)
             )
             detailed_result = await self.db.execute(detailed_stmt)
             detailed_profiles = {dp.basic_profile_id: dp for dp in detailed_result.scalars().all()}
             
-            # Формируем ответ
             result_profiles = []
             for profile in basic_profiles:
                 profile_data = {
@@ -594,7 +589,7 @@ class ProfileService:
             return result_profiles
             
         except Exception as e:
-            logger.error(f"Failed to get profiles batch: {e}")
+            logger.error(f"Failed to get profiles batch by keycloak_ids: {e}")
             raise DatabaseException(f"Failed to get profiles batch: {str(e)}")
 
 

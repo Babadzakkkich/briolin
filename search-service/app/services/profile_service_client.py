@@ -67,18 +67,18 @@ class ProfileServiceClient:
         """
         return await self._make_request("GET", f"/api/v1/internal/profiles/{keycloak_id}/basic")
 
-    async def get_profiles_batch(self, profile_ids: List[int]) -> List[Dict[str, Any]]:
+    async def get_profiles_batch(self, keycloak_ids: List[str]) -> List[Dict[str, Any]]:
         """
-        Получение нескольких профилей по ID
+        Получение нескольких профилей по Keycloak ID
         POST /api/v1/internal/profiles/batch
         """
-        if not profile_ids:
+        if not keycloak_ids:
             return []
 
         result = await self._make_request(
             "POST",
             "/api/v1/internal/profiles/batch",
-            json_data={"profile_ids": profile_ids}
+            json_data={"keycloak_ids": keycloak_ids}  # Изменено с profile_ids на keycloak_ids
         )
         return result.get("profiles", []) if result else []
 
@@ -90,20 +90,20 @@ class ProfileServiceClient:
         result = await self._make_request("GET", "/api/v1/internal/profiles/count")
         return result.get("total", 0) if result else 0
 
-    async def check_profiles_exist(self, profile_ids: List[int]) -> Dict[int, bool]:
+    async def check_profiles_exist(self, keycloak_ids: List[str]) -> Dict[str, bool]:
         """
-        Проверка существования профилей
+        Проверка существования профилей по Keycloak ID
         POST /api/v1/internal/profiles/exist
         """
-        if not profile_ids:
+        if not keycloak_ids:
             return {}
 
         result = await self._make_request(
             "POST",
             "/api/v1/internal/profiles/exist",
-            json_data={"profile_ids": profile_ids}
+            json_data={"keycloak_ids": keycloak_ids}  # Изменено с profile_ids на keycloak_ids
         )
-        return result.get("exist_map", {}) if result else {pid: False for pid in profile_ids}
+        return result.get("exist_map", {}) if result else {pid: False for pid in keycloak_ids}
 
     async def search_profiles(self, search_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """

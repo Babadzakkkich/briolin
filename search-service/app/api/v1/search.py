@@ -5,8 +5,8 @@ from app.schemas.search import (
     SearchRequest,
     TargetedSearchRequest,
     SearchResponse,
-    SearchSessionResponse,
-    SearchLockInfoResponse,
+    SearchSessionInfo,
+    SearchLockInfo,
     ErrorResponse
 )
 from app.services.search import SearchService
@@ -36,15 +36,13 @@ async def classic_search(
     Выполняет классический поиск по профилям
     """
     try:
-        user_id = current_user.get("id")
         keycloak_id = current_user.get("keycloak_id")
 
-        if not user_id or not keycloak_id:
-            logger.error(f"User ID or Keycloak ID not found in token: {current_user}")
+        if not keycloak_id:
+            logger.error(f"Keycloak ID not found in token: {current_user}")
             raise HTTPException(status_code=401, detail="Invalid user data in token")
 
         return await search_service.classic_search(
-            user_id=user_id,
             keycloak_id=keycloak_id,
             gender=search_request.gender,
             min_age=search_request.min_age,
@@ -79,15 +77,13 @@ async def targeted_search(
     Выполняет таргетированный поиск с использованием detailed_profiles
     """
     try:
-        user_id = current_user.get("id")
         keycloak_id = current_user.get("keycloak_id")
 
-        if not user_id or not keycloak_id:
-            logger.error(f"User ID or Keycloak ID not found in token: {current_user}")
+        if not keycloak_id:
+            logger.error(f"Keycloak ID not found in token: {current_user}")
             raise HTTPException(status_code=401, detail="Invalid user data in token")
 
         return await search_service.targeted_search(
-            user_id=user_id,
             keycloak_id=keycloak_id,
             search_params=search_request
         )
@@ -110,7 +106,7 @@ async def targeted_search(
 
 @router.get(
     "/lock-status",
-    response_model=SearchLockInfoResponse,
+    response_model=SearchLockInfo,
     responses={
         401: {"model": ErrorResponse},
         500: {"model": ErrorResponse}
@@ -124,12 +120,12 @@ async def get_search_lock_status(
     Получение статуса блокировки таргетированного поиска для текущего пользователя
     """
     try:
-        user_id = current_user.get("id")
-        if not user_id:
-            logger.error(f"User ID not found in token: {current_user}")
+        keycloak_id = current_user.get("keycloak_id")
+        if not keycloak_id:
+            logger.error(f"Keycloak ID not found in token: {current_user}")
             raise HTTPException(status_code=401, detail="Invalid user data in token")
 
-        return await search_service.get_search_lock_status(user_id)
+        return await search_service.get_search_lock_status(keycloak_id)
     except SearchServiceException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
@@ -139,7 +135,7 @@ async def get_search_lock_status(
 
 @router.get(
     "/history",
-    response_model=List[SearchSessionResponse],
+    response_model=List[SearchSessionInfo],
     responses={
         401: {"model": ErrorResponse},
         500: {"model": ErrorResponse}
@@ -155,12 +151,12 @@ async def get_search_history(
     Получение истории поисковых сессий текущего пользователя
     """
     try:
-        user_id = current_user.get("id")
-        if not user_id:
-            logger.error(f"User ID not found in token: {current_user}")
+        keycloak_id = current_user.get("keycloak_id")
+        if not keycloak_id:
+            logger.error(f"Keycloak ID not found in token: {current_user}")
             raise HTTPException(status_code=401, detail="Invalid user data in token")
 
-        return await search_service.get_search_history(user_id, limit, search_type)
+        return await search_service.get_search_history(keycloak_id, limit, search_type)
     except SearchServiceException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
@@ -170,7 +166,7 @@ async def get_search_history(
 
 @router.get(
     "/session/{session_id}",
-    response_model=SearchSessionResponse,
+    response_model=SearchSessionInfo,
     responses={
         401: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
@@ -186,20 +182,12 @@ async def get_search_session(
     Получение конкретной поисковой сессии по ID
     """
     try:
-        user_id = current_user.get("id")
-        if not user_id:
-            logger.error(f"User ID not found in token: {current_user}")
+        keycloak_id = current_user.get("keycloak_id")
+        if not keycloak_id:
+            logger.error(f"Keycloak ID not found in token: {current_user}")
             raise HTTPException(status_code=401, detail="Invalid user data in token")
 
-        session = await search_service.get_search_session(session_id)
-
-        # Проверяем, что сессия принадлежит текущему пользователю
-        # Нужно добавить user_id в SearchSessionResponse
-        if getattr(session, 'user_id', None) != user_id:
-            logger.warning(f"Session {session_id} belongs to another user")
-            raise HTTPException(status_code=403, detail="Cannot view session of another user")
-
-        return session
+        return await search_service.get_search_session(session_id, keycloak_id)
     except SearchSessionNotFoundException:
         raise HTTPException(status_code=404, detail="Search session not found")
     except SearchServiceException as e:
@@ -250,12 +238,12 @@ async def delete_old_search_history(
     Удаление старой истории поиска текущего пользователя
     """
     try:
-        user_id = current_user.get("id")
-        if not user_id:
-            logger.error(f"User ID not found in token: {current_user}")
+        keycloak_id = current_user.get("keycloak_id")
+        if not keycloak_id:
+            logger.error(f"Keycloak ID not found in token: {current_user}")
             raise HTTPException(status_code=401, detail="Invalid user data in token")
 
-        await search_service.delete_search_history(user_id, older_than_days)
+        await search_service.delete_search_history(keycloak_id, older_than_days)
         return None
     except SearchServiceException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
