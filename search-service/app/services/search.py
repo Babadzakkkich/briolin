@@ -13,6 +13,7 @@ from app.schemas.search import (
     SearchLockInfoResponse
 )
 from app.services.profile_service_client import ProfileServiceClient
+from app.core.config import settings
 from app.core.logger import logger
 from app.core.exceptions import (
     DatabaseException,
@@ -24,10 +25,6 @@ from app.utils.age_calculator import calculate_age_from_birth_date
 
 
 class SearchService:
-    # Константы
-    TARGETED_SEARCH_LOCK_HOURS = 12  # Блокировка на 12 часов
-    PROFILES_PER_PAGE = 10  # Профилей на странице
-
     def __init__(self, db: AsyncSession, profile_client: ProfileServiceClient):
         """
         Инициализация сервиса
@@ -44,8 +41,8 @@ class SearchService:
         Возвращает: (заблокирован, время разблокировки, количество просмотренных профилей, последняя сессия)
         """
         try:
-            # Ищем все сессии таргетированного поиска за последние 12 часов
-            lock_period = datetime.utcnow() - timedelta(hours=self.TARGETED_SEARCH_LOCK_HOURS)
+            # Ищем все сессии таргетированного поиска за последние N часов
+            lock_period = datetime.utcnow() - timedelta(hours=settings.targeted_search_lock_hours)
 
             stmt = select(SearchSession).where(
                 and_(
@@ -61,7 +58,7 @@ class SearchService:
             if not recent_sessions:
                 return False, None, 0, None
 
-            # Суммируем просмотренные профили за последние 12 часов
+            # Суммируем просмотренные профили за последние N часов
             total_viewed = 0
             for session in recent_sessions:
                 if session.viewed_profiles:
@@ -70,11 +67,11 @@ class SearchService:
             # Получаем последнюю сессию
             last_session = recent_sessions[0] if recent_sessions else None
 
-            # Если просмотрено >= 10 профилей - блокировка
-            if total_viewed >= self.PROFILES_PER_PAGE:
+            # Если просмотрено >= лимита - блокировка
+            if total_viewed >= settings.profiles_per_page:
                 # Самая старая сессия в этом периоде
                 first_session = recent_sessions[-1]
-                unlock_time = first_session.created_at + timedelta(hours=self.TARGETED_SEARCH_LOCK_HOURS)
+                unlock_time = first_session.created_at + timedelta(hours=settings.targeted_search_lock_hours)
 
                 if unlock_time > datetime.utcnow():
                     return True, unlock_time, total_viewed, last_session

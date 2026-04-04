@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     db_pool_size: int = Field(20, validation_alias="SEARCH__DB__POOL_SIZE")
     db_max_overflow: int = Field(10, validation_alias="SEARCH__DB__MAX_OVERFLOW")
 
+    # Настройки поиска
+    targeted_search_lock_hours: int = Field(
+        12, 
+        validation_alias="SEARCH__TARGETED_SEARCH_LOCK_HOURS",
+        description="Количество часов блокировки таргетированного поиска"
+    )
+    profiles_per_page: int = Field(
+        10, 
+        validation_alias="SEARCH__PROFILES_PER_PAGE",
+        description="Количество профилей на страницу для блокировки"
+    )
+
     @property
     def db_url(self) -> str:
         """URL для подключения к своей БД"""
