@@ -37,7 +37,7 @@ class TargetedSearchRequest(SearchRequest):
 
 
 class ProfilePreviewResponse(BaseModel):
-    """Краткая информация о профиле для результатов поиска (без ID)"""
+    """Краткая информация о профиле для результатов поиска"""
     model_config = ConfigDict(from_attributes=True)
 
     first_name: str

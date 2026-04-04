@@ -175,10 +175,10 @@ class SearchService:
             keycloak_id: str,
             search_type: str,
             filters: Dict[str, Any]
-    ) -> Tuple[List[ProfilePreviewResponse], int, int]:
+    ) -> Tuple[List[ProfilePreviewResponse], List[int], int, int]:
         """
         Выполняет поиск через profile-service
-        Возвращает: (профили, общее количество, количество страниц)
+        Возвращает: (профили, ID профилей, общее количество, количество страниц)
         """
         try:
             # Подготавливаем параметры для profile-service
@@ -200,17 +200,24 @@ class SearchService:
             result = await self.profile_client.search_profiles(search_params)
 
             if not result:
-                return [], 0, 1
+                return [], [], 0, 1
 
             profiles_data = result.get("profiles", [])
             total = result.get("total", 0)
             total_pages = result.get("total_pages", 1)
 
-            # Конвертируем в ProfilePreviewResponse
+            # Конвертируем в ProfilePreviewResponse и собираем ID
             profiles = []
+            profile_ids = []
+            
             for profile in profiles_data:
                 basic = profile.get("basic", {})
                 detailed = profile.get("detailed")
+
+                # Получаем ID профиля
+                profile_id = basic.get("id") or profile.get("id")
+                if profile_id:
+                    profile_ids.append(profile_id)
 
                 # Рассчитываем возраст
                 birth_date_str = basic.get("date_of_birth")
@@ -235,11 +242,50 @@ class SearchService:
                     partner_preferences=detailed.get("partner_preferences") if detailed else None
                 ))
 
-            return profiles, total, total_pages
+            return profiles, profile_ids, total, total_pages
 
         except Exception as e:
             logger.error(f"Search failed: {e}")
-            return [], 0, 1
+            return [], [], 0, 1
+
+    async def _get_profiles_page_from_session(
+            self,
+            session: SearchSession,
+            page: int,
+            limit: int
+    ) -> Tuple[List[ProfilePreviewResponse], bool, bool]:
+        """
+        Получает страницу профилей из существующей сессии
+        Возвращает: (профили, has_next, has_previous)
+        """
+        all_results = session.results or []
+        viewed = session.viewed_profiles or []
+        
+        # Получаем ID непросмотренных профилей
+        available_ids = [pid for pid in all_results if pid not in viewed]
+        
+        # Пагинация
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        
+        if start_idx >= len(available_ids):
+            return [], False, page > 1
+        
+        page_ids = available_ids[start_idx:end_idx]
+        
+        # Получаем профили по ID
+        profiles = await self._get_profiles_by_ids(page_ids, include_detailed=(session.search_type == 'targeted'))
+        
+        # Обновляем просмотренные
+        session.viewed_profiles = viewed + page_ids
+        session.current_page = page
+        session.updated_at = datetime.utcnow()
+        await self.db.commit()
+        
+        has_next = end_idx < len(available_ids)
+        has_previous = page > 1
+        
+        return profiles, has_next, has_previous
 
     async def classic_search(
             self,
@@ -283,66 +329,38 @@ class SearchService:
             if existing_session:
                 logger.info(f"Found existing search session {existing_session.id} for user {user_id}")
                 
-                # Получаем ID непросмотренных профилей
-                all_results = existing_session.results or []
-                viewed = existing_session.viewed_profiles or []
-                available_ids = [pid for pid in all_results if pid not in viewed]
+                # Получаем страницу из существующей сессии
+                profiles, has_next, has_previous = await self._get_profiles_page_from_session(
+                    existing_session, page, limit
+                )
                 
-                # Пагинация
-                start_idx = (page - 1) * limit
-                end_idx = start_idx + limit
-                
-                if start_idx < len(available_ids):
-                    page_ids = available_ids[start_idx:end_idx]
-                    
-                    # Получаем профили по ID
-                    profiles = await self._get_profiles_by_ids(page_ids, include_detailed=False)
-                    
-                    # Обновляем просмотренные
-                    existing_session.viewed_profiles = viewed + page_ids
-                    existing_session.current_page = page
-                    existing_session.updated_at = datetime.utcnow()
-                    await self.db.commit()
-                    
-                    has_next = end_idx < len(available_ids)
-                    has_previous = page > 1
-                    
-                    return SearchResponse(
-                        search_session_id=existing_session.id,
-                        profiles=profiles,
-                        filters=search_filters,
-                        created_at=existing_session.created_at,
-                        current_page=page,
-                        total_pages=existing_session.total_pages,
-                        total_results=existing_session.total_results,
-                        has_next=has_next,
-                        has_previous=has_previous
-                    )
-                else:
-                    # Нет новых профилей
-                    return SearchResponse(
-                        search_session_id=existing_session.id,
-                        profiles=[],
-                        filters=search_filters,
-                        created_at=existing_session.created_at,
-                        current_page=page,
-                        total_pages=existing_session.total_pages,
-                        total_results=existing_session.total_results,
-                        has_next=False,
-                        has_previous=page > 1
-                    )
+                return SearchResponse(
+                    search_session_id=existing_session.id,
+                    profiles=profiles,
+                    filters=search_filters,
+                    created_at=existing_session.created_at,
+                    current_page=page,
+                    total_pages=existing_session.total_pages,
+                    total_results=existing_session.total_results,
+                    has_next=has_next,
+                    has_previous=has_previous
+                )
 
             # Выполняем новый поиск
-            profiles, total, total_pages = await self._perform_search(
+            profiles, profile_ids, total, total_pages = await self._perform_search(
                 user_id=user_id,
                 keycloak_id=keycloak_id,
                 search_type="classic",
                 filters=search_filters
             )
 
-            # Получаем ID профилей для сохранения (нужно будет добавить в profile-service)
-            # Пока сохраняем пустой список
-            profile_ids = []
+            # Пагинация для первой страницы
+            start_idx = 0
+            end_idx = min(limit, len(profile_ids))
+            first_page_ids = profile_ids[start_idx:end_idx]
+            
+            # Получаем профили для первой страницы
+            first_page_profiles = await self._get_profiles_by_ids(first_page_ids, include_detailed=False)
 
             # Сохраняем сессию
             search_session = SearchSession(
@@ -351,7 +369,7 @@ class SearchService:
                 search_type='classic',
                 filters=search_filters,
                 results=profile_ids,
-                viewed_profiles=[],
+                viewed_profiles=first_page_ids,  # Отмечаем первую страницу как просмотренную
                 current_page=page,
                 total_pages=total_pages,
                 total_results=total,
@@ -367,7 +385,7 @@ class SearchService:
 
             return SearchResponse(
                 search_session_id=search_session.id,
-                profiles=profiles,
+                profiles=first_page_profiles,
                 filters=search_filters,
                 created_at=search_session.created_at,
                 current_page=page,
@@ -434,77 +452,48 @@ class SearchService:
             if existing_session:
                 logger.info(f"Found existing targeted session {existing_session.id} for user {user_id}")
 
-                # Получаем ID непросмотренных профилей
-                all_results = existing_session.results or []
-                viewed = existing_session.viewed_profiles or []
-                available_ids = [pid for pid in all_results if pid not in viewed]
+                # Получаем страницу из существующей сессии
+                profiles, has_next, has_previous = await self._get_profiles_page_from_session(
+                    existing_session, search_params.page, search_params.limit
+                )
                 
-                # Пагинация
-                start_idx = (search_params.page - 1) * search_params.limit
-                end_idx = start_idx + search_params.limit
+                # Проверяем блокировку после обновления
+                is_locked, unlock_time, new_total_viewed, _ = await self._check_targeted_search_lock(user_id)
                 
-                if start_idx < len(available_ids):
-                    page_ids = available_ids[start_idx:end_idx]
-                    
-                    # Получаем профили по ID
-                    profiles = await self._get_profiles_by_ids(page_ids, include_detailed=True)
-                    
-                    # Обновляем просмотренные
-                    existing_session.viewed_profiles = viewed + page_ids
-                    existing_session.current_page = search_params.page
-                    existing_session.updated_at = datetime.utcnow()
-                    await self.db.commit()
-                    
-                    # Проверяем блокировку после обновления
-                    is_locked, unlock_time, new_total_viewed, _ = await self._check_targeted_search_lock(user_id)
-                    
-                    has_next = end_idx < len(available_ids)
-                    has_previous = search_params.page > 1
-                    
-                    response = SearchResponse(
-                        search_session_id=existing_session.id,
-                        profiles=profiles,
-                        filters=search_filters,
-                        created_at=existing_session.created_at,
-                        current_page=search_params.page,
-                        total_pages=existing_session.total_pages,
-                        total_results=existing_session.total_results,
-                        has_next=has_next,
-                        has_previous=has_previous,
-                        profiles_viewed=new_total_viewed
-                    )
-                    
-                    if is_locked:
-                        response.locked_until = unlock_time
-                        response.time_until_unlock = int((unlock_time - datetime.utcnow()).total_seconds())
-                    
-                    return response
-                else:
-                    # Нет новых профилей
-                    return SearchResponse(
-                        search_session_id=existing_session.id,
-                        profiles=[],
-                        filters=search_filters,
-                        created_at=existing_session.created_at,
-                        current_page=search_params.page,
-                        total_pages=existing_session.total_pages,
-                        total_results=existing_session.total_results,
-                        has_next=False,
-                        has_previous=search_params.page > 1,
-                        profiles_viewed=total_viewed
-                    )
+                response = SearchResponse(
+                    search_session_id=existing_session.id,
+                    profiles=profiles,
+                    filters=search_filters,
+                    created_at=existing_session.created_at,
+                    current_page=search_params.page,
+                    total_pages=existing_session.total_pages,
+                    total_results=existing_session.total_results,
+                    has_next=has_next,
+                    has_previous=has_previous,
+                    profiles_viewed=new_total_viewed
+                )
+                
+                if is_locked:
+                    response.locked_until = unlock_time
+                    response.time_until_unlock = int((unlock_time - datetime.utcnow()).total_seconds())
+                
+                return response
 
             # Выполняем новый поиск
-            profiles, total, total_pages = await self._perform_search(
+            profiles, profile_ids, total, total_pages = await self._perform_search(
                 user_id=user_id,
                 keycloak_id=keycloak_id,
                 search_type="targeted",
                 filters=search_filters
             )
 
-            # Получаем ID профилей для сохранения (нужно будет добавить в profile-service)
-            # Пока сохраняем пустой список
-            profile_ids = []
+            # Пагинация для первой страницы
+            start_idx = 0
+            end_idx = min(search_params.limit, len(profile_ids))
+            first_page_ids = profile_ids[start_idx:end_idx]
+            
+            # Получаем профили для первой страницы
+            first_page_profiles = await self._get_profiles_by_ids(first_page_ids, include_detailed=True)
 
             # Сохраняем сессию
             search_session = SearchSession(
@@ -513,7 +502,7 @@ class SearchService:
                 search_type='targeted',
                 filters=search_filters,
                 results=profile_ids,
-                viewed_profiles=[],
+                viewed_profiles=first_page_ids,  # Отмечаем первую страницу как просмотренную
                 current_page=search_params.page,
                 total_pages=total_pages,
                 total_results=total,
@@ -532,7 +521,7 @@ class SearchService:
 
             response = SearchResponse(
                 search_session_id=search_session.id,
-                profiles=profiles,
+                profiles=first_page_profiles,
                 filters=search_filters,
                 created_at=search_session.created_at,
                 current_page=search_params.page,
@@ -540,7 +529,7 @@ class SearchService:
                 total_results=total,
                 has_next=has_next,
                 has_previous=has_previous,
-                profiles_viewed=len(profiles)
+                profiles_viewed=new_total_viewed
             )
 
             if is_locked:
