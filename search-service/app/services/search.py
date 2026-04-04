@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, update
+from sqlalchemy.exc import IntegrityError
 
-from app.database.models import SearchSession
+from app.database.models import SearchSession, SearchLock
 from app.schemas.search import (
     SearchRequest,
     TargetedSearchRequest,
@@ -30,55 +31,138 @@ class SearchService:
         self.db = db
         self.profile_client = profile_client
 
-    async def _check_targeted_search_lock(self, keycloak_id: str) -> Tuple[
-        bool, Optional[datetime], int, Optional[SearchSession]]:
-        """Проверяет, заблокирован ли таргетированный поиск для пользователя"""
+    async def _get_or_create_lock(self, keycloak_id: str) -> SearchLock:
+        """
+        Получает существующую блокировку или создает новую для пользователя
+        """
+        stmt = select(SearchLock).where(SearchLock.keycloak_id == keycloak_id)
+        result = await self.db.execute(stmt)
+        lock = result.scalar_one_or_none()
+        
+        if not lock:
+            lock = SearchLock(
+                keycloak_id=keycloak_id,
+                is_locked=False,
+                profiles_viewed=0
+            )
+            self.db.add(lock)
+            await self.db.flush()
+        
+        return lock
+
+    async def _check_and_update_lock(
+        self, 
+        keycloak_id: str, 
+        new_views: int = 0
+    ) -> Tuple[bool, Optional[datetime], int]:
+        """
+        Атомарная проверка и обновление блокировки.
+        Использует SELECT FOR UPDATE для предотвращения race condition.
+        
+        Args:
+            keycloak_id: ID пользователя
+            new_views: Количество новых просмотренных профилей
+        
+        Returns:
+            Tuple[is_locked, locked_until, total_viewed]
+        """
         try:
-            lock_period = datetime.utcnow() - timedelta(hours=settings.targeted_search_lock_hours)
-
-            stmt = select(SearchSession).where(
-                and_(
-                    SearchSession.keycloak_id == keycloak_id,
-                    SearchSession.search_type == 'targeted',
-                    SearchSession.created_at >= lock_period
-                )
-            ).order_by(SearchSession.created_at.desc())
-
+            # Блокируем строку для обновления (атомарная операция)
+            stmt = select(SearchLock).where(
+                SearchLock.keycloak_id == keycloak_id
+            ).with_for_update()
+            
             result = await self.db.execute(stmt)
-            recent_sessions = result.scalars().all()
-
-            if not recent_sessions:
-                return False, None, 0, None
-
-            total_viewed = 0
-            for session in recent_sessions:
-                if session.viewed_profile_ids:
-                    total_viewed += len(session.viewed_profile_ids)
-
-            last_session = recent_sessions[0] if recent_sessions else None
-
-            if total_viewed >= settings.profiles_per_page:
-                first_session = recent_sessions[-1]
-                unlock_time = first_session.created_at + timedelta(hours=settings.targeted_search_lock_hours)
-
-                if unlock_time > datetime.utcnow():
-                    return True, unlock_time, total_viewed, last_session
-
-            return False, None, total_viewed, last_session
-
+            lock = result.scalar_one_or_none()
+            
+            if not lock:
+                # Создаем новую запись
+                lock = SearchLock(
+                    keycloak_id=keycloak_id,
+                    is_locked=False,
+                    profiles_viewed=0
+                )
+                self.db.add(lock)
+                await self.db.flush()
+            
+            # Проверяем, не истекла ли существующая блокировка
+            if lock.is_locked and lock.locked_until and lock.locked_until <= datetime.utcnow():
+                # Блокировка истекла - сбрасываем
+                lock.is_locked = False
+                lock.profiles_viewed = 0
+                lock.lock_period_start = None
+                lock.locked_until = None
+                logger.info(f"Lock expired for user {keycloak_id[:8]}...")
+            
+            # Если не заблокирован и есть новые просмотры, обновляем счетчик
+            if not lock.is_locked and new_views > 0:
+                # Определяем начало периода блокировки
+                if not lock.lock_period_start:
+                    lock.lock_period_start = datetime.utcnow()
+                
+                lock.profiles_viewed += new_views
+                
+                # Проверяем, не превышен ли лимит
+                if lock.profiles_viewed >= settings.targeted_search_max_views:
+                    lock.is_locked = True
+                    lock.locked_until = lock.lock_period_start + timedelta(
+                        hours=settings.targeted_search_lock_hours
+                    )
+                    logger.warning(
+                        f"Targeted search locked for user {keycloak_id[:8]}... "
+                        f"Viewed {lock.profiles_viewed} profiles. "
+                        f"Unlock at {lock.locked_until}"
+                    )
+            
+            await self.db.flush()
+            
+            return lock.is_locked, lock.locked_until, lock.profiles_viewed
+            
         except Exception as e:
-            logger.error(f"Error checking search lock for keycloak_id {keycloak_id}: {str(e)}")
-            return False, None, 0, None
+            logger.error(f"Error in _check_and_update_lock for {keycloak_id[:8]}...: {str(e)}")
+            await self.db.rollback()
+            # В случае ошибки возвращаем безопасные значения (не блокируем)
+            return False, None, 0
+
+    async def _reset_lock_if_needed(self, keycloak_id: str) -> None:
+        """
+        Проверяет и сбрасывает блокировку, если она истекла
+        """
+        try:
+            stmt = select(SearchLock).where(
+                and_(
+                    SearchLock.keycloak_id == keycloak_id,
+                    SearchLock.is_locked == True,
+                    SearchLock.locked_until <= datetime.utcnow()
+                )
+            ).with_for_update()
+            
+            result = await self.db.execute(stmt)
+            expired_lock = result.scalar_one_or_none()
+            
+            if expired_lock:
+                expired_lock.is_locked = False
+                expired_lock.profiles_viewed = 0
+                expired_lock.lock_period_start = None
+                expired_lock.locked_until = None
+                await self.db.flush()
+                logger.info(f"Reset expired lock for user {keycloak_id[:8]}...")
+                
+        except Exception as e:
+            logger.error(f"Error resetting lock for {keycloak_id[:8]}...: {str(e)}")
 
     async def _get_existing_session(
-            self,
-            keycloak_id: str,
-            search_type: str,
-            filters: Dict[str, Any]
+        self,
+        keycloak_id: str,
+        search_type: str,
+        filters: Dict[str, Any]
     ) -> Optional[SearchSession]:
         """Проверяет, существует ли активная сессия с такими же фильтрами"""
         try:
             day_ago = datetime.utcnow() - timedelta(days=1)
+            
+            # Убираем timestamp из фильтров для сравнения
+            compare_filters = {k: v for k, v in filters.items() if k != 'search_timestamp'}
 
             stmt = select(SearchSession).where(
                 and_(
@@ -92,7 +176,9 @@ class SearchService:
             sessions = result.scalars().all()
 
             for session in sessions:
-                if session.filters == filters:
+                # Убираем timestamp из сохраненных фильтров для сравнения
+                session_filters = {k: v for k, v in session.filters.items() if k != 'search_timestamp'}
+                if session_filters == compare_filters:
                     return session
 
             return None
@@ -150,145 +236,139 @@ class SearchService:
             logger.error(f"Error getting profiles by keycloak ids: {str(e)}")
             return []
 
-    async def _perform_search(
+    async def _fetch_all_profile_ids(
         self,
         keycloak_id: str,
         search_type: str,
         filters: Dict[str, Any]
-    ) -> Tuple[List[ProfilePreviewResponse], List[str], int, int]:
+    ) -> Tuple[List[str], int]:
         """
-        Выполняет поиск через profile-service
-        Возвращает: (профили, Keycloak ID профилей, общее количество, количество страниц)
+        Получает ВСЕ Keycloak ID профилей из profile-service.
+        Использует пагинацию через while True для надежного получения всех результатов.
+        
+        Args:
+            keycloak_id: ID текущего пользователя (для исключения)
+            search_type: Тип поиска (classic/targeted)
+            filters: Фильтры поиска
+        
+        Returns:
+            Tuple[List[str], int]: (список Keycloak ID профилей, общее количество)
         """
         try:
-            search_params = {
-                "gender": filters.get("gender"),
-                "min_age": filters.get("min_age"),
-                "max_age": filters.get("max_age"),
-                "city": filters.get("city"),
-                "education": filters.get("education"),
-                "hobbies_keywords": filters.get("hobbies_keywords"),
-                "partner_preferences": filters.get("partner_preferences"),
-                "online_only": filters.get("online_only", False),
-                "exclude_keycloak_id": keycloak_id,
-                "page": filters.get("page", 1),
-                "limit": filters.get("limit", 10)
-            }
-
-            result = await self.profile_client.search_profiles(search_params)
-
-            if not result:
-                return [], [], 0, 1
-
-            profiles_data = result.get("profiles", [])
-            total = result.get("total", 0)
-            total_pages = result.get("total_pages", 1)
-
-            profiles = []
-            keycloak_ids = []
+            all_profile_ids = []
+            page = 1
+            page_size = 100  # Размер страницы для запросов к profile-service
             
-            for profile in profiles_data:
-                basic = profile.get("basic", {})
-                detailed = profile.get("detailed")
-
-                # Получаем Keycloak ID
-                profile_keycloak_id = basic.get("keycloak_id") or profile.get("keycloak_id")
-                if profile_keycloak_id:
-                    keycloak_ids.append(profile_keycloak_id)
-
-                birth_date_str = basic.get("date_of_birth")
-                age = 0
-                if birth_date_str:
-                    try:
-                        birth_date = datetime.fromisoformat(birth_date_str).date()
-                        age = calculate_age_from_birth_date(birth_date)
-                    except:
-                        pass
-
-                profiles.append(ProfilePreviewResponse(
-                    keycloak_id=profile_keycloak_id,
-                    first_name=basic.get("first_name", ""),
-                    last_name=basic.get("last_name", ""),
-                    gender=basic.get("gender", ""),
-                    age=age,
-                    city=basic.get("city", ""),
-                    online=basic.get("online", False),
-                    avatar_thumbnail_url=basic.get("thumbnail_url"),
-                    education=detailed.get("education") if detailed else None,
-                    hobbies=detailed.get("hobbies") if detailed else None,
-                    about_me=detailed.get("about_me") if detailed else None,
-                    partner_preferences=detailed.get("partner_preferences") if detailed else None
-                ))
-
-            return profiles, keycloak_ids, total, total_pages
-
+            while True:
+                # Формируем параметры запроса
+                search_params = {
+                    "gender": filters.get("gender"),
+                    "min_age": filters.get("min_age"),
+                    "max_age": filters.get("max_age"),
+                    "city": filters.get("city"),
+                    "education": filters.get("education"),
+                    "hobbies_keywords": filters.get("hobbies_keywords"),
+                    "partner_preferences": filters.get("partner_preferences"),
+                    "online_only": filters.get("online_only", False),
+                    "exclude_keycloak_id": keycloak_id,
+                    "page": page,
+                    "limit": page_size
+                }
+                
+                # Выполняем запрос к profile-service
+                result = await self.profile_client.search_profiles(search_params)
+                
+                if not result:
+                    logger.warning(f"No results from profile-service for page {page}")
+                    break
+                
+                profiles_data = result.get("profiles", [])
+                
+                if not profiles_data:
+                    # Нет больше профилей - выходим
+                    logger.debug(f"No more profiles at page {page}")
+                    break
+                
+                # Извлекаем Keycloak ID из каждого профиля
+                for profile in profiles_data:
+                    basic = profile.get("basic", {})
+                    profile_keycloak_id = basic.get("keycloak_id") or profile.get("keycloak_id")
+                    if profile_keycloak_id:
+                        all_profile_ids.append(profile_keycloak_id)
+                    else:
+                        logger.warning(f"Profile without keycloak_id found: {profile.get('id')}")
+                
+                logger.debug(f"Fetched page {page}: {len(profiles_data)} profiles, total so far: {len(all_profile_ids)}")
+                
+                # Условие выхода: получили меньше, чем page_size
+                # Это значит, что это последняя страница
+                if len(profiles_data) < page_size:
+                    logger.info(f"Fetched all profiles: {len(all_profile_ids)} total")
+                    break
+                
+                # Переходим к следующей странице
+                page += 1
+                
+                # Защита от бесконечного цикла (максимум 100 страниц = 10,000 профилей)
+                if page > 100:
+                    logger.error(f"Too many pages ({page}) while fetching profiles for {keycloak_id[:8]}...")
+                    break
+            
+            return all_profile_ids, len(all_profile_ids)
+            
         except Exception as e:
-            logger.error(f"Search failed: {e}")
-            return [], [], 0, 1
+            logger.error(f"Failed to fetch profile IDs for {keycloak_id[:8]}...: {str(e)}", exc_info=True)
+            return [], 0
 
-    async def _get_profiles_page_from_session(
+    async def _get_profiles_page_from_ids(
         self,
-        session: SearchSession,
+        all_profile_ids: List[str],
+        viewed_profile_ids: List[str],
         page: int,
-        limit: int
-    ) -> Tuple[List[ProfilePreviewResponse], bool, bool]:
-        """Получает страницу профилей из существующей сессии"""
-        
-        available_ids = session.remaining_profile_ids
+        limit: int,
+        include_detailed: bool
+    ) -> Tuple[List[ProfilePreviewResponse], List[str], bool, bool]:
+        """
+        Получает страницу профилей из списка всех ID, исключая просмотренные
+        Возвращает: (профили, ID текущей страницы, has_next, has_previous)
+        """
+        viewed_set = set(viewed_profile_ids or [])
+        available_ids = [pid for pid in all_profile_ids if pid not in viewed_set]
         
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
         
         if start_idx >= len(available_ids):
-            return [], False, page > 1
+            return [], [], False, page > 1
         
         page_ids = available_ids[start_idx:end_idx]
         
-        profiles = await self._get_profiles_by_keycloak_ids(
-            page_ids, 
-            include_detailed=(session.search_type == 'targeted')
-        )
-        
-        if session.viewed_profile_ids is None:
-            session.viewed_profile_ids = []
-        session.viewed_profile_ids.extend(page_ids)
-        session.updated_at = datetime.utcnow()
-        await self.db.commit()
+        profiles = await self._get_profiles_by_keycloak_ids(page_ids, include_detailed)
         
         has_next = end_idx < len(available_ids)
         has_previous = page > 1
         
-        return profiles, has_next, has_previous
+        return profiles, page_ids, has_next, has_previous
 
     async def classic_search(
-        self,
-        keycloak_id: str,
-        gender: Optional[str] = None,
-        min_age: Optional[int] = None,
-        max_age: Optional[int] = None,
-        city: Optional[str] = None,
-        page: int = 1,
-        limit: int = 10
+            self,
+            keycloak_id: str,
+            search_params: SearchRequest,
+            page: int = 1,
+            limit: int = 10
     ) -> SearchResponse:
         """Выполняет классический поиск по профилям"""
-        if min_age and max_age and min_age > max_age:
+        if search_params.min_age and search_params.max_age and search_params.min_age > search_params.max_age:
             raise InvalidSearchParametersException("min_age cannot be greater than max_age")
 
         search_filters = {
             "search_type": "classic",
-            "search_timestamp": datetime.utcnow().isoformat()
+            "search_timestamp": datetime.utcnow().isoformat(),
+            "gender": search_params.gender.value if search_params.gender else None,
+            "min_age": search_params.min_age,
+            "max_age": search_params.max_age,
+            "city": search_params.city
         }
-
-        if gender:
-            search_filters["gender"] = gender
-        if min_age is not None:
-            search_filters["min_age"] = min_age
-        if max_age is not None:
-            search_filters["max_age"] = max_age
-        if city:
-            search_filters["city"] = city
-        search_filters["page"] = page
-        search_filters["limit"] = limit
 
         try:
             existing_session = await self._get_existing_session(keycloak_id, "classic", search_filters)
@@ -296,14 +376,28 @@ class SearchService:
             if existing_session:
                 logger.info(f"Found existing search session {existing_session.id} for user {keycloak_id}")
                 
-                profiles, has_next, has_previous = await self._get_profiles_page_from_session(
-                    existing_session, page, limit
+                profiles, page_ids, has_next, has_previous = await self._get_profiles_page_from_ids(
+                    all_profile_ids=existing_session.result_profile_ids or [],
+                    viewed_profile_ids=existing_session.viewed_profile_ids or [],
+                    page=page,
+                    limit=limit,
+                    include_detailed=False
                 )
                 
-                # Создаем объект пагинации
+                if page_ids:
+                    if existing_session.viewed_profile_ids is None:
+                        existing_session.viewed_profile_ids = []
+                    existing_session.viewed_profile_ids.extend(page_ids)
+                    existing_session.updated_at = datetime.utcnow()
+                    await self.db.commit()
+                
+                total_unviewed = len([pid for pid in (existing_session.result_profile_ids or []) 
+                                     if pid not in (existing_session.viewed_profile_ids or [])])
+                total_pages = (total_unviewed + limit - 1) // limit if total_unviewed > 0 else 1
+                
                 pagination = PaginationInfo(
                     current_page=page,
-                    total_pages=existing_session.total_pages,
+                    total_pages=total_pages,
                     total_results=existing_session.total_results,
                     page_size=limit
                 )
@@ -314,40 +408,65 @@ class SearchService:
                     filters=search_filters,
                     created_at=existing_session.created_at,
                     pagination=pagination,
-                    lock_info=None  # Для классического поиска нет блокировки
+                    lock_info=None
                 )
 
-            # Выполняем новый поиск
-            profiles, keycloak_ids, total, total_pages = await self._perform_search(
+            all_profile_ids, total = await self._fetch_all_profile_ids(
                 keycloak_id=keycloak_id,
                 search_type="classic",
                 filters=search_filters
             )
 
-            start_idx = 0
-            end_idx = min(limit, len(keycloak_ids))
-            first_page_ids = keycloak_ids[start_idx:end_idx]
-            
-            # Получаем профили для первой страницы с keycloak_id
-            first_page_profiles = []
-            for profile in profiles[:end_idx]:
-                # Добавляем keycloak_id в профили (он уже должен быть в данных от profile-service)
-                first_page_profiles.append(profile)
+            if not all_profile_ids:
+                pagination = PaginationInfo(
+                    current_page=page,
+                    total_pages=1,
+                    total_results=0,
+                    page_size=limit
+                )
+                
+                search_session = SearchSession(
+                    keycloak_id=keycloak_id,
+                    search_type='classic',
+                    filters=search_filters,
+                    result_profile_ids=[],
+                    viewed_profile_ids=[],
+                    total_results=0
+                )
+                self.db.add(search_session)
+                await self.db.commit()
+                await self.db.refresh(search_session)
+                
+                return SearchResponse(
+                    search_session_id=search_session.id,
+                    profiles=[],
+                    filters=search_filters,
+                    created_at=search_session.created_at,
+                    pagination=pagination,
+                    lock_info=None
+                )
 
-            # Сохраняем сессию
+            profiles, page_ids, has_next, has_previous = await self._get_profiles_page_from_ids(
+                all_profile_ids=all_profile_ids,
+                viewed_profile_ids=[],
+                page=page,
+                limit=limit,
+                include_detailed=False
+            )
+
+            total_pages = (len(all_profile_ids) + limit - 1) // limit
             search_session = SearchSession(
                 keycloak_id=keycloak_id,
                 search_type='classic',
                 filters=search_filters,
-                result_profile_ids=keycloak_ids,
-                viewed_profile_ids=first_page_ids,
+                result_profile_ids=all_profile_ids,
+                viewed_profile_ids=page_ids,
                 total_results=total
             )
             self.db.add(search_session)
             await self.db.commit()
             await self.db.refresh(search_session)
 
-            # Создаем объект пагинации
             pagination = PaginationInfo(
                 current_page=page,
                 total_pages=total_pages,
@@ -357,11 +476,11 @@ class SearchService:
 
             return SearchResponse(
                 search_session_id=search_session.id,
-                profiles=first_page_profiles,
+                profiles=profiles,
                 filters=search_filters,
                 created_at=search_session.created_at,
                 pagination=pagination,
-                lock_info=None  # Для классического поиска нет блокировки
+                lock_info=None
             )
 
         except InvalidSearchParametersException:
@@ -371,19 +490,25 @@ class SearchService:
             logger.error(f"Search failed for user {keycloak_id}: {str(e)}")
             raise DatabaseException(f"Search failed: {str(e)}")
 
-
     async def targeted_search(
-        self,
-        keycloak_id: str,
-        search_params: TargetedSearchRequest
+            self,
+            keycloak_id: str,
+            search_params: TargetedSearchRequest,
+            page: int = 1,
+            limit: int = 10
     ) -> SearchResponse:
         """Выполняет таргетированный поиск с блокировкой"""
         if search_params.min_age and search_params.max_age and search_params.min_age > search_params.max_age:
             raise InvalidSearchParametersException("min_age cannot be greater than max_age")
 
         try:
-            # Проверяем блокировку
-            is_locked, unlock_time, total_viewed, last_session = await self._check_targeted_search_lock(keycloak_id)
+            # Сбрасываем истекшую блокировку если есть
+            await self._reset_lock_if_needed(keycloak_id)
+            
+            # Проверяем блокировку (без обновления счетчика)
+            is_locked, unlock_time, total_viewed = await self._check_and_update_lock(
+                keycloak_id, new_views=0
+            )
 
             if is_locked:
                 time_until_unlock = int((unlock_time - datetime.utcnow()).total_seconds())
@@ -395,46 +520,61 @@ class SearchService:
                     profiles_viewed=total_viewed
                 )
 
-            # Формируем фильтры
             search_filters = {
                 "search_type": "targeted",
-                "search_timestamp": datetime.utcnow().isoformat()
+                "search_timestamp": datetime.utcnow().isoformat(),
+                "gender": search_params.gender.value if search_params.gender else None,
+                "min_age": search_params.min_age,
+                "max_age": search_params.max_age,
+                "city": search_params.city,
+                "education": search_params.education,
+                "hobbies_keywords": search_params.hobbies_keywords,
+                "partner_preferences": search_params.partner_preferences,
+                "online_only": search_params.online_only
             }
 
-            params_dict = search_params.model_dump(exclude_none=True)
-            for key, value in params_dict.items():
-                if key not in ['page', 'limit']:
-                    if isinstance(value, list):
-                        if value:
-                            search_filters[key] = value
-                    elif value is not None and value != "":
-                        search_filters[key] = value
-
-            search_filters["page"] = search_params.page
-            search_filters["limit"] = search_params.limit
-
-            # Проверяем существующую сессию
             existing_session = await self._get_existing_session(keycloak_id, "targeted", search_filters)
 
             if existing_session:
                 logger.info(f"Found existing targeted session {existing_session.id} for user {keycloak_id}")
 
-                profiles, has_next, has_previous = await self._get_profiles_page_from_session(
-                    existing_session, search_params.page, search_params.limit
+                profiles, page_ids, has_next, has_previous = await self._get_profiles_page_from_ids(
+                    all_profile_ids=existing_session.result_profile_ids or [],
+                    viewed_profile_ids=existing_session.viewed_profile_ids or [],
+                    page=page,
+                    limit=limit,
+                    include_detailed=True
                 )
                 
-                # Проверяем блокировку после обновления
-                is_locked, unlock_time, new_total_viewed, _ = await self._check_targeted_search_lock(keycloak_id)
+                # Обновляем счетчик блокировки с количеством новых просмотров
+                if page_ids:
+                    if existing_session.viewed_profile_ids is None:
+                        existing_session.viewed_profile_ids = []
+                    existing_session.viewed_profile_ids.extend(page_ids)
+                    existing_session.updated_at = datetime.utcnow()
+                    
+                    # Атомарно обновляем блокировку
+                    is_locked, unlock_time, new_total_viewed = await self._check_and_update_lock(
+                        keycloak_id, new_views=len(page_ids)
+                    )
+                    
+                    await self.db.commit()
+                else:
+                    is_locked, unlock_time, new_total_viewed = await self._check_and_update_lock(
+                        keycloak_id, new_views=0
+                    )
                 
-                # Создаем объект пагинации
+                total_unviewed = len([pid for pid in (existing_session.result_profile_ids or []) 
+                                     if pid not in (existing_session.viewed_profile_ids or [])])
+                total_pages = (total_unviewed + limit - 1) // limit if total_unviewed > 0 else 1
+                
                 pagination = PaginationInfo(
-                    current_page=search_params.page,
-                    total_pages=existing_session.total_pages,
+                    current_page=page,
+                    total_pages=total_pages,
                     total_results=existing_session.total_results,
-                    page_size=search_params.limit
+                    page_size=limit
                 )
                 
-                # Создаем объект информации о блокировке
                 lock_info = None
                 if is_locked:
                     lock_info = SearchLockInfo(
@@ -453,46 +593,78 @@ class SearchService:
                     lock_info=lock_info
                 )
 
-            # Выполняем новый поиск
-            profiles, keycloak_ids, total, total_pages = await self._perform_search(
+            # Получаем все ID профилей за один запрос
+            all_profile_ids, total = await self._fetch_all_profile_ids(
                 keycloak_id=keycloak_id,
                 search_type="targeted",
                 filters=search_filters
             )
 
-            # Пагинация для первой страницы
-            start_idx = 0
-            end_idx = min(search_params.limit, len(keycloak_ids))
-            first_page_ids = keycloak_ids[start_idx:end_idx]
-            
-            # Получаем профили для первой страницы
-            first_page_profiles = await self._get_profiles_by_keycloak_ids(first_page_ids, include_detailed=True)
+            if not all_profile_ids:
+                pagination = PaginationInfo(
+                    current_page=page,
+                    total_pages=1,
+                    total_results=0,
+                    page_size=limit
+                )
+                
+                search_session = SearchSession(
+                    keycloak_id=keycloak_id,
+                    search_type='targeted',
+                    filters=search_filters,
+                    result_profile_ids=[],
+                    viewed_profile_ids=[],
+                    total_results=0
+                )
+                self.db.add(search_session)
+                await self.db.commit()
+                await self.db.refresh(search_session)
+                
+                return SearchResponse(
+                    search_session_id=search_session.id,
+                    profiles=[],
+                    filters=search_filters,
+                    created_at=search_session.created_at,
+                    pagination=pagination,
+                    lock_info=None
+                )
+
+            # Получаем первую страницу профилей
+            profiles, page_ids, has_next, has_previous = await self._get_profiles_page_from_ids(
+                all_profile_ids=all_profile_ids,
+                viewed_profile_ids=[],
+                page=page,
+                limit=limit,
+                include_detailed=True
+            )
 
             # Сохраняем сессию
+            total_pages = (len(all_profile_ids) + limit - 1) // limit
             search_session = SearchSession(
                 keycloak_id=keycloak_id,
                 search_type='targeted',
                 filters=search_filters,
-                result_profile_ids=keycloak_ids,
-                viewed_profile_ids=first_page_ids,
+                result_profile_ids=all_profile_ids,
+                viewed_profile_ids=page_ids,
                 total_results=total
             )
             self.db.add(search_session)
+            
+            # Атомарно обновляем блокировку с количеством новых просмотров
+            is_locked, unlock_time, new_total_viewed = await self._check_and_update_lock(
+                keycloak_id, new_views=len(page_ids)
+            )
+            
             await self.db.commit()
             await self.db.refresh(search_session)
 
-            # Проверяем блокировку после создания сессии
-            is_locked, unlock_time, new_total_viewed, _ = await self._check_targeted_search_lock(keycloak_id)
-
-            # Создаем объект пагинации
             pagination = PaginationInfo(
-                current_page=search_params.page,
+                current_page=page,
                 total_pages=total_pages,
                 total_results=total,
-                page_size=search_params.limit
+                page_size=limit
             )
             
-            # Создаем объект информации о блокировке
             lock_info = None
             if is_locked:
                 lock_info = SearchLockInfo(
@@ -504,7 +676,7 @@ class SearchService:
 
             return SearchResponse(
                 search_session_id=search_session.id,
-                profiles=first_page_profiles,
+                profiles=profiles,
                 filters=search_filters,
                 created_at=search_session.created_at,
                 pagination=pagination,
@@ -520,10 +692,16 @@ class SearchService:
             logger.error(f"Targeted search failed for user {keycloak_id}: {str(e)}")
             raise DatabaseException(f"Targeted search failed: {str(e)}")
 
-    async def get_search_lock_status(self, keycloak_id: str) -> SearchLockInfo:  # Изменен тип возврата
+    async def get_search_lock_status(self, keycloak_id: str) -> SearchLockInfo:
         """Получает статус блокировки поиска для пользователя"""
         try:
-            is_locked, unlock_time, total_viewed, _ = await self._check_targeted_search_lock(keycloak_id)
+            # Сначала сбрасываем истекшую блокировку если есть
+            await self._reset_lock_if_needed(keycloak_id)
+            
+            # Получаем актуальное состояние
+            is_locked, unlock_time, total_viewed = await self._check_and_update_lock(
+                keycloak_id, new_views=0
+            )
 
             time_until_unlock = None
             if unlock_time:
@@ -574,7 +752,7 @@ class SearchService:
             logger.error(f"Failed to get search history for user {keycloak_id}: {str(e)}")
             raise DatabaseException(f"Failed to get search history: {str(e)}")
 
-    async def get_search_session(self, session_id: int, keycloak_id: str) -> SearchSessionInfo:  # Изменен тип возврата
+    async def get_search_session(self, session_id: int, keycloak_id: str) -> SearchSessionInfo:
         """Получение конкретной поисковой сессии"""
         try:
             stmt = select(SearchSession).where(

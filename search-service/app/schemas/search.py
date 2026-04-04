@@ -7,15 +7,13 @@ from shared.schemas.shared import Gender
 # ========== REQUEST SCHEMAS ==========
 
 class SearchRequest(BaseModel):
-    """Базовый запрос для поиска"""
+    """Базовый запрос для поиска (без пагинации)"""
     model_config = ConfigDict(from_attributes=True)
 
     gender: Optional[Gender] = Field(None, description="Пол для фильтрации")
     min_age: Optional[int] = Field(None, ge=18, le=100, description="Минимальный возраст")
     max_age: Optional[int] = Field(None, ge=18, le=100, description="Максимальный возраст")
     city: Optional[str] = Field(None, min_length=1, max_length=200, description="Город")
-    page: int = Field(1, ge=1, description="Номер страницы")
-    limit: int = Field(10, ge=1, le=50, description="Размер страницы")
 
     @field_validator('max_age')
     @classmethod
@@ -27,13 +25,25 @@ class SearchRequest(BaseModel):
         return v
 
 
+class SearchWithPaginationRequest(SearchRequest):
+    """Запрос поиска с пагинацией (для API)"""
+    page: int = Field(1, ge=1, description="Номер страницы")
+    limit: int = Field(10, ge=1, le=50, description="Размер страницы")
+
+
 class TargetedSearchRequest(SearchRequest):
-    """Расширенный запрос для таргетированного поиска"""
+    """Расширенный запрос для таргетированного поиска (без пагинации)"""
     
     education: Optional[str] = Field(None, min_length=1, max_length=500, description="Образование")
     hobbies_keywords: Optional[List[str]] = Field(None, max_length=10, description="Ключевые слова интересов")
     partner_preferences: Optional[str] = Field(None, min_length=1, max_length=2000, description="Предпочтения")
     online_only: bool = Field(False, description="Только онлайн пользователи")
+
+
+class TargetedSearchWithPaginationRequest(TargetedSearchRequest):
+    """Запрос таргетированного поиска с пагинацией (для API)"""
+    page: int = Field(1, ge=1, description="Номер страницы")
+    limit: int = Field(10, ge=1, le=50, description="Размер страницы")
 
 
 # ========== RESPONSE SCHEMAS ==========

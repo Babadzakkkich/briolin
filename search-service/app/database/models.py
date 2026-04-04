@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional, List
-from sqlalchemy import Integer, String, DateTime, JSON, BigInteger, Index
+from sqlalchemy import Boolean, Integer, String, DateTime, JSON, BigInteger, Index
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import func
@@ -16,6 +16,7 @@ class SearchSession(Base):
     Сохраняет историю поисковых запросов и их результаты
     """
     __tablename__ = "search_sessions"
+    
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     keycloak_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True,)
     search_type: Mapped[str] = mapped_column(String(50), nullable=False, default='classic',)
@@ -45,3 +46,15 @@ class SearchSession(Base):
     def is_expired(self) -> bool:
         """Проверяет, истекла ли сессия"""
         return datetime.utcnow() > self.expires_at
+
+class SearchLock(Base):
+    __tablename__ = "search_locks"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    keycloak_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    profiles_viewed: Mapped[int] = mapped_column(Integer, default=0)
+    lock_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -2,8 +2,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 
 from app.schemas.search import (
-    SearchRequest,
-    TargetedSearchRequest,
+    SearchWithPaginationRequest,
+    TargetedSearchWithPaginationRequest,
     SearchResponse,
     SearchSessionInfo,
     SearchLockInfo,
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/search", tags=["Search"])
     }
 )
 async def classic_search(
-        search_request: SearchRequest,
+        search_request: SearchWithPaginationRequest,
         search_service: SearchService = Depends(get_search_service),
         current_user: dict = Depends(get_current_active_user)
 ):
@@ -44,10 +44,7 @@ async def classic_search(
 
         return await search_service.classic_search(
             keycloak_id=keycloak_id,
-            gender=search_request.gender,
-            min_age=search_request.min_age,
-            max_age=search_request.max_age,
-            city=search_request.city,
+            search_params=search_request,
             page=search_request.page,
             limit=search_request.limit
         )
@@ -69,7 +66,7 @@ async def classic_search(
     }
 )
 async def targeted_search(
-        search_request: TargetedSearchRequest,
+        search_request: TargetedSearchWithPaginationRequest,
         search_service: SearchService = Depends(get_search_service),
         current_user: dict = Depends(get_current_active_user)
 ):
@@ -85,7 +82,9 @@ async def targeted_search(
 
         return await search_service.targeted_search(
             keycloak_id=keycloak_id,
-            search_params=search_request
+            search_params=search_request,
+            page=search_request.page,
+            limit=search_request.limit
         )
     except SearchLockedException as e:
         raise HTTPException(

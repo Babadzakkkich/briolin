@@ -40,9 +40,9 @@ class Settings(BaseSettings):
         validation_alias="SEARCH__TARGETED_SEARCH_LOCK_HOURS",
         description="Количество часов блокировки таргетированного поиска"
     )
-    profiles_per_page: int = Field(
+    targeted_search_max_views: int = Field(
         10, 
-        validation_alias="SEARCH__PROFILES_PER_PAGE",
+        validation_alias="SEARCH__TARGETED_SEARCH_MAX_VIEWS",
         description="Количество профилей на страницу для блокировки"
     )
 
