@@ -240,7 +240,8 @@ class SearchService:
         self,
         keycloak_id: str,
         search_type: str,
-        filters: Dict[str, Any]
+        filters: Dict[str, Any],
+        exclude_user_ids: Optional[List[str]] = None  # НОВЫЙ ПАРАМЕТР
     ) -> Tuple[List[str], int]:
         """
         Получает ВСЕ Keycloak ID профилей из profile-service.
@@ -250,6 +251,7 @@ class SearchService:
             keycloak_id: ID текущего пользователя (для исключения)
             search_type: Тип поиска (classic/targeted)
             filters: Фильтры поиска
+            exclude_user_ids: Дополнительные ID для исключения (НОВОЕ)
         
         Returns:
             Tuple[List[str], int]: (список Keycloak ID профилей, общее количество)
@@ -258,6 +260,13 @@ class SearchService:
             all_profile_ids = []
             page = 1
             page_size = 100  # Размер страницы для запросов к profile-service
+            
+            # Формируем список ID для исключения
+            exclude_ids = [keycloak_id]  # Всегда исключаем текущего пользователя
+            if exclude_user_ids:
+                exclude_ids.extend(exclude_user_ids)
+            # Убираем дубликаты
+            exclude_ids = list(set(exclude_ids))
             
             while True:
                 # Формируем параметры запроса
@@ -270,7 +279,7 @@ class SearchService:
                     "hobbies_keywords": filters.get("hobbies_keywords"),
                     "partner_preferences": filters.get("partner_preferences"),
                     "online_only": filters.get("online_only", False),
-                    "exclude_keycloak_id": keycloak_id,
+                    "exclude_keycloak_ids": exclude_ids,  # Передаем список исключаемых ID
                     "page": page,
                     "limit": page_size
                 }
@@ -351,13 +360,15 @@ class SearchService:
         return profiles, page_ids, has_next, has_previous
 
     async def classic_search(
-            self,
-            keycloak_id: str,
-            search_params: SearchRequest,
-            page: int = 1,
-            limit: int = 10
+        self,
+        keycloak_id: str,
+        search_params: SearchRequest,
+        page: int = 1,
+        limit: int = 10,
+        exclude_user_ids: Optional[List[str]] = None  # НОВЫЙ ПАРАМЕТР
     ) -> SearchResponse:
-        """Выполняет классический поиск по профилям"""
+        """Выполняет классический поиск по профилям с возможностью исключения пользователей"""
+        
         if search_params.min_age and search_params.max_age and search_params.min_age > search_params.max_age:
             raise InvalidSearchParametersException("min_age cannot be greater than max_age")
 
@@ -369,6 +380,10 @@ class SearchService:
             "max_age": search_params.max_age,
             "city": search_params.city
         }
+
+        # Добавляем exclude_ids в фильтры для кэширования
+        if exclude_user_ids:
+            search_filters["exclude_user_ids"] = exclude_user_ids
 
         try:
             existing_session = await self._get_existing_session(keycloak_id, "classic", search_filters)
@@ -392,7 +407,7 @@ class SearchService:
                     await self.db.commit()
                 
                 total_unviewed = len([pid for pid in (existing_session.result_profile_ids or []) 
-                                     if pid not in (existing_session.viewed_profile_ids or [])])
+                                    if pid not in (existing_session.viewed_profile_ids or [])])
                 total_pages = (total_unviewed + limit - 1) // limit if total_unviewed > 0 else 1
                 
                 pagination = PaginationInfo(
@@ -411,10 +426,12 @@ class SearchService:
                     lock_info=None
                 )
 
+            # Передаем exclude_user_ids в profile-service
             all_profile_ids, total = await self._fetch_all_profile_ids(
                 keycloak_id=keycloak_id,
                 search_type="classic",
-                filters=search_filters
+                filters=search_filters,
+                exclude_user_ids=exclude_user_ids  # ПЕРЕДАЕМ ИСКЛЮЧАЕМЫХ ПОЛЬЗОВАТЕЛЕЙ
             )
 
             if not all_profile_ids:

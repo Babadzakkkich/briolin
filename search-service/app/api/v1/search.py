@@ -28,12 +28,15 @@ router = APIRouter(prefix="/search", tags=["Search"])
     }
 )
 async def classic_search(
-        search_request: SearchWithPaginationRequest,
-        search_service: SearchService = Depends(get_search_service),
-        current_user: dict = Depends(get_current_active_user)
+    search_request: SearchWithPaginationRequest,
+    search_service: SearchService = Depends(get_search_service),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Выполняет классический поиск по профилям
+    
+    Поддерживает исключение пользователей через параметр exclude_user_ids.
+    Это используется matching-service для исключения уже просмотренных/свайпнутых пользователей.
     """
     try:
         keycloak_id = current_user.get("keycloak_id")
@@ -46,7 +49,8 @@ async def classic_search(
             keycloak_id=keycloak_id,
             search_params=search_request,
             page=search_request.page,
-            limit=search_request.limit
+            limit=search_request.limit,
+            exclude_user_ids=search_request.exclude_user_ids  # Передаем исключаемых пользователей
         )
     except SearchServiceException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
@@ -66,12 +70,15 @@ async def classic_search(
     }
 )
 async def targeted_search(
-        search_request: TargetedSearchWithPaginationRequest,
-        search_service: SearchService = Depends(get_search_service),
-        current_user: dict = Depends(get_current_active_user)
+    search_request: TargetedSearchWithPaginationRequest,
+    search_service: SearchService = Depends(get_search_service),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Выполняет таргетированный поиск с использованием detailed_profiles
+    
+    Поддерживает исключение пользователей через параметр exclude_user_ids.
+    Это используется matching-service для исключения уже просмотренных/свайпнутых пользователей.
     """
     try:
         keycloak_id = current_user.get("keycloak_id")
@@ -112,8 +119,8 @@ async def targeted_search(
     }
 )
 async def get_search_lock_status(
-        search_service: SearchService = Depends(get_search_service),
-        current_user: dict = Depends(get_current_active_user)
+    search_service: SearchService = Depends(get_search_service),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Получение статуса блокировки таргетированного поиска для текущего пользователя
@@ -141,10 +148,10 @@ async def get_search_lock_status(
     }
 )
 async def get_search_history(
-        limit: int = Query(50, ge=1, le=100),
-        search_type: Optional[str] = Query(None, pattern="^(classic|targeted)$"),
-        search_service: SearchService = Depends(get_search_service),
-        current_user: dict = Depends(get_current_active_user)
+    limit: int = Query(50, ge=1, le=100),
+    search_type: Optional[str] = Query(None, pattern="^(classic|targeted)$"),
+    search_service: SearchService = Depends(get_search_service),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Получение истории поисковых сессий текущего пользователя
@@ -173,9 +180,9 @@ async def get_search_history(
     }
 )
 async def get_search_session(
-        session_id: int,
-        search_service: SearchService = Depends(get_search_service),
-        current_user: dict = Depends(get_current_active_user)
+    session_id: int,
+    search_service: SearchService = Depends(get_search_service),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Получение конкретной поисковой сессии по ID
@@ -204,8 +211,8 @@ async def get_search_session(
     }
 )
 async def get_profiles_count(
-        search_service: SearchService = Depends(get_search_service),
-        current_user: dict = Depends(get_current_active_user)
+    search_service: SearchService = Depends(get_search_service),
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Получение общего количества профилей в системе
@@ -229,9 +236,9 @@ async def get_profiles_count(
     }
 )
 async def delete_old_search_history(
-        older_than_days: int = Query(30, ge=1, le=365),
-        search_service: SearchService = Depends(get_search_service), 
-        current_user: dict = Depends(get_current_active_user)
+    older_than_days: int = Query(30, ge=1, le=365),
+    search_service: SearchService = Depends(get_search_service), 
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Удаление старой истории поиска текущего пользователя

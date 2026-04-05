@@ -25,6 +25,8 @@ from app.core.exceptions import (
 from app.core.logger import logger
 from shared.saga.models import SagaInstance, SagaStatus
 
+from app.services.embedding_updater import get_embedding_updater
+
 
 def _filter_dependencies(deps: List[Optional[str]]) -> Optional[List[str]]:
     """
@@ -149,6 +151,13 @@ class ProfileService:
         await self.db.refresh(new_detailed)
         
         logger.info(f"Detailed profile created: {new_detailed.id} for user {keycloak_id}")
+        
+        try:
+            updater = get_embedding_updater()
+            await updater.update_embedding_for_profile(basic_profile.id)
+            logger.info(f"Embedding generated for user {keycloak_id}")
+        except Exception as e:
+            logger.error(f"Failed to generate embedding for {keycloak_id}: {e}")
         
         # Публикуем событие об обновлении профиля (добавлен детальный)
         try:
@@ -776,3 +785,174 @@ class ProfileService:
         except Exception as e:
             logger.error(f"Failed to search profiles: {e}")
             raise DatabaseException(f"Failed to search profiles: {str(e)}")
+        
+    # ========== МЕТОДЫ ЭМБЕДДИНГА ==========
+    
+    async def get_embedding(self, keycloak_id: str) -> Optional[List[float]]:
+        """
+        Get embedding vector for a user.
+        Returns None if profile doesn't exist or embedding is not generated.
+        """
+        async with async_session_factory() as session:
+            stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
+            result = await session.execute(stmt)
+            profile = result.scalar_one_or_none()
+            
+            if not profile:
+                return None
+            
+            # Проверяем, есть ли эмбеддинг (учитывая, что это может быть numpy array)
+            if profile.embedding is None or (hasattr(profile.embedding, '__len__') and len(profile.embedding) == 0):
+                logger.warning(f"No embedding for user {keycloak_id}")
+                return None
+            
+            # Конвертируем numpy array в list если нужно
+            if hasattr(profile.embedding, 'tolist'):
+                return profile.embedding.tolist()
+            return profile.embedding
+    
+    async def search_profiles_by_embedding(
+        self,
+        embedding: List[float],
+        filters: Dict[str, Any],
+        exclude_ids: List[str],
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Search profiles by embedding similarity using pgvector.
+        
+        Args:
+            embedding: Query embedding vector (384 dimensions)
+            filters: Filter criteria (gender, age range, city, education, hobbies, online_only)
+            exclude_ids: List of keycloak_ids to exclude
+            limit: Maximum number of results
+            offset: Pagination offset
+        
+        Returns:
+            List of profiles with similarity scores
+        """
+        try:
+            async with async_session_factory() as session:
+                # Build base query
+                query = select(
+                    BasicProfile,
+                    DetailedProfile,
+                    # Cosine distance (lower = more similar)
+                    BasicProfile.embedding.cosine_distance(embedding).label("distance")
+                ).outerjoin(
+                    DetailedProfile,
+                    BasicProfile.id == DetailedProfile.basic_profile_id
+                ).where(
+                    BasicProfile.embedding != None  # Only profiles with embeddings
+                )
+                
+                # Exclude specific users
+                if exclude_ids:
+                    query = query.where(BasicProfile.keycloak_id.notin_(exclude_ids))
+                
+                # Gender filter
+                if filters.get("gender"):
+                    query = query.where(BasicProfile.gender == filters["gender"])
+                
+                # City filter (partial match)
+                if filters.get("city"):
+                    query = query.where(BasicProfile.city.ilike(f"%{filters['city']}%"))
+                
+                # Age filter (calculate from date_of_birth)
+                today = datetime.utcnow().date()
+                if filters.get("min_age") is not None:
+                    max_birth_date = date(
+                        today.year - filters["min_age"],
+                        today.month,
+                        today.day
+                    )
+                    query = query.where(BasicProfile.date_of_birth <= max_birth_date)
+                
+                if filters.get("max_age") is not None:
+                    min_birth_date = date(
+                        today.year - filters["max_age"] - 1,
+                        today.month,
+                        today.day
+                    )
+                    query = query.where(BasicProfile.date_of_birth >= min_birth_date)
+                
+                # Education filter (on detailed profile)
+                if filters.get("education"):
+                    query = query.where(DetailedProfile.education.ilike(f"%{filters['education']}%"))
+                
+                # Hobbies keywords filter (any match)
+                if filters.get("hobbies_keywords"):
+                    hobby_conditions = []
+                    for keyword in filters["hobbies_keywords"]:
+                        if keyword and keyword.strip():
+                            hobby_conditions.append(
+                                DetailedProfile.hobbies.ilike(f"%{keyword.strip()}%")
+                            )
+                    if hobby_conditions:
+                        from sqlalchemy import or_
+                        query = query.where(or_(*hobby_conditions))
+                
+                # Online only filter
+                if filters.get("online_only", False):
+                    query = query.where(BasicProfile.online == True)
+                
+                # Order by similarity (closest first)
+                query = query.order_by("distance")
+                
+                # Apply pagination
+                query = query.offset(offset).limit(limit)
+                
+                # Execute query
+                result = await session.execute(query)
+                rows = result.all()
+                
+                # Format results
+                profiles = []
+                for row in rows:
+                    basic = row[0]
+                    detailed = row[1]
+                    distance = row[2]
+                    
+                    # Convert distance to similarity (1 - distance, clamp to [0,1])
+                    similarity = max(0.0, min(1.0, 1.0 - distance))
+                    
+                    # Calculate age
+                    age = self._calculate_age(basic.date_of_birth)
+                    
+                    profile_data = {
+                        "keycloak_id": basic.keycloak_id,
+                        "first_name": basic.first_name,
+                        "last_name": basic.last_name,
+                        "age": age,
+                        "city": basic.city,
+                        "avatar_url": basic.avatar_url,
+                        "thumbnail_url": basic.thumbnail_url,
+                        "similarity": round(similarity, 4),
+                        "online": basic.online,
+                    }
+                    
+                    # Add detailed info if available
+                    if detailed:
+                        profile_data["education"] = detailed.education
+                        profile_data["hobbies"] = detailed.hobbies
+                        profile_data["about_me"] = detailed.about_me
+                        profile_data["partner_preferences"] = detailed.partner_preferences
+                    
+                    profiles.append(profile_data)
+                
+                logger.info(f"Search by embedding returned {len(profiles)} profiles")
+                return profiles
+                
+        except Exception as e:
+            logger.error(f"Failed to search profiles by embedding: {e}", exc_info=True)
+            raise DatabaseException(f"Failed to search profiles: {str(e)}")
+    
+    @staticmethod
+    def _calculate_age(birth_date: date) -> int:
+        """Calculate age from birth date"""
+        today = datetime.utcnow().date()
+        age = today.year - birth_date.year - (
+            (today.month, today.day) < (birth_date.month, birth_date.day)
+        )
+        return max(0, age)

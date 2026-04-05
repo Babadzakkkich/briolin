@@ -49,6 +49,9 @@ class EventType(str, Enum):
     USER_TYPING = "user.typing"
     USER_ONLINE_CHAT = "user.online"  # Alias для обратной совместимости
     USER_OFFLINE_CHAT = "user.offline"  # Alias для обратной совместимости
+    
+    # События мэтчинга
+    MATCH_CREATED = "match.created"
 
 class BaseEvent(BaseModel):
     """Базовый класс для всех событий"""

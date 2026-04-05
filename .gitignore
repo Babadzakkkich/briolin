@@ -220,6 +220,6 @@ dist-ssr
 *.sln
 *.sw?
 
-*.sql
+*session.sql
 
 chat-test-app

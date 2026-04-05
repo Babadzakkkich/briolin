@@ -4,7 +4,8 @@ from typing import Dict, Any, List, Optional
 from app.services.profile_service import ProfileService
 from app.dependencies import get_profile_service
 from app.core.logger import logger
-from app.schemas.internal import ProfileDeleteData
+from app.core.exceptions import ProfileNotFoundException
+from app.schemas.internal import SearchByEmbeddingRequest, SearchByEmbeddingResponse
 
 router = APIRouter(prefix="/internal", tags=["Internal"])
 
@@ -155,4 +156,77 @@ async def delete_internal_profile(
         raise
     except Exception as e:
         logger.error(f"Failed to delete internal profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/profiles/{keycloak_id}/embedding")
+async def get_profile_embedding(
+    keycloak_id: str,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Get embedding vector for a user profile.
+    Used by matching-service for semantic search.
+    """
+    try:
+        embedding = await service.get_embedding(keycloak_id)
+        if embedding is None:
+            return {"embedding": []}
+        return {"embedding": embedding}
+    except ProfileNotFoundException:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    except Exception as e:
+        logger.error(f"Failed to get embedding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/profiles/search_by_embedding", response_model=SearchByEmbeddingResponse)
+async def search_profiles_by_embedding(
+    request: SearchByEmbeddingRequest,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Search profiles by embedding similarity.
+    Used by matching-service for targeted (premium) recommendations.
+    
+    Returns profiles sorted by cosine similarity (closest first),
+    with similarity scores (0-1) where 1 = most similar.
+    """
+    try:
+        profiles = await service.search_profiles_by_embedding(
+            embedding=request.embedding,
+            filters=request.filters,
+            exclude_ids=request.exclude_ids,
+            limit=request.limit,
+            offset=request.offset
+        )
+        return SearchByEmbeddingResponse(profiles=profiles)
+    except Exception as e:
+        logger.error(f"Failed to search by embedding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/profiles/update_embedding")
+async def update_profile_embedding(
+    keycloak_id: str = Body(..., embed=True),
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Manually trigger embedding update for a profile.
+    Useful for backfilling existing profiles.
+    """
+    try:
+        from app.services.embedding_updater import get_embedding_updater
+        updater = get_embedding_updater()
+        
+        # Get basic profile
+        basic = await service._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        success = await updater.update_embedding_for_profile(basic.id)
+        if success:
+            return {"message": f"Embedding updated for user {keycloak_id}"}
+        else:
+            return {"message": f"No embedding generated for user {keycloak_id} (no detailed profile?)"}
+    except Exception as e:
+        logger.error(f"Failed to update embedding: {e}")
         raise HTTPException(status_code=500, detail=str(e))

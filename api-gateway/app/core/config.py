@@ -41,6 +41,7 @@ class ServicesConfig(BaseSettings):
     chat_ws: str
     search: str
     media: str
+    matching: str  # НОВЫЙ сервис
 
 
 class CacheConfig(BaseSettings):

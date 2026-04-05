@@ -78,7 +78,7 @@ class ProfileServiceClient:
         result = await self._make_request(
             "POST",
             "/api/v1/internal/profiles/batch",
-            json_data={"keycloak_ids": keycloak_ids}  # Изменено с profile_ids на keycloak_ids
+            json_data={"keycloak_ids": keycloak_ids}
         )
         return result.get("profiles", []) if result else []
 
@@ -101,14 +101,27 @@ class ProfileServiceClient:
         result = await self._make_request(
             "POST",
             "/api/v1/internal/profiles/exist",
-            json_data={"keycloak_ids": keycloak_ids}  # Изменено с profile_ids на keycloak_ids
+            json_data={"keycloak_ids": keycloak_ids}
         )
         return result.get("exist_map", {}) if result else {pid: False for pid in keycloak_ids}
 
     async def search_profiles(self, search_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Поиск профилей с фильтрацией
-        POST /api/v1/internal/profiles/search
+        
+        Параметры:
+            - gender: пол
+            - min_age: минимальный возраст
+            - max_age: максимальный возраст
+            - city: город
+            - education: образование
+            - hobbies_keywords: ключевые слова интересов
+            - partner_preferences: предпочтения партнера
+            - online_only: только онлайн
+            - exclude_keycloak_id: ID пользователя для исключения
+            - exclude_keycloak_ids: список ID для исключения (НОВОЕ)
+            - page: номер страницы
+            - limit: размер страницы
         """
         return await self._make_request(
             "POST",

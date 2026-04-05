@@ -14,7 +14,7 @@ class HTTPClient:
     """
     
     def __init__(self):
-        self.timeout = httpx.Timeout(30.0)
+        self.timeout = httpx.Timeout(60.0)
         self.auth_service_url = settings.services.auth
         self.user_service_url = settings.services.user
         self.profile_service_url = settings.services.profile
@@ -22,6 +22,7 @@ class HTTPClient:
         self.search_service_url = settings.services.search
         self.chat_service_url = settings.services.chat
         self.media_service_url = settings.services.media
+        self.matching_service_url = settings.services.matching
     
     def _get_service_url(self, path: str) -> str:
         """Определяет URL сервиса по пути"""
@@ -48,6 +49,8 @@ class HTTPClient:
             return self.testing_service_url
         elif path.startswith("/api/v1/media"):
             return self.media_service_url
+        elif path.startswith("/api/v1/matching"):
+            return self.matching_service_url
         else:
             return self.auth_service_url
     

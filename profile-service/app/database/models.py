@@ -3,10 +3,13 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey, Text, Date
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 from shared.schemas.shared import Gender
+
 
 class Base(DeclarativeBase):
     pass
+
 
 class BasicProfile(Base):
     __tablename__ = "basic_profiles"
@@ -29,12 +32,16 @@ class BasicProfile(Base):
     )
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
+    # NEW: embedding vector for semantic search (dimension 384 for paraphrase-multilingual-MiniLM-L12-v2)
+    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(384), nullable=True)
+    
     detailed_profile: Mapped["DetailedProfile"] = relationship(
         "DetailedProfile",
         back_populates="basic_profile",
         uselist=False,
         cascade="all, delete-orphan"
     )
+
 
 class DetailedProfile(Base):
     __tablename__ = "detailed_profiles"

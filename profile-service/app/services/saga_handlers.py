@@ -11,6 +11,7 @@ from app.services.keycloak_client import KeycloakClient
 from app.core.logger import logger
 from shared.schemas.shared import Gender
 
+
 def serialize_for_json(obj):
     """Сериализатор для объектов, которые не могут быть напрямую преобразованы в JSON"""
     if isinstance(obj, (datetime, date)):
@@ -20,6 +21,7 @@ def serialize_for_json(obj):
     elif isinstance(obj, (set, frozenset)):
         return list(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
 
 class ProfileSagaHandlers:
     """Обработчики шагов SAGA для profile-service"""
@@ -38,6 +40,19 @@ class ProfileSagaHandlers:
             if instance and instance.step_results:
                 return instance.step_results.get(step_name, {})
             return {}
+    
+    async def _update_embedding(self, basic_profile_id: int, keycloak_id: str) -> bool:
+        """
+        Вспомогательный метод для обновления эмбеддинга профиля.
+        Генерирует эмбеддинг на основе about_me, hobbies, partner_preferences.
+        """
+        try:
+            from app.services.embedding_updater import get_embedding_updater
+            updater = get_embedding_updater()
+            return await updater.update_embedding_for_profile(basic_profile_id)
+        except Exception as e:
+            logger.error(f"Failed to update embedding for {keycloak_id}: {e}")
+            return False
     
     # ========== ОСНОВНЫЕ ШАГИ ==========
     
@@ -103,7 +118,7 @@ class ProfileSagaHandlers:
             }
     
     async def handle_create_detailed_profile(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Шаг: Создание детального профиля"""
+        """Шаг: Создание детального профиля с последующей генерацией эмбеддинга"""
         payload = data.get("payload", {})
         saga_id = data.get("saga_id")
         context = data.get("context", {})
@@ -167,6 +182,9 @@ class ProfileSagaHandlers:
             await session.refresh(new_detailed)
             
             logger.info(f"[SAGA {saga_id}] Detailed profile created: {new_detailed.id}")
+            
+            # Генерируем эмбеддинг после создания детального профиля
+            await self._update_embedding(basic_profile_id, keycloak_id)
             
             return {
                 "status": "success",
@@ -244,7 +262,7 @@ class ProfileSagaHandlers:
             }
     
     async def handle_update_detailed_profile(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Шаг: Обновление детального профиля"""
+        """Шаг: Обновление детального профиля с последующей регенерацией эмбеддинга"""
         payload = data.get("payload", {})
         saga_id = data.get("saga_id")
         
@@ -273,6 +291,10 @@ class ProfileSagaHandlers:
             result = await session.execute(stmt)
             detailed = result.scalar_one_or_none()
             
+            # Флаг для отслеживания необходимости обновления эмбеддинга
+            embedding_fields_changed = False
+            changed_fields = {}
+            
             if not detailed:
                 # Если детального профиля нет, создаем новый
                 logger.info(f"[SAGA {saga_id}] Detailed profile not found, creating new one")
@@ -289,6 +311,9 @@ class ProfileSagaHandlers:
                 
                 logger.info(f"[SAGA {saga_id}] New detailed profile created during update")
                 
+                # Генерируем эмбеддинг для нового детального профиля
+                await self._update_embedding(basic.id, keycloak_id)
+                
                 return {
                     "status": "success",
                     "detailed_profile_id": new_detailed.id,
@@ -300,29 +325,51 @@ class ProfileSagaHandlers:
             
             # Обновляем существующий детальный профиль
             updated_fields = []
+            
+            # Проверяем поля, влияющие на эмбеддинг
             if 'about_me' in update_data:
-                detailed.about_me = update_data['about_me']
-                updated_fields.append('about_me')
-            if 'education' in update_data:
-                detailed.education = update_data['education']
-                updated_fields.append('education')
+                if detailed.about_me != update_data['about_me']:
+                    detailed.about_me = update_data['about_me']
+                    updated_fields.append('about_me')
+                    embedding_fields_changed = True
+                    changed_fields['about_me'] = update_data['about_me']
+            
             if 'hobbies' in update_data:
-                detailed.hobbies = update_data['hobbies']
-                updated_fields.append('hobbies')
+                if detailed.hobbies != update_data['hobbies']:
+                    detailed.hobbies = update_data['hobbies']
+                    updated_fields.append('hobbies')
+                    embedding_fields_changed = True
+                    changed_fields['hobbies'] = update_data['hobbies']
+            
             if 'partner_preferences' in update_data:
-                detailed.partner_preferences = update_data['partner_preferences']
-                updated_fields.append('partner_preferences')
+                if detailed.partner_preferences != update_data['partner_preferences']:
+                    detailed.partner_preferences = update_data['partner_preferences']
+                    updated_fields.append('partner_preferences')
+                    embedding_fields_changed = True
+                    changed_fields['partner_preferences'] = update_data['partner_preferences']
             
-            await session.commit()
+            # Обновляем поля, не влияющие на эмбеддинг
+            if 'education' in update_data:
+                if detailed.education != update_data['education']:
+                    detailed.education = update_data['education']
+                    updated_fields.append('education')
             
-            logger.info(f"[SAGA {saga_id}] Detailed profile updated: {updated_fields}")
+            if updated_fields:
+                await session.commit()
+                logger.info(f"[SAGA {saga_id}] Detailed profile updated: {updated_fields}")
+            
+            # Если изменились поля, влияющие на эмбеддинг, регенерируем его
+            if embedding_fields_changed:
+                logger.info(f"[SAGA {saga_id}] Embedding fields changed, regenerating embedding")
+                await self._update_embedding(basic.id, keycloak_id)
             
             return {
                 "status": "success",
                 "detailed_profile_id": detailed.id,
                 "basic_profile_id": basic.id,
                 "keycloak_id": keycloak_id,
-                "updated_fields": updated_fields
+                "updated_fields": updated_fields,
+                "embedding_updated": embedding_fields_changed
             }
     
     async def handle_delete_basic_profile(self, data: Dict[str, Any]) -> Dict[str, Any]:

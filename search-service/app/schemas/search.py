@@ -29,6 +29,13 @@ class SearchWithPaginationRequest(SearchRequest):
     """Запрос поиска с пагинацией (для API)"""
     page: int = Field(1, ge=1, description="Номер страницы")
     limit: int = Field(10, ge=1, le=50, description="Размер страницы")
+    
+    # НОВОЕ ПОЛЕ: список пользователей, которых нужно исключить из результатов
+    exclude_user_ids: Optional[List[str]] = Field(
+        None, 
+        max_length=500,
+        description="Список Keycloak ID пользователей, которых нужно исключить из результатов"
+    )
 
 
 class TargetedSearchRequest(SearchRequest):
@@ -44,6 +51,13 @@ class TargetedSearchWithPaginationRequest(TargetedSearchRequest):
     """Запрос таргетированного поиска с пагинацией (для API)"""
     page: int = Field(1, ge=1, description="Номер страницы")
     limit: int = Field(10, ge=1, le=50, description="Размер страницы")
+    
+    # НОВОЕ ПОЛЕ: список пользователей, которых нужно исключить из результатов
+    exclude_user_ids: Optional[List[str]] = Field(
+        None,
+        max_length=500,
+        description="Список Keycloak ID пользователей, которых нужно исключить из результатов"
+    )
 
 
 # ========== RESPONSE SCHEMAS ==========

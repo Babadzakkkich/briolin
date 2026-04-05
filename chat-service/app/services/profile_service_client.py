@@ -85,15 +85,14 @@ class ProfileServiceClient:
         profile = await self.get_profile_by_keycloak_id(keycloak_id)
         
         if profile and "basic" in profile:
-            # Предполагаем, что аватарка хранится в basic профиле
-            # Можно расширить модель BasicProfile в profile-service
-            return profile["basic"].get("avatar_url")
+            return profile["basic"].get("avatar_url") or profile["basic"].get("thumbnail_url")
         
         return None
 
 
 # Глобальный экземпляр
 _profile_service_client = None
+
 
 def get_profile_service_client() -> ProfileServiceClient:
     global _profile_service_client

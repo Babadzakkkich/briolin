@@ -6,6 +6,7 @@ from .tests import router as testing_router
 from .chats import router as chats_router
 from .search import router as search_router
 from .media import router as media_router
+from .matching import router as matching_router
 
 router = APIRouter()
 
@@ -16,3 +17,4 @@ router.include_router(testing_router)
 router.include_router(chats_router)
 router.include_router(search_router)
 router.include_router(media_router)
+router.include_router(matching_router)
