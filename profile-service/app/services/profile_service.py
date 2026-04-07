@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import date, datetime
 from sqlalchemy import select, func
@@ -152,12 +153,8 @@ class ProfileService:
         
         logger.info(f"Detailed profile created: {new_detailed.id} for user {keycloak_id}")
         
-        try:
-            updater = get_embedding_updater()
-            await updater.update_embedding_for_profile(basic_profile.id)
-            logger.info(f"Embedding generated for user {keycloak_id}")
-        except Exception as e:
-            logger.error(f"Failed to generate embedding for {keycloak_id}: {e}")
+        # АСИНХРОННАЯ генерация эмбеддинга (запускаем в фоне, не блокируя ответ)
+        asyncio.create_task(self._generate_embedding_background(basic_profile.id, keycloak_id))
         
         # Публикуем событие об обновлении профиля (добавлен детальный)
         try:
@@ -168,8 +165,21 @@ class ProfileService:
         except Exception as e:
             logger.error(f"Failed to publish profile updated event: {e}")
         
-        # Возвращаем полный профиль
+        # Возвращаем полный профиль (без ожидания генерации эмбеддинга)
         return await self.get_full_profile_by_keycloak_id(keycloak_id)
+
+
+    async def _generate_embedding_background(self, basic_profile_id: int, keycloak_id: str) -> None:
+        """
+        Фоновая задача для генерации эмбеддинга.
+        Запускается асинхронно и не блокирует основной ответ.
+        """
+        try:
+            updater = get_embedding_updater()
+            await updater.update_embedding_for_profile(basic_profile_id)
+            logger.info(f"Embedding generated for user {keycloak_id}")
+        except Exception as e:
+            logger.error(f"Failed to generate embedding for {keycloak_id}: {e}")
     
     # ========== ОБНОВЛЕНИЕ ПРОФИЛЯ ==========
     

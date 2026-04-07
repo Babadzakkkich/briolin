@@ -334,6 +334,7 @@ services:
         condition: service_started
     volumes:
       - ./shared:/app/shared:ro
+      - model-cache:/root/.cache
     networks:
       - briolin-network
     restart: unless-stopped
@@ -486,6 +487,7 @@ volumes:
   rabbitmq-data:
   minio-data:
     driver: local
+  model-cache:
 
 networks:
   briolin-network:

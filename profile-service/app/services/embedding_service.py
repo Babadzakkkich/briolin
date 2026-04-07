@@ -1,4 +1,6 @@
 import asyncio
+import os
+from pathlib import Path
 from typing import List, Optional
 from sentence_transformers import SentenceTransformer
 from app.core.logger import logger
@@ -7,27 +9,52 @@ from app.core.logger import logger
 class EmbeddingService:
     """Сервис для генерации эмбеддингов с использованием sentence-transformers"""
     
-    # Мультиязычная модель (поддерживает русский)
-    # Размерность 384, весит ~1.2GB
     MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
     
     def __init__(self):
         self._model: Optional[SentenceTransformer] = None
         self._lock = asyncio.Lock()
+        self._cache_dir = self._get_cache_dir()
+    
+    def _get_cache_dir(self) -> str:
+        """Определяет директорию для кэша модели"""
+        # Проверяем переменные окружения
+        cache_dir = os.environ.get("SENTENCE_TRANSFORMERS_HOME")
+        if cache_dir:
+            return cache_dir
+        
+        # Или стандартная директория
+        home = Path.home()
+        cache_dir = home / ".cache" / "sentence_transformers"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return str(cache_dir)
     
     async def _get_model(self) -> SentenceTransformer:
-        """Ленивая инициализация модели"""
+        """Ленивая инициализация модели с проверкой кэша"""
         if self._model is None:
             async with self._lock:
                 if self._model is None:
                     logger.info(f"Loading embedding model: {self.MODEL_NAME}")
+                    logger.info(f"Cache directory: {self._cache_dir}")
+                    
+                    # Проверяем, есть ли модель в кэше
+                    model_path = Path(self._cache_dir) / self.MODEL_NAME.replace("/", "_")
+                    if model_path.exists():
+                        logger.info(f"Model found in cache: {model_path}")
+                    else:
+                        logger.info("Model not in cache, will download...")
+                    
                     try:
                         loop = asyncio.get_event_loop()
                         self._model = await loop.run_in_executor(
                             None,
-                            lambda: SentenceTransformer(self.MODEL_NAME)
+                            lambda: SentenceTransformer(
+                                self.MODEL_NAME,
+                                cache_folder=self._cache_dir
+                            )
                         )
                         logger.info("Embedding model loaded successfully")
+                        logger.info(f"Model saved to: {self._cache_dir}")
                     except Exception as e:
                         logger.error(f"Failed to load embedding model: {e}")
                         raise
