@@ -64,5 +64,38 @@ class ProfileServiceClient:
             return result.get("profiles", [])
         return []
 
+    async def search_profiles(
+        self,
+        gender: Optional[str] = None,
+        min_age: Optional[int] = None,
+        max_age: Optional[int] = None,
+        city: Optional[str] = None,
+        education: Optional[str] = None,
+        hobbies_keywords: Optional[List[str]] = None,
+        partner_preferences: Optional[str] = None,
+        online_only: bool = False,
+        exclude_keycloak_ids: Optional[List[str]] = None,
+        page: int = 1,
+        limit: int = 10
+    ) -> Dict[str, Any]:
+        """POST /api/v1/internal/profiles/search"""
+        payload = {
+            "gender": gender,
+            "min_age": min_age,
+            "max_age": max_age,
+            "city": city,
+            "education": education,
+            "hobbies_keywords": hobbies_keywords,
+            "partner_preferences": partner_preferences,
+            "online_only": online_only,
+            "exclude_keycloak_ids": exclude_keycloak_ids or [],
+            "page": page,
+            "limit": limit
+        }
+        result = await self._request("POST", "/api/v1/internal/profiles/search", json=payload)
+        if result:
+            return result
+        return {"profiles": [], "total": 0, "page": page, "limit": limit, "total_pages": 1}
+
 
 profile_client = ProfileServiceClient()

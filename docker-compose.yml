@@ -236,22 +236,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  
-  search-postgres:
-    image: postgres:17-alpine
-    container_name: search-postgres
+    
+  matching-postgres:
+    image: pgvector/pgvector:pg17
+    container_name: matching-postgres
     env_file:
-      - search-service/.env
+      - matching-service/.env
     ports:
       - "5439:5432"
+    volumes:
+    - ./infrastructure/postgres/pgvector-init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U search_user -d search_db"]
+      test: ["CMD-SHELL", "pg_isready -U matching_user -d matching_db"]
       interval: 5s
       timeout: 5s
       retries: 5
-  
+
   media-postgres:
     image: postgres:17-alpine
     container_name: media-postgres
@@ -263,23 +265,6 @@ services:
       - briolin-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U media_user -d media_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-  
-  matching-postgres:
-    image: pgvector/pgvector:pg17
-    container_name: matching-postgres
-    env_file:
-      - matching-service/.env
-    ports:
-      - "5441:5432"
-    volumes:
-    - ./infrastructure/postgres/pgvector-init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - briolin-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U matching_user -d matching_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -399,18 +384,24 @@ services:
       - briolin-network
     restart: unless-stopped
 
-  search-service:
+  matching-service:
     build:
       context: .
-      dockerfile: search-service/Dockerfile
-    container_name: search-service
+      dockerfile: matching-service/Dockerfile
+    container_name: matching-service
     ports:
       - "8006:8006"
     env_file:
-      - search-service/.env
+      - matching-service/.env
     depends_on:
+      matching-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      profile-service:
+        condition: service_started
     volumes:
       - ./shared:/app/shared:ro
     networks:
@@ -439,32 +430,6 @@ services:
       - briolin-network
     restart: unless-stopped
 
-  matching-service:
-    build:
-      context: .
-      dockerfile: matching-service/Dockerfile
-    container_name: matching-service
-    ports:
-      - "8010:8010"
-    env_file:
-      - matching-service/.env
-    depends_on:
-      matching-postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      profile-service:
-        condition: service_started
-      search-service:
-        condition: service_started
-    volumes:
-      - ./shared:/app/shared:ro
-    networks:
-      - briolin-network
-    restart: unless-stopped
-
   api-gateway:
     build:
       context: .
@@ -484,8 +449,6 @@ services:
       testing-service:
         condition: service_started
       chat-service:
-        condition: service_started
-      search-service:
         condition: service_started
       media-service:
         condition: service_started

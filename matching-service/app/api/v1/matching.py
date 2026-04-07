@@ -8,9 +8,15 @@ from app.schemas.match import MatchResponse
 from app.schemas.recommendation import (
     ClassicRecommendationFilters,
     TargetedRecommendationFilters,
-    RecommendationProfile
+    RecommendationListResponse
 )
-from app.core.exceptions import SwipeLimitExceededException, AlreadySwipedException, UserNotFoundException
+from app.schemas.lock import TargetedSearchLockInfo
+from app.core.exceptions import (
+    SwipeLimitExceededException,
+    AlreadySwipedException,
+    UserNotFoundException,
+    TargetedSearchLockedException
+)
 from shared.auth.dependencies import get_current_user
 from shared.schemas.shared import Gender
 
@@ -25,9 +31,7 @@ async def create_swipe(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """
-    Создание свайпа (лайк или дизлайк)
-    """
+    """Создание свайпа (лайк или дизлайк)"""
     try:
         return await service.swipe(
             from_user_id=current_user["keycloak_id"],
@@ -48,9 +52,7 @@ async def get_swipe_status(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """
-    Проверяет, свайпал ли текущий пользователь на указанного
-    """
+    """Проверяет, свайпал ли текущий пользователь на указанного"""
     return await service.get_swipe_status(current_user["keycloak_id"], target_user_id)
 
 
@@ -63,19 +65,17 @@ async def get_matches(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """
-    Возвращает список всех матчей текущего пользователя
-    """
+    """Возвращает список всех матчей текущего пользователя"""
     matches, total = await service.get_matches(current_user["keycloak_id"], page, limit)
     return matches
 
 
 # ========== RECOMMENDATIONS ENDPOINTS ==========
 
-@router.get("/recommendations/classic", response_model=List[RecommendationProfile])
+@router.get("/recommendations/classic", response_model=RecommendationListResponse)
 async def classic_recommendations(
-    limit: int = Query(20, ge=1, le=50, description="Количество записей"),
-    offset: int = Query(0, ge=0, description="Смещение для пагинации"),
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
     gender: Optional[Gender] = None,
     min_age: Optional[int] = Query(None, ge=18, le=100, description="Минимальный возраст"),
     max_age: Optional[int] = Query(None, ge=18, le=100, description="Максимальный возраст"),
@@ -83,28 +83,25 @@ async def classic_recommendations(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """
-    Классические рекомендации на основе базовых фильтров
-    """
+    """Классические рекомендации на основе базовых фильтров (с пагинацией)"""
     filters = ClassicRecommendationFilters(
         gender=gender,
         min_age=min_age,
         max_age=max_age,
         city=city
     )
-    recs, total = await service.get_classic_recommendations(
+    return await service.get_classic_recommendations(
         user_id=current_user["keycloak_id"],
         filters=filters,
-        limit=limit,
-        offset=offset
+        page=page,
+        limit=limit
     )
-    return recs
 
 
-@router.get("/recommendations/targeted", response_model=List[RecommendationProfile])
+@router.get("/recommendations/targeted", response_model=RecommendationListResponse)
 async def targeted_recommendations(
-    limit: int = Query(20, ge=1, le=50, description="Количество записей"),
-    offset: int = Query(0, ge=0, description="Смещение для пагинации"),
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
     gender: Optional[Gender] = None,
     min_age: Optional[int] = Query(None, ge=18, le=100, description="Минимальный возраст"),
     max_age: Optional[int] = Query(None, ge=18, le=100, description="Максимальный возраст"),
@@ -115,9 +112,7 @@ async def targeted_recommendations(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """
-    Таргетированные рекомендации на основе семантической близости (эмбеддингов)
-    """
+    """Таргетированные рекомендации на основе семантической близости (эмбеддингов) с учётом блокировки по свайпам"""
     filters = TargetedRecommendationFilters(
         gender=gender,
         min_age=min_age,
@@ -127,13 +122,35 @@ async def targeted_recommendations(
         hobbies_keywords=hobbies_keywords,
         online_only=online_only
     )
-    recs, total = await service.get_targeted_recommendations(
-        user_id=current_user["keycloak_id"],
-        filters=filters,
-        limit=limit,
-        offset=offset
-    )
-    return recs
+    try:
+        return await service.get_targeted_recommendations(
+            user_id=current_user["keycloak_id"],
+            filters=filters,
+            page=page,
+            limit=limit
+        )
+    except TargetedSearchLockedException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={
+                "message": e.message,
+                "unlock_time": e.unlock_time.isoformat() if e.unlock_time else None,
+                "time_until_unlock": e.time_until_unlock,
+                "swipes_used": e.swipes_used,
+                "daily_limit": e.daily_limit
+            }
+        )
+
+
+# ========== LOCK STATUS ENDPOINT ==========
+
+@router.get("/lock-status", response_model=TargetedSearchLockInfo)
+async def get_lock_status(
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Получение статуса блокировки таргетированных рекомендаций для текущего пользователя"""
+    return await service.get_lock_status(current_user["keycloak_id"])
 
 
 # ========== ADMIN ENDPOINTS ==========
@@ -144,8 +161,6 @@ async def reset_swipes(
     _: dict = Depends(require_admin()),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """
-    Удаляет все свайпы указанного пользователя. Только для администраторов.
-    """
+    """Удаляет все свайпы указанного пользователя и сбрасывает блокировку. Только для администраторов."""
     deleted = await service.reset_swipes(user_id)
-    return {"message": f"Deleted {deleted} swipe records for user {user_id}"}
+    return {"message": f"Удалено {deleted} записей свайпов для пользователя {user_id}"}

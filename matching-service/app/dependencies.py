@@ -16,7 +16,10 @@ def get_matching_service(db: AsyncSession = Depends(get_db)) -> MatchingService:
     return MatchingService(db)
 
 
-# Re-export shared dependencies
+def require_admin():
+    return require_role("admin")
+
+
 __all__ = [
     'get_db',
     'get_matching_service',
@@ -27,7 +30,3 @@ __all__ = [
     'require_test_passed',
     'require_admin'
 ]
-
-
-def require_admin():
-    return require_role("admin")

@@ -19,7 +19,6 @@ class HTTPClient:
         self.user_service_url = settings.services.user
         self.profile_service_url = settings.services.profile
         self.testing_service_url = settings.services.testing
-        self.search_service_url = settings.services.search
         self.chat_service_url = settings.services.chat
         self.media_service_url = settings.services.media
         self.matching_service_url = settings.services.matching
@@ -37,8 +36,6 @@ class HTTPClient:
             return self.profile_service_url
         elif path.startswith("/api/v1/tests"):
             return self.testing_service_url
-        elif path.startswith("/api/v1/search"):
-            return self.search_service_url
         elif path.startswith("/api/v1/chats"):
             return self.chat_service_url
         elif path.startswith("/api/v1/internal/users"):
@@ -157,7 +154,7 @@ class HTTPClient:
                 response = await client.request(
                     method=request.method,
                     url=target_url,
-                    headers=headers,  # Теперь включает Content-Type
+                    headers=headers,
                     content=body,
                     params=request.query_params
                 )

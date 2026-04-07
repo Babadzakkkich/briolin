@@ -43,7 +43,6 @@ class ServicesConfig(BaseSettings):
         case_sensitive=False,
     )
     profile_service_url: str = "http://profile-service:8003"
-    search_service_url: str = "http://search-service:8006"
     chat_service_url: str = "http://chat-service:8005"
 
 
@@ -54,6 +53,7 @@ class SwipeLimitsConfig(BaseSettings):
         case_sensitive=False,
     )
     daily_limit: int = 100
+    targeted_lock_hours: int = 12
 
 
 class MatchingServiceConfig(BaseSettings):
@@ -64,7 +64,7 @@ class MatchingServiceConfig(BaseSettings):
     )
     debug: bool = False
     host: str = "0.0.0.0"
-    port: int = 8010
+    port: int = 8006
     service_name: str = "matching-service"
 
 

@@ -43,6 +43,27 @@ class MatchResponse(BaseModel):
     matched_at: datetime = Field(..., description="Дата и время создания матча")
 
 
+# ========== PAGINATION SCHEMAS ==========
+
+class PaginationInfo(BaseModel):
+    """Информация о пагинации"""
+    current_page: int = Field(1, description="Текущая страница")
+    total_pages: int = Field(1, description="Всего страниц")
+    total_results: int = Field(0, description="Всего результатов")
+    page_size: int = Field(10, description="Размер страницы")
+
+
+# ========== LOCK SCHEMAS ==========
+
+class TargetedSearchLockInfo(BaseModel):
+    """Информация о блокировке таргетированных рекомендаций"""
+    is_locked: bool = Field(..., description="Заблокирован ли пользователь")
+    profiles_viewed: int = Field(..., description="Просмотрено профилей в текущем периоде")
+    daily_limit: int = Field(..., description="Дневной лимит просмотров")
+    locked_until: Optional[datetime] = Field(None, description="Время разблокировки")
+    time_until_unlock: Optional[int] = Field(None, description="Секунд до разблокировки")
+
+
 # ========== RECOMMENDATION SCHEMAS ==========
 
 class ClassicRecommendationFilters(BaseModel):
@@ -70,9 +91,21 @@ class RecommendationProfile(BaseModel):
     similarity: Optional[float] = Field(None, description="Степень схожести (0-1, только для таргетированного поиска)")
 
 
+class RecommendationListResponse(BaseModel):
+    """Ответ со списком рекомендаций и пагинацией"""
+    profiles: List[RecommendationProfile] = Field(..., description="Список профилей")
+    pagination: PaginationInfo = Field(..., description="Информация о пагинации")
+    lock_info: Optional[TargetedSearchLockInfo] = Field(None, description="Информация о блокировке (только для таргетированного поиска)")
+
+
 # ========== ADMIN SCHEMAS ==========
 
-class ResetSwipesResponse(BaseModel):
-    """Ответ на сброс свайпов"""
+class ResetUserDataResponse(BaseModel):
+    """Ответ на сброс данных пользователя"""
     message: str = Field(..., description="Сообщение о результате операции")
-    deleted_count: int = Field(..., description="Количество удалённых свайпов")
+    swipes_deleted: int = Field(..., description="Количество удалённых свайпов")
+
+
+class ErrorResponse(BaseModel):
+    """Ответ с ошибкой"""
+    detail: str = Field(..., description="Описание ошибки")

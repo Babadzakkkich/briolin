@@ -1,8 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, BigInteger, String, DateTime, Boolean, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, BigInteger, String, DateTime, Boolean, UniqueConstraint, Index, Integer
 from sqlalchemy.orm import DeclarativeBase
-import uuid
 
 
 class Base(DeclarativeBase):
@@ -38,3 +36,17 @@ class Match(Base):
         UniqueConstraint('user1_id', 'user2_id', name='uq_match'),
         Index('idx_match_users', 'user1_id', 'user2_id'),
     )
+
+
+class TargetedSearchLock(Base):
+    """Блокировка таргетированных рекомендаций по просмотрам профилей"""
+    __tablename__ = "targeted_search_locks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    keycloak_id = Column(String(255), unique=True, index=True, nullable=False)
+    is_locked = Column(Boolean, default=False)
+    locked_until = Column(DateTime, nullable=True)
+    profiles_viewed = Column(Integer, default=0)
+    period_start = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
