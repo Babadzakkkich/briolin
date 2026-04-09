@@ -193,6 +193,8 @@ class KeycloakClient:
             if 'email' in user_data:
                 kc_data['email'] = user_data['email']
                 kc_data['emailVerified'] = False
+            if 'emailVerified' in user_data:
+                kc_data['emailVerified'] = user_data['emailVerified']
             if 'username' in user_data:
                 kc_data['username'] = user_data['username']
             if 'firstName' in user_data:
@@ -347,3 +349,4 @@ class KeycloakClient:
                 return None
             logger.error(f"Failed to get user by username {username}: {e}")
             return None
+    

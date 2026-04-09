@@ -7,6 +7,7 @@ class EmailType(str, Enum):
     WELCOME = "welcome"
     LOGIN = "login"
     TEST_COMPLETE = "test_complete"
+    VERIFICATION = "verification"
 
 
 class EmailSendRequest(BaseModel):
@@ -44,3 +45,4 @@ class EmailNotification(BaseModel):
     score: Optional[int] = None
     total: Optional[int] = None
     percentage: Optional[float] = None
+    code: Optional[str] = None

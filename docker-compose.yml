@@ -98,16 +98,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-  
-  mailhog:
-    image: mailhog/mailhog:latest
-    container_name: briolin-mailhog
-    ports:
-      - "1025:1025"   # SMTP порт (подключается к email-service)
-      - "8025:8025"   # Веб-интерфейс для просмотра писем
-    networks:
-      - briolin-network
-    restart: unless-stopped
 
   # =========== DATABASES ===========
   auth-postgres:

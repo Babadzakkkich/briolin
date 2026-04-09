@@ -105,6 +105,10 @@ class EmailService:
             EmailType.TEST_COMPLETE: {
                 "subject": f"Your Test Results: {context.get('test_name', 'Test')}",
                 "body_template": "test_results"
+            },
+            EmailType.VERIFICATION: {
+                "subject": "Email Verification Code",
+                "body_template": "verification"
             }
         }
         
@@ -175,6 +179,21 @@ Your score: {score} / {total}
 Percentage: {percentage}%
 
 You can view detailed results in your profile.
+
+Best regards,
+Briolin Team
+"""
+        
+        elif template_name == EmailType.VERIFICATION:
+            code = context.get("code", "000000")
+            return f"""
+Hello {name},
+
+Your verification code is: {code}
+
+This code expires in 15 minutes.
+
+If you didn't request this, please ignore this email.
 
 Best regards,
 Briolin Team

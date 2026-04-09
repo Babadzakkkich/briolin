@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, Response
+from fastapi import APIRouter, Request, Depends, Response, Body, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.services.http_client import http_client
 from app.schemas.auth import (
@@ -9,9 +9,15 @@ from app.schemas.auth import (
     UserResponse,
     TokenResponse,
 )
+from app.schemas.verify import VerifyConfirmRequest, RequestCodeRequest
+from app.core.logger import logger
+import httpx
+from pydantic import BaseModel
+import json
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 security = HTTPBearer(auto_error=False)
+
 
 @router.post("/register", response_model=UserResponse)
 async def register_user(
@@ -26,6 +32,7 @@ async def register_user(
         headers=dict(response.headers)
     )
 
+
 @router.post("/login", response_model=TokenResponse)
 async def login_user(
     credentials: UserLogin,
@@ -39,6 +46,7 @@ async def login_user(
         headers=dict(response.headers)
     )
 
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
     refresh_data: RefreshRequest,
@@ -51,6 +59,7 @@ async def refresh_token(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
 
 @router.post("/logout")
 async def logout_user(
@@ -66,11 +75,50 @@ async def logout_user(
         headers=dict(response.headers)
     )
 
+
 @router.post("/validate")
 async def validate_token(
     request: Request
 ):
     """Валидация токена (для совместимости)"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+# ========== ВЕРИФИКАЦИЯ EMAIL ==========
+
+@router.post("/verify/request")
+async def request_verification_code(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Запросить код верификации на email.
+    Требует авторизации.
+    """ 
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.post("/verify/confirm")
+async def verify_email_code(
+    confirm_data: VerifyConfirmRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Подтвердить email по коду.
+    Требует авторизации.
+    """    
+    request._body = json.dumps({"code": confirm_data.code}).encode()
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

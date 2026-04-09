@@ -11,6 +11,7 @@ from app.database.models import User
 from app.schemas.auth import UserRegister, UserLogin
 from app.services.keycloak_client import KeycloakClient
 from app.services.event_service import get_event_service
+from app.services.verification_service import get_verification_service
 from app.core.exceptions import (
     InvalidTokenException,
     UserAlreadyExistsException, 
@@ -47,6 +48,7 @@ class AuthService:
         self.saga_worker = saga_worker
         self._email_channel = None
         self._email_connection = None
+        self.verification_service = get_verification_service()
 
     # ========== ОТПРАВКА EMAIL ==========
     
@@ -95,6 +97,81 @@ class AuthService:
             name=username,
             timestamp=datetime.utcnow().isoformat()
         )
+    
+    async def send_verification_code_email(self, email: str, code: str):
+        """Отправить письмо с кодом верификации"""
+        await self._send_email_notification(
+            "verification",
+            email,
+            name=email.split('@')[0],
+            code=code
+        )
+
+    # ========== ВЕРИФИКАЦИЯ EMAIL ==========
+    
+    async def request_verification_code(self, email: str) -> Dict[str, Any]:
+        """Запросить код верификации на email"""
+        # Проверяем, существует ли пользователь
+        user = await self.get_user_by_email(email)
+        if not user:
+            raise ValidationException(f"User with email {email} not found")
+        
+        # Генерируем код
+        code = self.verification_service.generate_code()
+        
+        # Сохраняем в Redis
+        saved = await self.verification_service.save_verification_code(email, code)
+        
+        if not saved:
+            raise DatabaseException("Failed to save verification code")
+        
+        # Отправляем email
+        await self.send_verification_code_email(email, code)
+        
+        logger.info(f"Verification code sent to {email}")
+        
+        return {
+            "status": "success",
+            "message": f"Verification code sent to {email}",
+            "expires_in_minutes": 15
+        }
+    
+    async def verify_email_code(self, email: str, code: str) -> Dict[str, Any]:
+        """Подтверждение email по коду"""
+
+        is_valid = await self.verification_service.verify_code(email, code)
+        
+        if not is_valid:
+            raise ValidationException("Invalid or expired verification code")
+        
+        user = await self.get_user_by_email(email)
+        if not user:
+            raise ValidationException(f"User with email {email} not found")
+        
+        try:
+            keycloak_user = self.kc.get_user_by_email(email)
+            
+            if not keycloak_user:
+                logger.warning(f"User with email {email} not found in Keycloak")
+                raise DatabaseException("User not found in Keycloak")
+            
+            keycloak_id = keycloak_user.get("id")
+            
+            self.kc.update_user_in_keycloak(
+                keycloak_id, 
+                {"emailVerified": True}
+            )
+            logger.info(f"Email {email} verified in Keycloak for user {keycloak_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to update emailVerified status in Keycloak: {e}")
+            raise DatabaseException("Failed to update email verification status")
+        
+        return {
+            "status": "success",
+            "message": "Email verified successfully",
+            "email_verified": True
+        }
 
     # ========== РЕГИСТРАЦИЯ ==========
     
@@ -170,11 +247,17 @@ class AuthService:
             }
         )
         
+        # ========== ОТПРАВКА КОДА ВЕРИФИКАЦИИ ==========
+        code = self.verification_service.generate_code()
+        await self.verification_service.save_verification_code(user_register.email, code)
+        await self.send_verification_code_email(user_register.email, code)
+        # =================================================
+        
         logger.info(f"Registration initiated for {user_register.email} with saga_id: {saga_id}")
         
         return {
             "status": "accepted",
-            "message": "Registration initiated",
+            "message": "Registration initiated. Please check your email for verification code.",
             "saga_id": saga_id,
             "check_status_url": f"/api/v1/auth/saga/{saga_id}/status"
         }

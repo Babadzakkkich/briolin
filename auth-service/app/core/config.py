@@ -64,6 +64,20 @@ class AuthServiceConfig(BaseSettings):
     service_name: str = "auth-service"
 
 
+class RedisConfig(BaseSettings):
+    """Redis конфигурация для хранения кодов верификации"""
+    model_config = SettingsConfigDict(
+        env_nested_delimiter="__",
+        env_prefix="REDIS__",
+        case_sensitive=False,
+    )
+    
+    host: str = "redis"
+    port: int = 6379
+    db: int = 0
+    password: str = ""
+
+
 class Settings:
     """
     Композитная конфигурация auth-service.
@@ -74,6 +88,7 @@ class Settings:
         self.keycloak_client = AuthKeycloakClientConfig()
         self.db = DatabaseConfig()
         self.user_service = UserServiceConfig()
+        self.redis = RedisConfig()
     
     @property
     def keycloak(self) -> KeycloakConfig:

@@ -29,6 +29,8 @@ class HTTPClient:
         
         if path.startswith("/api/v1/auth"):
             return self.auth_service_url
+        elif path.startswith("/api/v1/auth/verify"):  # Добавлено!
+            return self.auth_service_url
         elif path.startswith("/api/v1/users"):
             return self.user_service_url
         elif path.startswith("/api/v1/profiles"):
@@ -66,6 +68,8 @@ class HTTPClient:
         # Формируем URL для целевого сервиса
         target_url = urljoin(service_url.rstrip("/") + "/", path.lstrip("/"))
         
+        logger.info(f"Proxying {request.method} {path} -> {target_url}")
+        
         # Формируем заголовки
         headers = {}
         
@@ -95,8 +99,6 @@ class HTTPClient:
                     body = body_bytes
                 except:
                     body = body_bytes
-        
-        logger.info(f"Proxying {request.method} {path} -> {target_url}")
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
