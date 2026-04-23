@@ -34,12 +34,7 @@ export function useAuth() {
   };
 
   const register = async (email: string, username: string, password: string) => {
-    try {
-      await sessionApi.register({ email, username, password });
-    } catch (error) {
-      console.error(error);
-      return;
-    }
+    await sessionApi.register({ email, username, password });
     navigate('/login');
   };
 

@@ -3,10 +3,10 @@ import type { Chat, ChatListResponse } from '../model/types';
 
 export const chatApi = {
   getChats: (params?: { skip?: number; limit?: number; chat_type?: string; status?: string }) =>
-    apiClient.get<ChatListResponse>('/api/v1/chats/', { params }).then((r) => r.data),
+    apiClient.get<ChatListResponse>('/chats/', { params }).then((r) => r.data),
 
   createDirectChat: (participantKeycloakId: string) =>
     apiClient
-      .post<Chat>('/api/v1/chats/', { type: 'direct', participant_ids: [participantKeycloakId] })
+      .post<Chat>('/chats/', { type: 'direct', participant_ids: [participantKeycloakId] })
       .then((r) => r.data),
 };

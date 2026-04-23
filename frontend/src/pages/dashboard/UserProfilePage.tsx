@@ -19,14 +19,22 @@ function getInitials(first: string, last: string) {
   return `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
 }
 
-function InfoBlock({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoBlock({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
     <div className='flex items-start gap-3'>
       <div className='bg-surface mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl'>
         {icon}
       </div>
       <div>
-        <p className='text-muted text-[11px] font-medium uppercase tracking-wide'>{label}</p>
+        <p className='text-muted text-[11px] font-medium tracking-wide uppercase'>{label}</p>
         <p className='text-primary mt-0.5 text-[14px] leading-relaxed'>{value}</p>
       </div>
     </div>
@@ -124,7 +132,7 @@ export function UserProfilePage() {
   if (loading) {
     return (
       <div className='flex-1 overflow-y-auto px-8 py-8'>
-        <div className='bg-surface mx-auto mb-6 max-w-2xl h-5 w-16 animate-pulse rounded' />
+        <div className='bg-surface mx-auto mb-6 h-5 w-16 max-w-2xl animate-pulse rounded' />
         <Skeleton />
       </div>
     );
@@ -147,7 +155,10 @@ export function UserProfilePage() {
   }
 
   const hobbies = profile.hobbies
-    ? profile.hobbies.split(',').map((h) => h.trim()).filter(Boolean)
+    ? profile.hobbies
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean)
     : [];
 
   const effectiveKeycloakId = profile.keycloak_id || keycloakId;
@@ -162,8 +173,6 @@ export function UserProfilePage() {
           <ArrowLeft size={15} />
           Назад
         </button>
-
-        {/* Hero card */}
         <div className='mb-4 rounded-2xl bg-white p-6'>
           <div className='flex items-center gap-5'>
             <div className='bg-accent/15 text-accent flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl text-2xl font-semibold'>
@@ -207,8 +216,6 @@ export function UserProfilePage() {
             </Button>
           </div>
         </div>
-
-        {/* Details */}
         <div className='rounded-2xl bg-white p-6'>
           <h2 className='font-onest text-primary mb-5 text-[16px] font-medium'>О человеке</h2>
           <div className='flex flex-col gap-5'>
@@ -239,7 +246,7 @@ export function UserProfilePage() {
                   <Calendar size={15} className='text-accent' />
                 </div>
                 <div>
-                  <p className='text-muted text-[11px] font-medium uppercase tracking-wide'>
+                  <p className='text-muted text-[11px] font-medium tracking-wide uppercase'>
                     Интересы
                   </p>
                   <div className='mt-2 flex flex-wrap gap-1.5'>
@@ -255,9 +262,12 @@ export function UserProfilePage() {
                 </div>
               </div>
             )}
-            {!profile.about_me && !profile.education && !profile.partner_preferences && hobbies.length === 0 && (
-              <p className='text-muted text-[14px]'>Информация не заполнена</p>
-            )}
+            {!profile.about_me &&
+              !profile.education &&
+              !profile.partner_preferences &&
+              hobbies.length === 0 && (
+                <p className='text-muted text-[14px]'>Информация не заполнена</p>
+              )}
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { useAuthStore } from '@/entities/session/model/store';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -37,10 +37,10 @@ apiClient.interceptors.response.use(
     console.log(original);
 
     const isAuthEndpoint =
-      original?.url?.includes('/api/v1/auth/login') ||
-      original?.url?.includes('/api/v1/auth/register') ||
-      original?.url?.includes('/api/v1/auth/forgot-password') ||
-      original?.url?.includes('/api/v1/auth/refresh');
+      original?.url?.includes('/auth/login') ||
+      original?.url?.includes('/auth/register') ||
+      original?.url?.includes('/auth/forgot-password') ||
+      original?.url?.includes('/auth/refresh');
 
     if (error.response?.status !== 401 || original?._retry || isAuthEndpoint) {
       return Promise.reject(error);
@@ -59,7 +59,7 @@ apiClient.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const { data } = await refreshClient.post<{ access_token: string }>('/api/v1/auth/refresh');
+      const { data } = await refreshClient.post<{ access_token: string }>('/auth/refresh');
       useAuthStore.getState().setAccessToken(data.access_token);
       processQueue(null, data.access_token);
       original.headers.Authorization = `Bearer ${data.access_token}`;

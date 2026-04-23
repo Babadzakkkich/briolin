@@ -4,7 +4,7 @@ import { Input } from '@/shared/uikit/Input';
 import { RadioCardGroup } from '@/shared/uikit/RadioCardGroup';
 import { Text } from '@/shared/uikit/Text';
 import { useEffect, useState } from 'react';
-import type { StepProps } from '../OnboardingPage';
+import type { StepProps } from '@/features/onboarding/OnboardingPage';
 import { toast } from '@/shared/toast/toast';
 import { profileApi } from '@/entities/profile';
 import { DatePickerField } from '@/shared/uikit/DatePicker';
@@ -56,7 +56,7 @@ export function ProfileStep({ onNext }: StepProps) {
           </Text>
         </div>
         <div className='flex w-full gap-4'>
-          <AvatarUpload />
+          <AvatarUpload name={[firstName, lastName].filter(Boolean).join(' ') || undefined} />
           <div className='flex flex-col justify-between py-4'>
             <Text variant='p' as='p'>
               Загрузите фото
@@ -95,11 +95,7 @@ export function ProfileStep({ onNext }: StepProps) {
           </div>
           <div className='flex flex-col gap-2'>
             <label className='font-inter text-primary text-[12px] font-medium'>Пол</label>
-            <RadioCardGroup
-              items={GENDER_OPTIONS}
-              value={gender}
-              onChange={setGender}
-            />
+            <RadioCardGroup items={GENDER_OPTIONS} value={gender} onChange={setGender} />
           </div>
         </div>
         <div className='flex flex-col gap-4 text-center'>

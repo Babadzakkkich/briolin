@@ -164,7 +164,7 @@ export function ProfilePage() {
     <div className='flex-1 overflow-y-auto px-8 py-10'>
       <div className='mx-auto max-w-3xl'>
         <div className='mb-8 flex items-center gap-5'>
-          <AvatarUpload />
+          <AvatarUpload name={`${basic.first_name} ${basic.last_name}`} />
           <div>
             <h1 className='font-onest text-primary text-3xl font-medium'>
               {basic.first_name} {basic.last_name}

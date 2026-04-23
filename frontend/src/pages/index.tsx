@@ -1,9 +1,7 @@
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Button } from '@/shared/uikit/Button';
 import { Text } from '@/shared/uikit/Text';
 import { useAuthStore } from '@/entities/session';
-import { useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
 
 const STEPS = [
   {
@@ -25,13 +23,10 @@ const STEPS = [
 
 export function IndexPage() {
   const { isAuthenticated } = useAuthStore();
-  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/dashboard');
-    }
-  });
+  if (isAuthenticated) {
+    return <Navigate to='/dashboard' />;
+  }
 
   return (
     <div className='w-full self-start'>

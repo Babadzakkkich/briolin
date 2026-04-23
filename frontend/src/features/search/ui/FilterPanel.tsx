@@ -60,7 +60,6 @@ export function FilterPanel({
 }: FilterPanelProps) {
   return (
     <div className='border-border shrink-0 border-b bg-white px-8 py-5'>
-      {/* Title row */}
       <div className='mb-4 flex items-center justify-between'>
         <div>
           <h1 className='font-onest text-primary text-2xl font-medium'>Поиск</h1>
@@ -82,16 +81,22 @@ export function FilterPanel({
               Сессия #{result.search_session_id}
             </span>
           )}
-          <ModeButton active={mode === 'classic'} icon={<SlidersHorizontal size={14} />} onClick={() => onModeChange('classic')}>
+          <ModeButton
+            active={mode === 'classic'}
+            icon={<SlidersHorizontal size={14} />}
+            onClick={() => onModeChange('classic')}
+          >
             Классический
           </ModeButton>
-          <ModeButton active={mode === 'targeted'} icon={<Target size={14} />} onClick={() => onModeChange('targeted')}>
+          <ModeButton
+            active={mode === 'targeted'}
+            icon={<Target size={14} />}
+            onClick={() => onModeChange('targeted')}
+          >
             Таргет
           </ModeButton>
         </div>
       </div>
-
-      {/* Base filters */}
       <div className='flex flex-wrap items-end gap-3'>
         <div className='flex flex-col gap-1.5'>
           <span className='text-primary text-[12px] font-medium'>Пол</span>
@@ -159,13 +164,15 @@ export function FilterPanel({
           </Button>
         </div>
       </div>
-
-      {/* Targeted extras */}
       {mode === 'targeted' && (
         <div className='border-border mt-4 flex flex-wrap items-end gap-3 border-t pt-4'>
           <div className='w-44'>
             <TextFilterField
-              label={<><GraduationCap size={12} /> Образование</>}
+              label={
+                <>
+                  <GraduationCap size={12} /> Образование
+                </>
+              }
               value={education}
               onChange={onEducationChange}
               placeholder='Высшее, техническое...'
@@ -187,7 +194,11 @@ export function FilterPanel({
 
           <div className='w-52'>
             <TextFilterField
-              label={<><Heart size={12} /> Ищет партнёра</>}
+              label={
+                <>
+                  <Heart size={12} /> Ищет партнёра
+                </>
+              }
               value={partnerPrefs}
               onChange={onPartnerPrefsChange}
               placeholder='Опишите предпочтения...'

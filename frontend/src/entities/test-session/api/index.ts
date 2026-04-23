@@ -7,16 +7,13 @@ import type {
 } from '../model/types';
 
 export const testSessionApi = {
-  getHistory: () => apiClient.get<TestHistory>('/api/v1/tests/history'),
+  getHistory: () => apiClient.get<TestHistory>('/tests/history'),
 
-  start: () => apiClient.post<TestStartResponse>('/api/v1/tests/start', {}),
+  start: () => apiClient.post<TestStartResponse>('/tests/start', {}),
 
   submitAnswer: (sessionId: string, questionId: string, answer: string | number | boolean) =>
-    apiClient.post<AnswerSubmitResponse>(
-      `/api/v1/tests/${sessionId}/answers/${questionId}`,
-      { answer },
-    ),
+    apiClient.post<AnswerSubmitResponse>(`/tests/${sessionId}/answers/${questionId}`, { answer }),
 
   complete: (sessionId: string) =>
-    apiClient.post<TestCompleteResponse>(`/api/v1/tests/${sessionId}/complete`, {}),
+    apiClient.post<TestCompleteResponse>(`/tests/${sessionId}/complete`, {}),
 };

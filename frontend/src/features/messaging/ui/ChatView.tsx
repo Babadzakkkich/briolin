@@ -36,22 +36,15 @@ export function ChatView({
 }: ChatViewProps) {
   return (
     <div className='flex flex-1 flex-col overflow-hidden'>
-      {/* Header */}
       <div className='border-border flex shrink-0 items-center gap-3 border-b bg-white px-6 py-4'>
         <ChatAvatar name={chat.name} size='lg' />
         <div className='min-w-0 flex-1'>
-          <p className='text-primary truncate text-[15px] font-semibold'>
-            {chat.name ?? 'Чат'}
-          </p>
+          <p className='text-primary truncate text-[15px] font-semibold'>{chat.name ?? 'Чат'}</p>
           <p className='text-secondary text-[12px]'>
-            {chat.type === 'GROUP'
-              ? `${chat.participants.length} участников`
-              : 'Личный чат'}
+            {chat.type === 'GROUP' ? `${chat.participants.length} участников` : 'Личный чат'}
           </p>
         </div>
       </div>
-
-      {/* Messages */}
       <div className='flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-5'>
         {isLoading ? (
           <div className='flex flex-1 items-center justify-center'>
@@ -74,8 +67,6 @@ export function ChatView({
         <TypingIndicator names={typingNames} />
         <div ref={messagesEndRef} />
       </div>
-
-      {/* Input */}
       <div className='border-border shrink-0 border-t bg-white px-6 py-4'>
         <div className='flex items-center gap-2'>
           <input
