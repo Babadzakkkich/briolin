@@ -5,7 +5,7 @@ import { testSessionApi } from '@/entities/test-session';
 
 export function useAuth() {
   const navigate = useNavigate();
-  const { setAccessToken, clear: clearAuth } = useAuthStore();
+  const { setAccessToken, setTestPassed, clear: clearAuth } = useAuthStore();
   const { setProfile, clear: clearProfile } = useProfileStore();
 
   const login = async (username: string, password: string) => {
@@ -23,12 +23,14 @@ export function useAuth() {
     try {
       const { data } = await testSessionApi.getHistory();
       const hasPassed = data.history.some((item) => item.passed);
+      setTestPassed(hasPassed);
       if (hasPassed) {
         navigate('/dashboard');
       } else {
         navigate('/onboarding', { state: { step: 1 } });
       }
     } catch {
+      setTestPassed(false);
       navigate('/onboarding', { state: { step: 1 } });
     }
   };

@@ -14,7 +14,9 @@ interface AuthState {
   accessToken: string | null;
   username: string | null;
   isAuthenticated: boolean;
+  isTestPassed: boolean;
   setAccessToken: (token: string | null) => void;
+  setTestPassed: (passed: boolean) => void;
   clear: () => void;
 }
 
@@ -24,6 +26,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       username: null,
       isAuthenticated: false,
+      isTestPassed: false,
       setAccessToken: (token) => {
         const payload = token ? decodeJwt(token) : null;
         set({
@@ -32,7 +35,8 @@ export const useAuthStore = create<AuthState>()(
           username: payload?.preferred_username ?? null,
         });
       },
-      clear: () => set({ accessToken: null, isAuthenticated: false, username: null }),
+      setTestPassed: (passed) => set({ isTestPassed: passed }),
+      clear: () => set({ accessToken: null, isAuthenticated: false, username: null, isTestPassed: false }),
     }),
     { name: 'auth' },
   ),
