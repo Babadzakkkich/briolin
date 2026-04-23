@@ -2,8 +2,15 @@ import { apiClient } from '@/shared/api/client';
 import type { Message, MessageListResponse } from '../model/types';
 
 export const messageApi = {
-  getMessages: (chatId: string, params?: { skip?: number; limit?: number; before?: string }) =>
-    apiClient.get<MessageListResponse>(`/chats/${chatId}/messages`, { params }).then((r) => r.data),
+  getMessages: (
+    chatId: string,
+    params?: { skip?: number; limit?: number; before?: string },
+    signal?: AbortSignal,
+  ) => {
+    return apiClient
+      .get<MessageListResponse>(`/chats/${chatId}/messages`, { params: params, signal })
+      .then((r) => r.data);
+  },
 
   send: (chatId: string, content: string, replyToId?: string) =>
     apiClient

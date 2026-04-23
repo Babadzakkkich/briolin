@@ -11,6 +11,6 @@ export const profileApi = {
   createDetailed: (data: DetailedProfileData) => apiClient.post('/profiles/detailed', data),
   getMe: () => apiClient.get<ProfileResponse>('/profiles/me'),
   updateMe: (data: ProfileUpdateData) => apiClient.put('/profiles/me', data),
-  getByKeycloakId: (keycloakId: string) =>
-    apiClient.get<ProfileResponse>(`/profiles/${keycloakId}`),
+  getByKeycloakId: (keycloakId: string, signal?: AbortSignal) =>
+    apiClient.get<ProfileResponse>(`/profiles/${keycloakId}`, { signal }),
 };

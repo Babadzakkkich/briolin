@@ -14,6 +14,7 @@ import { profileApi } from '@/entities/profile';
 import { Button } from '@/shared/uikit/Button';
 import { toast } from '@/shared/toast/toast';
 import type { ProfilePreview } from '@/entities/search';
+import axios from 'axios';
 
 function getInitials(first: string, last: string) {
   return `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
@@ -91,8 +92,11 @@ export function UserProfilePage() {
       setLoading(false);
       return;
     }
+
+    const controller = new AbortController();
+
     profileApi
-      .getByKeycloakId(keycloakId)
+      .getByKeycloakId(keycloakId, controller.signal)
       .then((res) => {
         const { basic, detailed } = res.data;
         setProfile({
@@ -109,8 +113,13 @@ export function UserProfilePage() {
           partner_preferences: detailed?.partner_preferences ?? null,
         });
       })
-      .catch(() => toast.error('Не удалось загрузить профиль'))
+      .catch((err: unknown) => {
+        if (axios.isCancel(err)) return;
+        toast.error('Не удалось загрузить профиль');
+      })
       .finally(() => setLoading(false));
+
+    return () => controller.abort();
   }, [keycloakId, stateProfile]);
 
   const handleMessage = async () => {

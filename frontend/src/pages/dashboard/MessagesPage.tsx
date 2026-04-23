@@ -10,6 +10,7 @@ import type { Chat } from '@/entities/chat';
 import type { Message, WsMessage } from '@/entities/message';
 import { useAuthStore } from '@/entities/session';
 import { toast } from '@/shared/toast/toast';
+import axios from 'axios';
 
 function decodeKeycloakId(token: string | null): string | null {
   if (!token) return null;
@@ -69,23 +70,38 @@ export function MessagesPage() {
     if (!selectedChatId) return;
     setMessages([]);
     setIsLoadingMessages(true);
+
+    const controller = new AbortController();
+
     messageApi
-      .getMessages(selectedChatId, { limit: 60 })
+      .getMessages(selectedChatId, { limit: 60 }, controller.signal)
       .then((data) => {
         const sorted = [...data.messages].sort(
           (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
         );
         setMessages(sorted);
-        const unread = sorted.filter((m) => !m.is_read_by_me && m.sender_keycloak_id !== keycloakId);
+        const unread = sorted.filter(
+          (m) => !m.is_read_by_me && m.sender_keycloak_id !== keycloakId,
+        );
         if (unread.length > 0) {
-          messageApi.markRead(selectedChatId, unread.map((m) => m.id)).catch(() => {});
+          messageApi
+            .markRead(
+              selectedChatId,
+              unread.map((m) => m.id),
+            )
+            .catch(() => {});
           setChats((prev) =>
             prev.map((c) => (c.id === selectedChatId ? { ...c, unread_count: 0 } : c)),
           );
         }
       })
-      .catch(() => toast.error('Не удалось загрузить сообщения'))
+      .catch((err: unknown) => {
+        if (axios.isCancel(err)) return;
+        toast.error('Не удалось загрузить сообщения');
+      })
       .finally(() => setIsLoadingMessages(false));
+
+    return () => controller.abort();
   }, [selectedChatId, keycloakId]);
 
   useEffect(() => {
