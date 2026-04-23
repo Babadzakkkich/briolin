@@ -7,7 +7,17 @@ class MatchingServiceException(Exception):
 
 
 class SwipeLimitExceededException(MatchingServiceException):
+    """Устаревшее, оставлено для обратной совместимости"""
     def __init__(self, message: str = "Дневной лимит свайпов исчерпан"):
+        super().__init__(message=message, status_code=429)
+
+
+class LikeLimitExceededException(MatchingServiceException):
+    """Исключение при превышении дневного лимита лайков"""
+    def __init__(self, message: str = "Дневной лимит лайков исчерпан", 
+                 likes_used: int = 0, daily_limit: int = 0):
+        self.likes_used = likes_used
+        self.daily_limit = daily_limit
         super().__init__(message=message, status_code=429)
 
 
@@ -32,9 +42,10 @@ class DatabaseException(MatchingServiceException):
 
 
 class TargetedSearchLockedException(MatchingServiceException):
-    def __init__(self, message: str, unlock_time=None, time_until_unlock=None, swipes_used=0, daily_limit=0):
+    def __init__(self, message: str, unlock_time=None, time_until_unlock=None, 
+                 profiles_viewed=0, daily_limit=0):
         self.unlock_time = unlock_time
         self.time_until_unlock = time_until_unlock
-        self.swipes_used = swipes_used
+        self.profiles_viewed = profiles_viewed
         self.daily_limit = daily_limit
         super().__init__(message=message, status_code=429)

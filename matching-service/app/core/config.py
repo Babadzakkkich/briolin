@@ -46,14 +46,18 @@ class ServicesConfig(BaseSettings):
     chat_service_url: str = "http://chat-service:8005"
 
 
-class SwipeLimitsConfig(BaseSettings):
+class LimitsConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
         env_prefix="MATCHING__",
         case_sensitive=False,
     )
-    daily_limit: int = 100
+    # Для таргетированных рекомендаций (эмбеддинги)
+    targeted_daily_view_limit: int = 100
     targeted_lock_hours: int = 12
+    
+    # Для лайков (глобальное ограничение)
+    daily_like_limit: int = 10
 
 
 class MatchingServiceConfig(BaseSettings):
@@ -74,7 +78,7 @@ class Settings:
         self.db = DatabaseConfig()
         self.redis = RedisConfig()
         self.services = ServicesConfig()
-        self.limits = SwipeLimitsConfig()
+        self.limits = LimitsConfig()
 
     @property
     def keycloak(self) -> KeycloakConfig:

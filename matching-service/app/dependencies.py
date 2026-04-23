@@ -4,7 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import async_session_factory
 from app.services.matching_service import MatchingService
-from shared.auth.dependencies import get_current_user, get_current_active_user, require_role, require_any_role, require_test_passed
+from shared.auth.dependencies import (
+    get_current_user, 
+    get_current_active_user, 
+    require_role, 
+    require_any_role, 
+    require_test_passed
+)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

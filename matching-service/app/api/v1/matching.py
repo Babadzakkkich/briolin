@@ -3,16 +3,23 @@ from typing import Optional, List
 
 from app.services.matching_service import MatchingService
 from app.dependencies import get_matching_service, require_admin
-from app.schemas.swipe import SwipeRequest, SwipeResponse, SwipeStatusResponse
+from app.schemas.swipe import (
+    SwipeRequest, SwipeResponse, SwipeStatusResponse,
+    LikeRequest, DislikeRequest
+)
 from app.schemas.match import MatchResponse
+from app.schemas.search import (
+    ClassicSearchFilters,
+    TargetedSearchFilters,
+    SearchListResponse
+)
 from app.schemas.recommendation import (
-    ClassicRecommendationFilters,
     TargetedRecommendationFilters,
     RecommendationListResponse
 )
-from app.schemas.lock import TargetedSearchLockInfo
+from app.schemas.lock import TargetedSearchLockInfo, LikeUsageInfo
 from app.core.exceptions import (
-    SwipeLimitExceededException,
+    LikeLimitExceededException,
     AlreadySwipedException,
     UserNotFoundException,
     TargetedSearchLockedException
@@ -23,7 +30,63 @@ from shared.schemas.shared import Gender
 router = APIRouter(prefix="/matching", tags=["Matching"])
 
 
-# ========== SWIPE ENDPOINTS ==========
+# ========== LIKE/DISLIKE ENDPOINTS ==========
+
+@router.post("/like", response_model=SwipeResponse, status_code=status.HTTP_200_OK)
+async def like_profile(
+    request: LikeRequest,
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Поставить лайк профилю (с проверкой дневного лимита)"""
+    try:
+        return await service.like_profile(
+            from_user_id=current_user["keycloak_id"],
+            to_user_id=request.target_user_id
+        )
+    except LikeLimitExceededException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={
+                "message": e.message,
+                "likes_used": e.likes_used,
+                "daily_limit": e.daily_limit
+            }
+        )
+    except AlreadySwipedException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except UserNotFoundException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+
+@router.post("/dislike", response_model=SwipeResponse, status_code=status.HTTP_200_OK)
+async def dislike_profile(
+    request: DislikeRequest,
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Поставить дизлайк профилю (без ограничений)"""
+    try:
+        return await service.dislike_profile(
+            from_user_id=current_user["keycloak_id"],
+            to_user_id=request.target_user_id
+        )
+    except AlreadySwipedException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except UserNotFoundException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+
+@router.get("/like-usage", response_model=LikeUsageInfo)
+async def get_like_usage(
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Получение информации об использовании лайков"""
+    return await service.get_like_usage(current_user["keycloak_id"])
+
+
+# ========== SWIPE ENDPOINTS (для обратной совместимости) ==========
 
 @router.post("/swipe", response_model=SwipeResponse, status_code=status.HTTP_200_OK)
 async def create_swipe(
@@ -31,15 +94,25 @@ async def create_swipe(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Создание свайпа (лайк или дизлайк)"""
+    """
+    Создание свайпа (лайк или дизлайк).
+    Для лайков проверяется дневной лимит.
+    """
     try:
         return await service.swipe(
             from_user_id=current_user["keycloak_id"],
             to_user_id=request.target_user_id,
             action=request.action
         )
-    except SwipeLimitExceededException as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except LikeLimitExceededException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={
+                "message": e.message,
+                "likes_used": e.likes_used,
+                "daily_limit": e.daily_limit
+            }
+        )
     except AlreadySwipedException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except UserNotFoundException as e:
@@ -70,10 +143,10 @@ async def get_matches(
     return matches
 
 
-# ========== RECOMMENDATIONS ENDPOINTS ==========
+# ========== SEARCH ENDPOINTS ==========
 
-@router.get("/recommendations/classic", response_model=RecommendationListResponse)
-async def classic_recommendations(
+@router.get("/search/classic", response_model=SearchListResponse)
+async def classic_search(
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
     gender: Optional[Gender] = None,
@@ -83,14 +156,14 @@ async def classic_recommendations(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Классические рекомендации на основе базовых фильтров (с пагинацией)"""
-    filters = ClassicRecommendationFilters(
+    """Классический поиск на основе базовых фильтров (с пагинацией)"""
+    filters = ClassicSearchFilters(
         gender=gender,
         min_age=min_age,
         max_age=max_age,
         city=city
     )
-    return await service.get_classic_recommendations(
+    return await service.classic_search(
         user_id=current_user["keycloak_id"],
         filters=filters,
         page=page,
@@ -98,8 +171,8 @@ async def classic_recommendations(
     )
 
 
-@router.get("/recommendations/targeted", response_model=RecommendationListResponse)
-async def targeted_recommendations(
+@router.get("/search/targeted", response_model=SearchListResponse)
+async def targeted_search(
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
     gender: Optional[Gender] = None,
@@ -112,8 +185,8 @@ async def targeted_recommendations(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Таргетированные рекомендации на основе семантической близости (эмбеддингов) с учётом блокировки по свайпам"""
-    filters = TargetedRecommendationFilters(
+    """Таргетированный поиск с расширенными фильтрами (без эмбеддингов, без блокировки)"""
+    filters = TargetedSearchFilters(
         gender=gender,
         min_age=min_age,
         max_age=max_age,
@@ -122,6 +195,36 @@ async def targeted_recommendations(
         hobbies_keywords=hobbies_keywords,
         online_only=online_only
     )
+    return await service.targeted_search(
+        user_id=current_user["keycloak_id"],
+        filters=filters,
+        page=page,
+        limit=limit
+    )
+
+
+# ========== RECOMMENDATIONS ENDPOINTS ==========
+
+@router.get("/recommendations/targeted", response_model=RecommendationListResponse)
+async def targeted_recommendations(
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
+    city: Optional[str] = Query(None, description="Город (если не указан - используется город пользователя)"),
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """
+    Таргетированные рекомендации на основе эмбеддингов с автоматическими фильтрами.
+    
+    **Автоматически определяются:**
+    - **Пол**: противоположный полу пользователя (для OTHER - все)
+    - **Возраст**: ±5 лет от возраста пользователя (автоматически расширяется)
+    - **Город**: можно указать вручную, иначе используется город пользователя
+    
+    **Блокировка:** Дневной лимит просмотров (100), после превышения - блокировка на 12 часов.
+    """
+    filters = TargetedRecommendationFilters(city=city)
+    
     try:
         return await service.get_targeted_recommendations(
             user_id=current_user["keycloak_id"],
@@ -136,7 +239,7 @@ async def targeted_recommendations(
                 "message": e.message,
                 "unlock_time": e.unlock_time.isoformat() if e.unlock_time else None,
                 "time_until_unlock": e.time_until_unlock,
-                "swipes_used": e.swipes_used,
+                "profiles_viewed": e.profiles_viewed,
                 "daily_limit": e.daily_limit
             }
         )
@@ -149,18 +252,24 @@ async def get_lock_status(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Получение статуса блокировки таргетированных рекомендаций для текущего пользователя"""
-    return await service.get_lock_status(current_user["keycloak_id"])
+    """Получение статуса блокировки таргетированных рекомендаций (эмбеддинги)"""
+    return await service.get_targeted_lock_status(current_user["keycloak_id"])
 
 
 # ========== ADMIN ENDPOINTS ==========
 
-@router.delete("/admin/swipes/reset", status_code=status.HTTP_200_OK)
-async def reset_swipes(
-    user_id: str = Query(..., description="Keycloak ID пользователя для сброса свайпов"),
+@router.delete("/admin/reset/{user_id}", status_code=status.HTTP_200_OK)
+async def reset_user_data(
+    user_id: str,
     _: dict = Depends(require_admin()),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Удаляет все свайпы указанного пользователя и сбрасывает блокировку. Только для администраторов."""
-    deleted = await service.reset_swipes(user_id)
-    return {"message": f"Удалено {deleted} записей свайпов для пользователя {user_id}"}
+    """
+    Сброс всех данных пользователя (свайпы, блокировки, лайки).
+    Только для администраторов.
+    """
+    result = await service.reset_user_data(user_id)
+    return {
+        "message": f"Данные пользователя {user_id} сброшены",
+        "swipes_deleted": result["swipes_deleted"]
+    }

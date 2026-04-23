@@ -4,7 +4,26 @@ from datetime import datetime
 from shared.schemas.shared import Gender
 
 
-# ========== SWIPE SCHEMAS ==========
+# ========== LIKE/DISLIKE SCHEMAS ==========
+
+class LikeRequest(BaseModel):
+    """Запрос на лайк"""
+    target_user_id: str = Field(..., description="Keycloak ID пользователя, которого лайкаем")
+
+
+class DislikeRequest(BaseModel):
+    """Запрос на дизлайк"""
+    target_user_id: str = Field(..., description="Keycloak ID пользователя, которого дизлайкаем")
+
+
+class LikeUsageInfo(BaseModel):
+    """Информация об использовании лайков"""
+    likes_used_today: int = Field(..., description="Использовано лайков сегодня")
+    daily_like_limit: int = Field(..., description="Дневной лимит лайков")
+    likes_remaining: int = Field(..., description="Осталось лайков на сегодня")
+
+
+# ========== SWIPE SCHEMAS (для обратной совместимости) ==========
 
 class SwipeRequest(BaseModel):
     """Запрос на свайп (лайк/дизлайк)"""
@@ -13,7 +32,7 @@ class SwipeRequest(BaseModel):
 
 
 class SwipeResponse(BaseModel):
-    """Ответ на свайп"""
+    """Ответ на свайп/лайк/дизлайк"""
     match: bool = Field(..., description="Произошёл ли взаимный матч")
     match_id: Optional[int] = Field(None, description="ID матча если match=true")
     chat_id: Optional[str] = Field(None, description="ID чата если match=true")
@@ -56,7 +75,7 @@ class PaginationInfo(BaseModel):
 # ========== LOCK SCHEMAS ==========
 
 class TargetedSearchLockInfo(BaseModel):
-    """Информация о блокировке таргетированных рекомендаций"""
+    """Информация о блокировке таргетированных рекомендаций (эмбеддинги)"""
     is_locked: bool = Field(..., description="Заблокирован ли пользователь")
     profiles_viewed: int = Field(..., description="Просмотрено профилей в текущем периоде")
     daily_limit: int = Field(..., description="Дневной лимит просмотров")
@@ -64,38 +83,72 @@ class TargetedSearchLockInfo(BaseModel):
     time_until_unlock: Optional[int] = Field(None, description="Секунд до разблокировки")
 
 
-# ========== RECOMMENDATION SCHEMAS ==========
+# ========== SEARCH SCHEMAS ==========
 
-class ClassicRecommendationFilters(BaseModel):
-    """Фильтры для классического поиска рекомендаций"""
+class ClassicSearchFilters(BaseModel):
+    """Фильтры для классического поиска"""
     gender: Optional[Gender] = Field(None, description="Пол для фильтрации")
     min_age: Optional[int] = Field(None, ge=18, le=100, description="Минимальный возраст")
     max_age: Optional[int] = Field(None, ge=18, le=100, description="Максимальный возраст")
     city: Optional[str] = Field(None, min_length=1, max_length=200, description="Город")
 
 
-class TargetedRecommendationFilters(ClassicRecommendationFilters):
-    """Фильтры для таргетированного (премиум) поиска рекомендаций"""
+class TargetedSearchFilters(ClassicSearchFilters):
+    """Фильтры для таргетированного поиска (без эмбеддингов)"""
     education: Optional[str] = Field(None, min_length=1, max_length=500, description="Образование")
     hobbies_keywords: Optional[List[str]] = Field(None, max_length=10, description="Ключевые слова интересов")
     online_only: bool = Field(False, description="Только онлайн пользователи")
 
 
-class RecommendationProfile(BaseModel):
-    """Профиль в результатах рекомендаций"""
+class SearchProfile(BaseModel):
+    """Профиль в результатах поиска"""
     keycloak_id: str = Field(..., description="Keycloak ID пользователя")
     display_name: str = Field(..., description="Отображаемое имя")
     age: int = Field(..., description="Возраст")
     city: str = Field(..., description="Город")
     avatar_url: Optional[str] = Field(None, description="URL аватарки")
-    similarity: Optional[float] = Field(None, description="Степень схожести (0-1, только для таргетированного поиска)")
+    education: Optional[str] = Field(None, description="Образование")
+    hobbies: Optional[str] = Field(None, description="Интересы")
+
+
+class SearchListResponse(BaseModel):
+    """Ответ со списком найденных профилей и пагинацией"""
+    profiles: List[SearchProfile] = Field(..., description="Список профилей")
+    pagination: PaginationInfo = Field(..., description="Информация о пагинации")
+
+
+# ========== RECOMMENDATION SCHEMAS (ЭМБЕДДИНГИ) ==========
+
+class TargetedRecommendationFilters(BaseModel):
+    """
+    Фильтры для таргетированных рекомендаций (эмбеддинги).
+    Все поля опциональны - если не указаны, определяются автоматически.
+    """
+    city: Optional[str] = Field(
+        None, 
+        min_length=1, 
+        max_length=200, 
+        description="Город (если не указан - используется город пользователя)"
+    )
+
+
+class RecommendationProfile(BaseModel):
+    """Профиль в результатах рекомендаций по эмбеддингам"""
+    keycloak_id: str = Field(..., description="Keycloak ID пользователя")
+    display_name: str = Field(..., description="Отображаемое имя")
+    age: int = Field(..., description="Возраст")
+    city: str = Field(..., description="Город")
+    avatar_url: Optional[str] = Field(None, description="URL аватарки")
+    similarity: Optional[float] = Field(None, description="Степень семантической схожести (0-1)")
+    combined_score: Optional[float] = Field(None, description="Комбинированный скор (similarity + близость по возрасту)")
 
 
 class RecommendationListResponse(BaseModel):
     """Ответ со списком рекомендаций и пагинацией"""
     profiles: List[RecommendationProfile] = Field(..., description="Список профилей")
     pagination: PaginationInfo = Field(..., description="Информация о пагинации")
-    lock_info: Optional[TargetedSearchLockInfo] = Field(None, description="Информация о блокировке (только для таргетированного поиска)")
+    lock_info: Optional[TargetedSearchLockInfo] = Field(None, description="Информация о блокировке")
+    applied_filters: dict = Field(..., description="Фактически применённые фильтры")
 
 
 # ========== ADMIN SCHEMAS ==========
@@ -109,3 +162,19 @@ class ResetUserDataResponse(BaseModel):
 class ErrorResponse(BaseModel):
     """Ответ с ошибкой"""
     detail: str = Field(..., description="Описание ошибки")
+
+
+class LikeLimitErrorResponse(BaseModel):
+    """Ответ при превышении лимита лайков"""
+    message: str = Field(..., description="Сообщение об ошибке")
+    likes_used: int = Field(..., description="Использовано лайков")
+    daily_limit: int = Field(..., description="Дневной лимит")
+
+
+class TargetedSearchLockedErrorResponse(BaseModel):
+    """Ответ при блокировке таргетированных рекомендаций"""
+    message: str = Field(..., description="Сообщение об ошибке")
+    unlock_time: Optional[str] = Field(None, description="Время разблокировки (ISO)")
+    time_until_unlock: Optional[int] = Field(None, description="Секунд до разблокировки")
+    profiles_viewed: int = Field(..., description="Просмотрено профилей")
+    daily_limit: int = Field(..., description="Дневной лимит просмотров")
