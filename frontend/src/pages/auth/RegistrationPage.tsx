@@ -5,21 +5,52 @@ import { toast } from '@/shared/toast/toast';
 import { Button } from '@/shared/uikit/Button';
 import { Input } from '@/shared/uikit/Input';
 import { Text } from '@/shared/uikit/Text';
+import { z } from 'zod';
+
+const RegistrationFormSchema = z.object({
+  email: z.email('Некорректный email'),
+  password: z.string().min(6, 'Минимум 6 символов'),
+  username: z
+    .string()
+    .min(3, 'Минимум 3 символа')
+    .max(50, 'Максимум 50 символов')
+    .regex(/^[a-zA-Z0-9]+$/, 'Только латиница и цифры'),
+});
+
+type RegistrationForm = z.infer<typeof RegistrationFormSchema>;
+type FormErrors = Partial<Record<keyof RegistrationForm, string>>;
 
 export function RegistrationPage() {
   const { register } = useAuth();
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+
+  const [fields, setFields] = useState<RegistrationForm>({
+    username: '',
+    email: '',
+    password: '',
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.SubmitEvent<HTMLFormElement>) => {
+  const setField = (key: keyof RegistrationForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFields((prev) => ({ ...prev, [key]: e.target.value }));
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!username || !email || !password) return;
+
+    const result = RegistrationFormSchema.safeParse(fields);
+    if (!result.success) {
+      const fieldErrors = Object.fromEntries(
+        result.error.issues.map((issue) => [issue.path[0], issue.message]),
+      );
+      setErrors(fieldErrors);
+      return;
+    }
 
     setLoading(true);
     try {
-      await register(email, username, password);
+      await register(result.data.email, result.data.username, result.data.password);
       toast.success('Аккаунт создаётся, войдите через несколько секунд');
     } catch {
       toast.error('Не удалось создать аккаунт');
@@ -41,28 +72,33 @@ export function RegistrationPage() {
           Создайте свой профиль
         </Text>
       </div>
+
       <div className='flex w-full flex-col gap-4'>
         <Input
           label='Логин'
           placeholder='Придумайте логин'
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          value={fields.username}
+          onChange={setField('username')}
+          error={errors.username}
         />
         <Input
           label='Почта'
           placeholder='mail@example.ru'
           type='email'
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          value={fields.email}
+          onChange={setField('email')}
+          error={errors.email}
         />
         <Input
           label='Пароль'
           placeholder='Придумайте пароль'
           type='password'
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          value={fields.password}
+          onChange={setField('password')}
+          error={errors.password}
         />
       </div>
+
       <div className='flex flex-col gap-4 text-center'>
         <Button type='submit' disabled={loading}>
           {loading ? 'Создаём...' : 'Создать аккаунт'}
