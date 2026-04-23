@@ -26,6 +26,15 @@
   }
 }
 
+@keyframes loader-dot {
+  0%, 100% { opacity: 0.2; transform: scale(0.65); }
+  50%       { opacity: 1;   transform: scale(1); }
+}
+
+@utility animate-loader-dot {
+  animation: loader-dot 1.2s ease-in-out infinite;
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;

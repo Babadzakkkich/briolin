@@ -2,8 +2,13 @@ import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { profileApi, useProfileStore, AvatarUpload } from '@/entities/profile';
 import type { ProfileResponse } from '@/entities/profile';
-import { BasicInfoSection, genderToDisplay, displayToGender } from '@/features/profile/ui/BasicInfoSection';
+import {
+  BasicInfoSection,
+  genderToDisplay,
+  displayToGender,
+} from '@/features/profile/ui/BasicInfoSection';
 import { DetailedInfoSection } from '@/features/profile/ui/DetailedInfoSection';
+import { Loader } from '@/shared/uikit/Loader';
 import { toast } from '@/shared/toast/toast';
 
 const basicSchema = z.object({
@@ -84,10 +89,17 @@ export function ProfilePage() {
   }
 
   function saveBasic() {
-    const result = basicSchema.safeParse({ first_name: firstName, last_name: lastName, city, date_of_birth: birthDate });
+    const result = basicSchema.safeParse({
+      first_name: firstName,
+      last_name: lastName,
+      city,
+      date_of_birth: birthDate,
+    });
     if (!result.success) {
       const errs: BasicErrors = {};
-      result.error.issues.forEach((e) => { errs[e.path[0] as keyof BasicErrors] = e.message; });
+      result.error.issues.forEach((e) => {
+        errs[e.path[0] as keyof BasicErrors] = e.message;
+      });
       setBasicErrors(errs);
       return;
     }
@@ -95,14 +107,38 @@ export function ProfilePage() {
     setSavingBasic(true);
     profileApi
       .updateMe({
-        basic: { first_name: firstName, last_name: lastName, city, gender: displayToGender(gender), date_of_birth: birthDate },
+        basic: {
+          first_name: firstName,
+          last_name: lastName,
+          city,
+          gender: displayToGender(gender),
+          date_of_birth: birthDate,
+        },
       })
       .then(() => {
         toast.success('Основная информация обновлена');
         setProfileData((prev) =>
-          prev ? { ...prev, basic: { ...prev.basic, first_name: firstName, last_name: lastName, city, gender: displayToGender(gender), date_of_birth: birthDate } } : prev,
+          prev
+            ? {
+                ...prev,
+                basic: {
+                  ...prev.basic,
+                  first_name: firstName,
+                  last_name: lastName,
+                  city,
+                  gender: displayToGender(gender),
+                  date_of_birth: birthDate,
+                },
+              }
+            : prev,
         );
-        setProfile({ first_name: firstName, last_name: lastName, city, gender: displayToGender(gender), date_of_birth: birthDate });
+        setProfile({
+          first_name: firstName,
+          last_name: lastName,
+          city,
+          gender: displayToGender(gender),
+          date_of_birth: birthDate,
+        });
         setEditingBasic(false);
       })
       .catch(() => toast.error('Ошибка при сохранении'))
@@ -116,10 +152,17 @@ export function ProfilePage() {
   }
 
   function saveDetailed() {
-    const result = detailedSchema.safeParse({ about_me: aboutMe, education, hobbies, partner_preferences: partnerPreferences });
+    const result = detailedSchema.safeParse({
+      about_me: aboutMe,
+      education,
+      hobbies,
+      partner_preferences: partnerPreferences,
+    });
     if (!result.success) {
       const errs: DetailedErrors = {};
-      result.error.issues.forEach((e) => { errs[e.path[0] as keyof DetailedErrors] = e.message; });
+      result.error.issues.forEach((e) => {
+        errs[e.path[0] as keyof DetailedErrors] = e.message;
+      });
       setDetailedErrors(errs);
       return;
     }
@@ -127,14 +170,37 @@ export function ProfilePage() {
     setSavingDetailed(true);
     const isCreate = !profile?.detailed;
     const apiCall = isCreate
-      ? profileApi.createDetailed({ about_me: aboutMe, education, hobbies, partner_preferences: partnerPreferences })
-      : profileApi.updateMe({ detailed: { about_me: aboutMe, education, hobbies, partner_preferences: partnerPreferences } });
+      ? profileApi.createDetailed({
+          about_me: aboutMe,
+          education,
+          hobbies,
+          partner_preferences: partnerPreferences,
+        })
+      : profileApi.updateMe({
+          detailed: {
+            about_me: aboutMe,
+            education,
+            hobbies,
+            partner_preferences: partnerPreferences,
+          },
+        });
 
     apiCall
       .then(() => {
         toast.success('Дополнительная информация обновлена');
         setProfileData((prev) =>
-          prev ? { ...prev, detailed: { id: prev.detailed?.id ?? 0, about_me: aboutMe, education, hobbies, partner_preferences: partnerPreferences } } : prev,
+          prev
+            ? {
+                ...prev,
+                detailed: {
+                  id: prev.detailed?.id ?? 0,
+                  about_me: aboutMe,
+                  education,
+                  hobbies,
+                  partner_preferences: partnerPreferences,
+                },
+              }
+            : prev,
         );
         setEditingDetailed(false);
       })
@@ -142,13 +208,7 @@ export function ProfilePage() {
       .finally(() => setSavingDetailed(false));
   }
 
-  if (loading) {
-    return (
-      <div className='flex flex-1 items-center justify-center'>
-        <p className='text-muted text-[14px]'>Загрузка профиля...</p>
-      </div>
-    );
-  }
+  if (loading) return <Loader center label='Загружаем профиль...' />;
 
   if (!profile) {
     return (
@@ -188,11 +248,23 @@ export function ProfilePage() {
             onEdit={() => setEditingBasic(true)}
             onSave={saveBasic}
             onCancel={cancelBasic}
-            onFirstNameChange={(v) => { setFirstName(v); setBasicErrors((p) => ({ ...p, first_name: undefined })); }}
-            onLastNameChange={(v) => { setLastName(v); setBasicErrors((p) => ({ ...p, last_name: undefined })); }}
-            onCityChange={(v) => { setCity(v); setBasicErrors((p) => ({ ...p, city: undefined })); }}
+            onFirstNameChange={(v) => {
+              setFirstName(v);
+              setBasicErrors((p) => ({ ...p, first_name: undefined }));
+            }}
+            onLastNameChange={(v) => {
+              setLastName(v);
+              setBasicErrors((p) => ({ ...p, last_name: undefined }));
+            }}
+            onCityChange={(v) => {
+              setCity(v);
+              setBasicErrors((p) => ({ ...p, city: undefined }));
+            }}
             onGenderChange={setGender}
-            onBirthDateChange={(v) => { setBirthDate(v); setBasicErrors((p) => ({ ...p, date_of_birth: undefined })); }}
+            onBirthDateChange={(v) => {
+              setBirthDate(v);
+              setBasicErrors((p) => ({ ...p, date_of_birth: undefined }));
+            }}
           />
 
           <DetailedInfoSection
@@ -207,10 +279,22 @@ export function ProfilePage() {
             onEdit={() => setEditingDetailed(true)}
             onSave={saveDetailed}
             onCancel={cancelDetailed}
-            onAboutMeChange={(v) => { setAboutMe(v); setDetailedErrors((p) => ({ ...p, about_me: undefined })); }}
-            onEducationChange={(v) => { setEducation(v); setDetailedErrors((p) => ({ ...p, education: undefined })); }}
-            onHobbiesChange={(v) => { setHobbies(v); setDetailedErrors((p) => ({ ...p, hobbies: undefined })); }}
-            onPartnerPreferencesChange={(v) => { setPartnerPreferences(v); setDetailedErrors((p) => ({ ...p, partner_preferences: undefined })); }}
+            onAboutMeChange={(v) => {
+              setAboutMe(v);
+              setDetailedErrors((p) => ({ ...p, about_me: undefined }));
+            }}
+            onEducationChange={(v) => {
+              setEducation(v);
+              setDetailedErrors((p) => ({ ...p, education: undefined }));
+            }}
+            onHobbiesChange={(v) => {
+              setHobbies(v);
+              setDetailedErrors((p) => ({ ...p, hobbies: undefined }));
+            }}
+            onPartnerPreferencesChange={(v) => {
+              setPartnerPreferences(v);
+              setDetailedErrors((p) => ({ ...p, partner_preferences: undefined }));
+            }}
           />
         </div>
       </div>

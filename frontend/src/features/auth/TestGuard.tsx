@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { testSessionApi } from '@/entities/test-session';
+import { Loader } from '@/shared/uikit/Loader';
 
 export function TestGuard() {
   const [checking, setChecking] = useState(true);
@@ -14,7 +15,7 @@ export function TestGuard() {
       .finally(() => setChecking(false));
   }, []);
 
-  if (checking) return null;
+  if (checking) return <Loader center size='lg' />;
   if (!passed) return <Navigate to='/onboarding' state={{ step: 1 }} replace />;
   return <Outlet />;
 }

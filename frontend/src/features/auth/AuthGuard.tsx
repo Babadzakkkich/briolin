@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore, sessionApi } from '@/entities/session';
+import { Loader } from '@/shared/uikit/Loader';
 
 export function AuthGuard() {
   const { accessToken, setAccessToken } = useAuthStore();
@@ -15,7 +16,7 @@ export function AuthGuard() {
       .finally(() => setChecking(false));
   }, []);
 
-  if (checking) return null;
+  if (checking) return <Loader center size='lg' />;
   if (!accessToken) return <Navigate to='/login' replace />;
   return <Outlet />;
 }
