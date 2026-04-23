@@ -1,177 +1,220 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { z } from 'zod';
 import { Button } from '@/shared/uikit/Button';
+import { AgeRangeInput } from '@/shared/uikit/AgeRangeInput';
+import type { TargetedSearchRequest } from '@/entities/search';
 
-const textField = (max: number) => z.string().max(max, `Макс. ${max} символов`);
+const GENDERS = [
+  { label: 'Любой', value: '' },
+  { label: 'Мужской', value: 'male' },
+  { label: 'Женский', value: 'female' },
+] as const;
 
-const rangeField = (lo: number, hi: number, label: string) =>
-  z
-    .string()
-    .refine(
-      (v) => v === '' || (Number.isInteger(Number(v)) && Number(v) >= lo && Number(v) <= hi),
-      {
-        message: `${label}: ${lo}—${hi}`,
-      },
-    );
+const ageField = z
+  .string()
+  .refine((v) => v === '' || (Number.isInteger(Number(v)) && Number(v) >= 18 && Number(v) <= 100), {
+    message: 'Возраст: 18—100',
+  });
 
 const schema = z
   .object({
-    hobbies: textField(500),
-    education: textField(200),
-    city: textField(200),
-    minHeight: rangeField(100, 250, 'Рост'),
-    maxHeight: rangeField(100, 250, 'Рост'),
-    minWeight: rangeField(30, 200, 'Вес'),
-    maxWeight: rangeField(30, 200, 'Вес'),
+    gender: z.string(),
+    minAge: ageField,
+    maxAge: ageField,
+    city: z.string().max(200, 'Макс. 200 символов'),
+    education: z.string().max(200, 'Макс. 200 символов'),
+    hobbies: z.string().max(500, 'Макс. 500 символов'),
+    partnerPreferences: z.string().max(1000, 'Макс. 1000 символов'),
+    onlineOnly: z.boolean(),
   })
-  .refine((d) => !(d.minHeight && d.maxHeight && Number(d.minHeight) > Number(d.maxHeight)), {
-    message: 'Мин. рост больше макс.',
-    path: ['maxHeight'],
-  })
-  .refine((d) => !(d.minWeight && d.maxWeight && Number(d.minWeight) > Number(d.maxWeight)), {
-    message: 'Мин. вес больше макс.',
-    path: ['maxWeight'],
+  .refine((d) => !(d.minAge && d.maxAge && Number(d.minAge) > Number(d.maxAge)), {
+    message: 'Мин. возраст больше макс.',
+    path: ['minAge'],
   });
 
-type Errors = Partial<
-  Record<
-    'hobbies' | 'education' | 'city' | 'minHeight' | 'maxHeight' | 'minWeight' | 'maxWeight',
-    string
-  >
+type FormErrors = Partial<
+  Record<'minAge' | 'maxAge' | 'city' | 'education' | 'hobbies' | 'partnerPreferences', string>
 >;
 
 interface TargetedFilterFormProps {
-  hobbies: string;
-  onHobbiesChange: (v: string) => void;
-  education: string;
-  onEducationChange: (v: string) => void;
-  city: string;
-  onCityChange: (v: string) => void;
-  minHeight: string;
-  onMinHeightChange: (v: string) => void;
-  maxHeight: string;
-  onMaxHeightChange: (v: string) => void;
-  minWeight: string;
-  onMinWeightChange: (v: string) => void;
-  maxWeight: string;
-  onMaxWeightChange: (v: string) => void;
   loading: boolean;
-  onSubmit: () => void;
+  onSubmit: (data: TargetedSearchRequest) => void;
 }
 
-export function TargetedFilterForm({
-  hobbies,
-  onHobbiesChange,
-  education,
-  onEducationChange,
-  city,
-  onCityChange,
-  minHeight,
-  onMinHeightChange,
-  maxHeight,
-  onMaxHeightChange,
-  minWeight,
-  onMinWeightChange,
-  maxWeight,
-  onMaxWeightChange,
-  loading,
-  onSubmit,
-}: TargetedFilterFormProps) {
-  const [errors, setErrors] = useState<Errors>({});
+export function TargetedFilterForm({ loading, onSubmit }: TargetedFilterFormProps) {
+  const [gender, setGender] = useState('');
+  const [minAge, setMinAge] = useState('');
+  const [maxAge, setMaxAge] = useState('');
+  const [city, setCity] = useState('');
+  const [education, setEducation] = useState('');
+  const [hobbies, setHobbies] = useState('');
+  const [partnerPreferences, setPartnerPreferences] = useState('');
+  const [onlineOnly, setOnlineOnly] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
 
-  useEffect(() => {
-    if (Object.keys(errors).length > 0) setErrors({});
-  }, [hobbies, education, city, minHeight, maxHeight, minWeight, maxWeight]);
+  const clearError = (field: keyof FormErrors) =>
+    setErrors((prev) => ({ ...prev, [field]: undefined }));
 
   const handleSubmit = () => {
-    const result = schema.safeParse({
-      hobbies,
-      education,
+    const parsed = schema.safeParse({
+      gender,
+      minAge,
+      maxAge,
       city,
-      minHeight,
-      maxHeight,
-      minWeight,
-      maxWeight,
+      education,
+      hobbies,
+      partnerPreferences,
+      onlineOnly,
     });
-    if (!result.success) {
-      const errs: Errors = {};
-      for (const issue of result.error.issues) {
-        const key = issue.path[0] as keyof Errors;
+
+    if (!parsed.success) {
+      const errs: FormErrors = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0] as keyof FormErrors;
         if (!errs[key]) errs[key] = issue.message;
       }
       setErrors(errs);
       return;
     }
+
     setErrors({});
-    onSubmit();
+    const d = parsed.data;
+
+    onSubmit({
+      gender: d.gender || undefined,
+      min_age: d.minAge ? Number(d.minAge) : undefined,
+      max_age: d.maxAge ? Number(d.maxAge) : undefined,
+      city: d.city.trim() || undefined,
+      education: d.education.trim() || undefined,
+      hobbies_keywords: d.hobbies.trim()
+        ? d.hobbies
+            .split(',')
+            .map((h) => h.trim())
+            .filter(Boolean)
+        : undefined,
+      partner_preferences: d.partnerPreferences.trim() || undefined,
+      online_only: d.onlineOnly || undefined,
+      page: 1,
+      limit: 12,
+    });
   };
 
   return (
     <div className='rounded-2xl bg-white p-6'>
       <p className='text-primary mb-5 text-[15px] font-semibold'>Фильтры профиля</p>
 
-      <div className='flex flex-col gap-4'>
-        <div className='grid grid-cols-3 gap-3'>
+      <div className='flex flex-col gap-5'>
+        <div className='flex flex-wrap items-start gap-3'>
+          <div className='flex flex-col gap-1.5'>
+            <span className='text-secondary text-[12px] font-medium'>Пол</span>
+            <div className='flex gap-1'>
+              {GENDERS.map((opt) => (
+                <button
+                  key={opt.label}
+                  type='button'
+                  onClick={() => setGender(opt.value)}
+                  className={[
+                    'cursor-pointer rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+                    gender === opt.value
+                      ? 'border-accent bg-accent text-white'
+                      : 'border-border text-secondary hover:border-muted hover:bg-surface',
+                  ].join(' ')}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <AgeRangeInput
+            minValue={minAge}
+            maxValue={maxAge}
+            onMinChange={(v) => {
+              setMinAge(v);
+              clearError('minAge');
+            }}
+            onMaxChange={(v) => {
+              setMaxAge(v);
+              clearError('maxAge');
+            }}
+            error={errors.minAge ?? errors.maxAge}
+          />
+        </div>
+
+        <div className='grid grid-cols-2 gap-3'>
           <FilterField
-            label='Хобби'
-            value={hobbies}
-            onChange={onHobbiesChange}
-            placeholder='Хобби'
-            error={errors.hobbies}
+            label='Город'
+            value={city}
+            onChange={(v) => {
+              setCity(v);
+              clearError('city');
+            }}
+            placeholder='Санкт-Петербург'
+            error={errors.city}
           />
           <FilterField
             label='Образование'
             value={education}
-            onChange={onEducationChange}
+            onChange={(v) => {
+              setEducation(v);
+              clearError('education');
+            }}
             placeholder='Высшее'
             error={errors.education}
           />
-          <FilterField
-            label='Темперамент'
-            value=''
-            onChange={() => {}}
-            placeholder='Сангвиник'
-            disabled
-          />
         </div>
 
-        <div className='grid grid-cols-3 gap-3'>
-          <FilterField
-            label='Город'
-            value={city}
-            onChange={onCityChange}
-            placeholder='Санкт-Петербург'
-            error={errors.city}
-          />
-          <RangeField
-            label='Рост'
-            unit='см'
-            minValue={minHeight}
-            maxValue={maxHeight}
-            onMinChange={onMinHeightChange}
-            onMaxChange={onMaxHeightChange}
-            minPlaceholder='160'
-            maxPlaceholder='190'
-            error={errors.minHeight ?? errors.maxHeight}
-          />
-          <RangeField
-            label='Вес'
-            unit='кг'
-            minValue={minWeight}
-            maxValue={maxWeight}
-            onMinChange={onMinWeightChange}
-            onMaxChange={onMaxWeightChange}
-            minPlaceholder='50'
-            maxPlaceholder='90'
-            error={errors.minWeight ?? errors.maxWeight}
-          />
-        </div>
+        <FilterField
+          label='Хобби'
+          hint='через запятую'
+          value={hobbies}
+          onChange={(v) => {
+            setHobbies(v);
+            clearError('hobbies');
+          }}
+          placeholder='путешествия, музыка, спорт'
+          error={errors.hobbies}
+        />
 
-        <Button onClick={handleSubmit} disabled={loading} className='w-fit'>
-          <Search size={15} />
-          {loading ? 'Поиск...' : 'Найти совпадение'}
-        </Button>
+        <FilterField
+          label='Ищу партнёра'
+          value={partnerPreferences}
+          onChange={(v) => {
+            setPartnerPreferences(v);
+            clearError('partnerPreferences');
+          }}
+          placeholder='Опишите, кого вы ищете...'
+          error={errors.partnerPreferences}
+        />
+
+        <div className='flex items-center justify-between'>
+          <label className='flex cursor-pointer items-center gap-2.5'>
+            <button
+              type='button'
+              role='switch'
+              aria-checked={onlineOnly}
+              onClick={() => setOnlineOnly((v) => !v)}
+              className={[
+                'relative h-5 w-9 cursor-pointer rounded-full transition-colors',
+                onlineOnly ? 'bg-accent' : 'bg-border',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform',
+                  onlineOnly ? '' : '-translate-x-4',
+                ].join(' ')}
+              />
+            </button>
+            <span className='text-secondary text-[13px] font-medium'>Только онлайн</span>
+          </label>
+
+          <Button onClick={handleSubmit} disabled={loading}>
+            <Search size={15} />
+            {loading ? 'Поиск...' : 'Найти совпадение'}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -179,22 +222,25 @@ export function TargetedFilterForm({
 
 function FilterField({
   label,
+  hint,
   value,
   onChange,
   placeholder,
-  disabled,
   error,
 }: {
   label: string;
+  hint?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  disabled?: boolean;
   error?: string;
 }) {
   return (
     <div className='flex flex-col gap-1.5'>
-      <label className='text-secondary text-[12px] font-medium'>{label}</label>
+      <div className='flex items-baseline gap-1.5'>
+        <label className='text-secondary text-[12px] font-medium'>{label}</label>
+        {hint && <span className='text-muted text-[11px]'>{hint}</span>}
+      </div>
       <div
         className={[
           'border-border focus-within:border-accent flex items-center rounded-xl border bg-white transition-colors',
@@ -205,61 +251,8 @@ function FilterField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          disabled={disabled}
-          className='text-primary placeholder:text-muted w-full rounded-xl bg-transparent px-3 py-2 text-[14px] outline-none disabled:cursor-not-allowed disabled:opacity-40'
+          className='text-primary placeholder:text-muted w-full rounded-xl bg-transparent px-3 py-2 text-[14px] outline-none'
         />
-      </div>
-      {error && <span className='text-destructive text-[11px]'>{error}</span>}
-    </div>
-  );
-}
-
-function RangeField({
-  label,
-  unit,
-  minValue,
-  maxValue,
-  onMinChange,
-  onMaxChange,
-  minPlaceholder,
-  maxPlaceholder,
-  error,
-}: {
-  label: string;
-  unit: string;
-  minValue: string;
-  maxValue: string;
-  onMinChange: (v: string) => void;
-  onMaxChange: (v: string) => void;
-  minPlaceholder?: string;
-  maxPlaceholder?: string;
-  error?: string;
-}) {
-  return (
-    <div className='flex flex-col gap-1.5'>
-      <label className='text-secondary text-[12px] font-medium'>{label}</label>
-      <div
-        className={[
-          'border-border focus-within:border-accent flex items-center gap-1 rounded-xl border bg-white px-3 py-2 transition-colors',
-          error ? 'border-destructive! focus-within:border-destructive!' : '',
-        ].join(' ')}
-      >
-        <input
-          type='number'
-          value={minValue}
-          onChange={(e) => onMinChange(e.target.value)}
-          placeholder={minPlaceholder}
-          className='text-primary placeholder:text-muted w-10 [appearance:textfield] bg-transparent text-[14px] outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
-        />
-        <span className='text-muted text-[13px]'>—</span>
-        <input
-          type='number'
-          value={maxValue}
-          onChange={(e) => onMaxChange(e.target.value)}
-          placeholder={maxPlaceholder}
-          className='text-primary placeholder:text-muted w-10 [appearance:textfield] bg-transparent text-[14px] outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
-        />
-        <span className='text-muted ml-auto text-[12px]'>{unit}</span>
       </div>
       {error && <span className='text-destructive text-[11px]'>{error}</span>}
     </div>

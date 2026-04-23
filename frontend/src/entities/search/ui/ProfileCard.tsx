@@ -32,12 +32,11 @@ export function ProfileCard({ profile, onLike, onView }: ProfileCardProps) {
             {profile.city}
           </p>
         </div>
-        <div className='flex gap-2'>
-          <Button onClick={onLike} className='flex-1 gap-1.5'>
+        <div className='flex justify-between gap-2'>
+          <Button onClick={onLike} className='px-4!'>
             <Heart size={14} strokeWidth={2.5} />
-            Лайк
           </Button>
-          <Button variant='secondary' onClick={onView} className='flex-1'>
+          <Button variant='secondary' onClick={onView} className='w-full'>
             Посмотреть
           </Button>
         </div>

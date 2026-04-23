@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { z } from 'zod';
 import { Button } from '@/shared/uikit/Button';
+import { AgeRangeInput } from '@/shared/uikit/AgeRangeInput';
 
 const GENDERS = [
   { label: 'Любой', value: undefined },
@@ -74,91 +75,69 @@ export function ClassicFilterBar({
     onSubmit();
   };
 
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSubmit();
-  };
-
   return (
-    <div className='flex flex-wrap items-start justify-between gap-2'>
-      <div className='flex flex-wrap items-start gap-1'>
-        <div className='flex gap-1'>
-          {GENDERS.map((opt) => (
-            <button
-              key={opt.label}
-              onClick={() => onGenderChange(opt.value)}
-              className={[
-                'cursor-pointer rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
-                gender === opt.value
-                  ? 'border-accent bg-accent text-white'
-                  : 'border-border text-secondary hover:border-muted hover:bg-surface',
-              ].join(' ')}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+    <div className='rounded-2xl bg-white p-6'>
+      <p className='text-primary mb-5 text-[15px] font-semibold'>Фильтры поиска</p>
 
-        <div className='flex flex-col gap-0.5'>
-          <div
-            className={[
-              'border-border flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 transition-colors',
-              errors.minAge || errors.maxAge ? 'border-destructive' : '',
-            ].join(' ')}
-          >
-            <input
-              type='number'
-              min={18}
-              max={100}
-              value={minAge}
-              onChange={(e) => onMinAgeChange(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder='18'
-              className='text-primary placeholder:text-muted w-8 [appearance:textfield] bg-transparent text-[13px] font-medium outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
-            />
-            <span className='text-muted text-[12px]'>—</span>
-            <input
-              type='number'
-              min={18}
-              max={100}
-              value={maxAge}
-              onChange={(e) => onMaxAgeChange(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder='60'
-              className='text-primary placeholder:text-muted w-8 [appearance:textfield] bg-transparent text-[13px] font-medium outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
-            />
-            <span className='text-muted text-[12px]'>лет</span>
+      <div className='flex flex-col gap-5'>
+        <div className='flex flex-wrap items-start gap-3'>
+          <div className='flex flex-col gap-1.5'>
+            <span className='text-secondary text-[12px] font-medium'>Пол</span>
+            <div className='flex gap-1'>
+              {GENDERS.map((opt) => (
+                <button
+                  key={opt.label}
+                  type='button'
+                  onClick={() => onGenderChange(opt.value)}
+                  className={[
+                    'cursor-pointer rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+                    gender === opt.value
+                      ? 'border-accent bg-accent text-white'
+                      : 'border-border text-secondary hover:border-muted hover:bg-surface',
+                  ].join(' ')}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
-          {(errors.minAge || errors.maxAge) && (
-            <span className='text-destructive px-3 text-[11px]'>
-              {errors.minAge ?? errors.maxAge}
-            </span>
-          )}
+
+          <AgeRangeInput
+            minValue={minAge}
+            maxValue={maxAge}
+            onMinChange={onMinAgeChange}
+            onMaxChange={onMaxAgeChange}
+            error={errors.minAge ?? errors.maxAge}
+          />
         </div>
 
-        <div className='flex flex-col gap-0.5'>
+        <div className='flex flex-col gap-1.5'>
+          <label className='text-secondary text-[12px] font-medium'>Город</label>
           <div
             className={[
-              'border-border flex items-center rounded-full border px-3.5 py-1.5 transition-colors',
-              errors.city ? 'border-destructive' : '',
+              'border-border focus-within:border-accent flex items-center rounded-xl border bg-white transition-colors',
+              errors.city ? 'border-destructive! focus-within:border-destructive!' : '',
             ].join(' ')}
           >
             <input
               type='text'
               value={city}
               onChange={(e) => onCityChange(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder='Город'
-              className='text-primary placeholder:text-muted w-24 bg-transparent text-[13px] font-medium outline-none'
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+              placeholder='Например, Москва'
+              className='text-primary placeholder:text-muted w-full rounded-xl bg-transparent px-3 py-2 text-[14px] outline-none'
             />
           </div>
-          {errors.city && <span className='text-destructive px-3 text-[11px]'>{errors.city}</span>}
+          {errors.city && <span className='text-destructive text-[11px]'>{errors.city}</span>}
+        </div>
+
+        <div className='flex justify-end'>
+          <Button onClick={handleSubmit} disabled={loading}>
+            <Search size={15} />
+            {loading ? 'Поиск...' : 'Найти'}
+          </Button>
         </div>
       </div>
-
-      <Button onClick={handleSubmit} disabled={loading} className='rounded-full!'>
-        <Search size={14} />
-        {loading ? 'Поиск...' : 'Найти'}
-      </Button>
     </div>
   );
 }

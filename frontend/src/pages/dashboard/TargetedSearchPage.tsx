@@ -1,40 +1,21 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { searchApi, ProfileCard, SearchSkeleton, LockBanner } from '@/entities/search';
-import type { SearchResponse, SearchLockInfo } from '@/entities/search';
+import type { SearchResponse, SearchLockInfo, TargetedSearchRequest } from '@/entities/search';
 import { TargetedFilterForm } from '@/features/search/ui/TargetedFilterForm';
 import { toast } from '@/shared/toast/toast';
 
 export function TargetedSearchPage() {
   const navigate = useNavigate();
-  const [hobbies, setHobbies] = useState('');
-  const [education, setEducation] = useState('');
-  const [city, setCity] = useState('');
-  const [minHeight, setMinHeight] = useState('');
-  const [maxHeight, setMaxHeight] = useState('');
-  const [minWeight, setMinWeight] = useState('');
-  const [maxWeight, setMaxWeight] = useState('');
-
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [lockInfo, setLockInfo] = useState<SearchLockInfo | null>(null);
 
-  const runSearch = useCallback(async () => {
+  const runSearch = useCallback(async (filters: TargetedSearchRequest) => {
     setLoading(true);
     try {
-      const res = await searchApi.targeted({
-        city: city.trim() || undefined,
-        education: education.trim() || undefined,
-        hobbies_keywords: hobbies.trim()
-          ? hobbies
-              .split(',')
-              .map((h) => h.trim())
-              .filter(Boolean)
-          : undefined,
-        page: 1,
-        limit: 12,
-      });
+      const res = await searchApi.targeted(filters);
       setResult(res.data);
       setSearched(true);
     } catch (err: unknown) {
@@ -55,7 +36,7 @@ export function TargetedSearchPage() {
     } finally {
       setLoading(false);
     }
-  }, [hobbies, education, city]);
+  }, []);
 
   return (
     <div className='flex-1 overflow-y-auto px-8 py-8'>
@@ -73,24 +54,7 @@ export function TargetedSearchPage() {
           </div>
         )}
 
-        <TargetedFilterForm
-          hobbies={hobbies}
-          onHobbiesChange={setHobbies}
-          education={education}
-          onEducationChange={setEducation}
-          city={city}
-          onCityChange={setCity}
-          minHeight={minHeight}
-          onMinHeightChange={setMinHeight}
-          maxHeight={maxHeight}
-          onMaxHeightChange={setMaxHeight}
-          minWeight={minWeight}
-          onMinWeightChange={setMinWeight}
-          maxWeight={maxWeight}
-          onMaxWeightChange={setMaxWeight}
-          loading={loading}
-          onSubmit={runSearch}
-        />
+        <TargetedFilterForm loading={loading} onSubmit={runSearch} />
 
         {(loading || searched) && (
           <div className='mt-6'>
@@ -106,19 +70,18 @@ export function TargetedSearchPage() {
                       ? 'анкеты'
                       : 'анкет'}
                 </p>
-                <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+                <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
                   {result.profiles.map((p, i) => (
                     <ProfileCard
                       key={i}
                       profile={p}
                       onLike={() => toast.info(`Лайк — ${p.first_name}`)}
-                      onView={() => navigate('/dashboard/users/' + p.keycloak_id, { state: { profile: p } })}
+                      onView={() =>
+                        navigate('/dashboard/users/' + p.keycloak_id, { state: { profile: p } })
+                      }
                     />
                   ))}
                 </div>
-                <p className='text-muted mt-6 text-center text-[13px]'>
-                  Отправленные тобой свайпы недоступны — профайлы из лайк-листа
-                </p>
               </>
             ) : (
               <div className='py-12 text-center'>

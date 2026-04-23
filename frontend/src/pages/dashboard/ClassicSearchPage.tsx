@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { searchApi, ProfileCard, SearchSkeleton, LockBanner } from '@/entities/search';
 import type { SearchResponse, SearchLockInfo } from '@/entities/search';
 import { ClassicFilterBar } from '@/features/search/ui/ClassicFilterBar';
@@ -9,7 +9,7 @@ import { toast } from '@/shared/toast/toast';
 
 function EmptyState({ searched }: { searched: boolean }) {
   return (
-    <div className='flex flex-1 flex-col items-center justify-center gap-3 py-24'>
+    <div className='flex flex-col items-center justify-center gap-3 py-24'>
       <div className='bg-surface flex h-14 w-14 items-center justify-center rounded-2xl'>
         <Search size={24} className='text-muted' strokeWidth={1.5} />
       </div>
@@ -104,17 +104,21 @@ export function ClassicSearchPage() {
   const showPagination = result && result.total_pages > 1 && !loading;
 
   return (
-    <div className='flex flex-1 flex-col overflow-y-auto'>
-      <div className='border-border border-b bg-white px-8 py-5'>
-        <div className='mb-4 flex items-center justify-between'>
+    <div className='flex-1 overflow-y-auto px-8 py-8'>
+      <div className='mx-auto max-w-4xl'>
+        <div className='mb-6'>
           <h1 className='font-onest text-primary text-2xl font-medium'>Классический поиск</h1>
-          {result && !loading && (
-            <span className='text-muted flex items-center gap-1.5 text-[13px]'>
-              <Clock size={13} />
-              Активная сессия: {result.search_session_id}
-            </span>
-          )}
+          <p className='text-secondary mt-1 text-[14px]'>
+            Найдите анкеты по основным параметрам. Доступно без ограничений.
+          </p>
         </div>
+
+        {lockInfo?.is_locked && (
+          <div className='mb-4'>
+            <LockBanner lockInfo={lockInfo} />
+          </div>
+        )}
+
         <ClassicFilterBar
           gender={gender}
           onGenderChange={setGender}
@@ -127,38 +131,56 @@ export function ClassicSearchPage() {
           loading={loading}
           onSubmit={() => runSearch(1)}
         />
-      </div>
 
-      <main className='flex flex-1 flex-col px-8 py-6'>
-        {lockInfo?.is_locked && <LockBanner lockInfo={lockInfo} />}
-
-        {loading ? (
-          <SearchSkeleton />
-        ) : result && result.profiles.length > 0 ? (
-          <>
-            <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-              {result.profiles.map((p, i) => (
-                <ProfileCard
-                  key={i}
-                  profile={p}
-                  onLike={() => toast.info(`Лайк — ${p.first_name}`)}
-                  onView={() => navigate('/dashboard/users/' + p.keycloak_id, { state: { profile: p } })}
-                />
-              ))}
-            </div>
-            {showPagination && (
-              <Pagination
-                current={result.current_page}
-                total={result.total_pages}
-                onPrev={() => runSearch(page - 1)}
-                onNext={() => runSearch(page + 1)}
-              />
+        {(loading || searched) && (
+          <div className='mt-6'>
+            {loading ? (
+              <SearchSkeleton />
+            ) : result && result.profiles.length > 0 ? (
+              <>
+                <div className='mb-4 flex items-center justify-between'>
+                  <p className='text-secondary text-[13px]'>
+                    Найдено {result.total_results}{' '}
+                    {result.total_results === 1
+                      ? 'анкета'
+                      : result.total_results < 5
+                        ? 'анкеты'
+                        : 'анкет'}
+                  </p>
+                  {result && (
+                    <span className='text-muted flex items-center gap-1.5 text-[13px]'>
+                      <Clock size={13} />
+                      Сессия {result.search_session_id}
+                    </span>
+                  )}
+                </div>
+                <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
+                  {result.profiles.map((p, i) => (
+                    <ProfileCard
+                      key={i}
+                      profile={p}
+                      onLike={() => toast.info(`Лайк — ${p.first_name}`)}
+                      onView={() =>
+                        navigate('/dashboard/users/' + p.keycloak_id, { state: { profile: p } })
+                      }
+                    />
+                  ))}
+                </div>
+                {showPagination && (
+                  <Pagination
+                    current={result.current_page}
+                    total={result.total_pages}
+                    onPrev={() => runSearch(page - 1)}
+                    onNext={() => runSearch(page + 1)}
+                  />
+                )}
+              </>
+            ) : (
+              <EmptyState searched={searched} />
             )}
-          </>
-        ) : (
-          <EmptyState searched={searched} />
+          </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
