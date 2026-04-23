@@ -5,20 +5,42 @@ import { toast } from '@/shared/toast/toast';
 import { Button } from '@/shared/uikit/Button';
 import { Input } from '@/shared/uikit/Input';
 import { Text } from '@/shared/uikit/Text';
+import { z } from 'zod';
+
+const LoginFormSchema = z.object({
+  username: z.string().min(1, 'Введите логин'),
+  password: z.string().min(1, 'Введите пароль'),
+});
+
+type LoginForm = z.infer<typeof LoginFormSchema>;
+type FormErrors = Partial<Record<keyof LoginForm, string>>;
 
 export function LoginPage() {
   const { login } = useAuth();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+
+  const [fields, setFields] = useState<LoginForm>({ username: '', password: '' });
+  const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const setField = (key: keyof LoginForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFields((prev) => ({ ...prev, [key]: e.target.value }));
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!username || !password) return;
+
+    const result = LoginFormSchema.safeParse(fields);
+    if (!result.success) {
+      setErrors(
+        Object.fromEntries(result.error.issues.map((issue) => [issue.path[0], issue.message])),
+      );
+      return;
+    }
 
     setLoading(true);
     try {
-      await login(username, password);
+      await login(result.data.username, result.data.password);
     } catch {
       toast.error('Неверный логин или пароль');
     } finally {
@@ -39,12 +61,14 @@ export function LoginPage() {
           Войдите в свой аккаунт
         </Text>
       </div>
+
       <div className='flex w-full flex-col gap-4'>
         <Input
           label='Логин'
           placeholder='Введите логин'
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          value={fields.username}
+          onChange={setField('username')}
+          error={errors.username}
         />
         <div className='flex flex-col gap-1.5'>
           <div className='flex items-center justify-between'>
@@ -59,11 +83,13 @@ export function LoginPage() {
           <Input
             placeholder='Введите пароль'
             type='password'
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            value={fields.password}
+            onChange={setField('password')}
+            error={errors.password}
           />
         </div>
       </div>
+
       <div className='flex flex-col gap-4 text-center'>
         <Button type='submit' disabled={loading}>
           {loading ? 'Входим...' : 'Войти'}
