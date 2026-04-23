@@ -7,7 +7,6 @@ from app.schemas.matching import (
     LikeRequest,
     DislikeRequest,
     LikeUsageInfo,
-    SwipeRequest,
     SwipeResponse,
     SwipeStatusResponse,
     MatchResponse,
@@ -102,32 +101,7 @@ async def get_like_usage(
     )
 
 
-# ========== SWIPE ENDPOINTS (для обратной совместимости) ==========
-
-@router.post(
-    "/swipe",
-    response_model=SwipeResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Свайп (лайк/дизлайк)",
-    description="Создание свайпа. Для действия 'like' проверяется дневной лимит.",
-    deprecated=True
-)
-async def create_swipe(
-    request: Request,
-    swipe_data: SwipeRequest,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """
-    Создание свайпа (лайк или дизлайк).
-    **Устаревший метод**, используйте `/like` и `/dislike`.
-    """
-    response = await http_client.proxy_request(request)
-    return Response(
-        content=response.content,
-        status_code=response.status_code,
-        headers=dict(response.headers)
-    )
-
+# ========== SWIPE ENDPOINTS ==========
 
 @router.get(
     "/swipe/status/{target_user_id}",

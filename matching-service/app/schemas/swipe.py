@@ -3,13 +3,6 @@ from uuid import UUID
 from typing import Optional
 from datetime import datetime
 
-
-class SwipeRequest(BaseModel):
-    """Запрос на свайп (для обратной совместимости)"""
-    target_user_id: str = Field(..., description="Keycloak ID of the target user")
-    action: str = Field(..., pattern="^(like|dislike)$", description="like or dislike")
-
-
 class LikeRequest(BaseModel):
     """Запрос на лайк"""
     target_user_id: str = Field(..., description="Keycloak ID of the target user")

@@ -25,12 +25,6 @@ class LikeUsageInfo(BaseModel):
 
 # ========== SWIPE SCHEMAS (для обратной совместимости) ==========
 
-class SwipeRequest(BaseModel):
-    """Запрос на свайп (лайк/дизлайк)"""
-    target_user_id: str = Field(..., description="Keycloak ID пользователя, на которого свайпаем")
-    action: str = Field(..., pattern="^(like|dislike)$", description="Действие: like или dislike")
-
-
 class SwipeResponse(BaseModel):
     """Ответ на свайп/лайк/дизлайк"""
     match: bool = Field(..., description="Произошёл ли взаимный матч")

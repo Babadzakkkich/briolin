@@ -214,18 +214,6 @@ class MatchingService:
     async def dislike_profile(self, from_user_id: str, to_user_id: str) -> SwipeResponse:
         """Поставить дизлайк профилю (без проверки лимита)."""
         return await self._create_swipe(from_user_id, to_user_id, 'dislike')
-    
-    async def swipe(self, from_user_id: str, to_user_id: str, action: str) -> SwipeResponse:
-        """
-        Создание свайпа (для обратной совместимости).
-        Для 'like' проверяет лимит, для 'dislike' - нет.
-        """
-        if action == 'like':
-            return await self.like_profile(from_user_id, to_user_id)
-        elif action == 'dislike':
-            return await self.dislike_profile(from_user_id, to_user_id)
-        else:
-            raise ValueError(f"Invalid action: {action}")
 
     # ========== УПРАВЛЕНИЕ БЛОКИРОВКОЙ ТАРГЕТИРОВАННЫХ РЕКОМЕНДАЦИЙ (ЭМБЕДДИНГИ) ==========
     

@@ -4,7 +4,7 @@ from typing import Optional, List
 from app.services.matching_service import MatchingService
 from app.dependencies import get_matching_service, require_admin
 from app.schemas.swipe import (
-    SwipeRequest, SwipeResponse, SwipeStatusResponse,
+    SwipeResponse, SwipeStatusResponse,
     LikeRequest, DislikeRequest
 )
 from app.schemas.match import MatchResponse
@@ -86,38 +86,7 @@ async def get_like_usage(
     return await service.get_like_usage(current_user["keycloak_id"])
 
 
-# ========== SWIPE ENDPOINTS (для обратной совместимости) ==========
-
-@router.post("/swipe", response_model=SwipeResponse, status_code=status.HTTP_200_OK)
-async def create_swipe(
-    request: SwipeRequest,
-    current_user: dict = Depends(get_current_user),
-    service: MatchingService = Depends(get_matching_service)
-):
-    """
-    Создание свайпа (лайк или дизлайк).
-    Для лайков проверяется дневной лимит.
-    """
-    try:
-        return await service.swipe(
-            from_user_id=current_user["keycloak_id"],
-            to_user_id=request.target_user_id,
-            action=request.action
-        )
-    except LikeLimitExceededException as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail={
-                "message": e.message,
-                "likes_used": e.likes_used,
-                "daily_limit": e.daily_limit
-            }
-        )
-    except AlreadySwipedException as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
-    except UserNotFoundException as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
-
+# ========== SWIPE ENDPOINTS ==========
 
 @router.get("/swipe/status/{target_user_id}", response_model=SwipeStatusResponse)
 async def get_swipe_status(

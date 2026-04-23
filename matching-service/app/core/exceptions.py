@@ -5,13 +5,6 @@ class MatchingServiceException(Exception):
         self.status_code = status_code
         super().__init__(self.message)
 
-
-class SwipeLimitExceededException(MatchingServiceException):
-    """Устаревшее, оставлено для обратной совместимости"""
-    def __init__(self, message: str = "Дневной лимит свайпов исчерпан"):
-        super().__init__(message=message, status_code=429)
-
-
 class LikeLimitExceededException(MatchingServiceException):
     """Исключение при превышении дневного лимита лайков"""
     def __init__(self, message: str = "Дневной лимит лайков исчерпан", 
