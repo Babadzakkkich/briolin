@@ -8,6 +8,8 @@ class EmailType(str, Enum):
     LOGIN = "login"
     TEST_COMPLETE = "test_complete"
     VERIFICATION = "verification"
+    PASSWORD_RESET = "password_reset"
+    PASSWORD_RESET_CONFIRMATION = "password_reset_confirmation"
 
 
 class EmailSendRequest(BaseModel):

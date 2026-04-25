@@ -9,7 +9,7 @@ from app.schemas.auth import (
     UserResponse,
     TokenResponse,
 )
-from app.schemas.verify import VerifyConfirmRequest, RequestCodeRequest
+from app.schemas.verify import VerifyConfirmRequest, RequestCodeRequest, PasswordResetRequest, PasswordResetConfirmRequest
 from app.core.logger import logger
 import httpx
 from pydantic import BaseModel
@@ -120,6 +120,46 @@ async def verify_email_code(
     """    
     request._body = json.dumps({"code": confirm_data.code}).encode()
     response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.post("/password-reset/request")
+async def request_password_reset(
+    request: PasswordResetRequest,
+    request_obj: Request
+):
+    """
+    Запросить сброс пароля — отправить код на email.
+    Публичный эндпоинт.
+    """
+    request_obj._body = json.dumps({"email": request.email}).encode()
+    response = await http_client.proxy_request(request_obj)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    request: PasswordResetConfirmRequest,
+    request_obj: Request
+):
+    """
+    Подтвердить сброс пароля — проверить код и установить новый пароль.
+    Публичный эндпоинт.
+    """
+    request_obj._body = json.dumps({
+        "email": request.email,
+        "code": request.code,
+        "new_password": request.new_password
+    }).encode()
+    response = await http_client.proxy_request(request_obj)
     return Response(
         content=response.content,
         status_code=response.status_code,

@@ -21,6 +21,8 @@ from app.core.logger import logger
 # Публичные эндпоинты (не требующие аутентификации)
 PUBLIC_ENDPOINTS = [
     re.compile(r'^/api/v1/auth/(register|login|refresh|validate)$'),
+    re.compile(r'^/api/v1/auth/verify/(request|confirm)$'),
+    re.compile(r'^/api/v1/auth/password-reset/(request|confirm)$'), 
     re.compile(r'^/health$'),
     re.compile(r'^/$'),
     re.compile(r'^/docs.*$'),

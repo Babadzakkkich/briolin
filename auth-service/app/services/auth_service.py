@@ -730,3 +730,113 @@ class AuthService:
         stmt = select(User).where(User.keycloak_id == keycloak_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+    
+    # ========== ВОССТАНОВЛЕНИЕ ПАРОЛЯ ==========
+
+    async def request_password_reset(self, email: str) -> Dict[str, Any]:
+        """
+        Запросить сброс пароля — отправить код на email
+        """
+        # Проверяем, существует ли пользователь
+        user = await self.get_user_by_email(email)
+        if not user:
+            # Не сообщаем, что пользователь не найден (безопасность)
+            logger.warning(f"Password reset requested for non-existent email: {email}")
+            return {
+                "status": "success",
+                "message": "If an account exists with this email, you will receive a password reset code."
+            }
+        
+        # Проверяем, есть ли пользователь в Keycloak
+        keycloak_user = self.kc.get_user_by_email(email)
+        if not keycloak_user:
+            logger.warning(f"User {email} exists in auth-db but not in Keycloak")
+            return {
+                "status": "success",
+                "message": "If an account exists with this email, you will receive a password reset code."
+            }
+        
+        # Генерируем код
+        code = self.verification_service.generate_code()
+        
+        # Сохраняем в Redis с ключом password_reset:email
+        saved = await self.verification_service.save_verification_code(
+            email, code, prefix="password_reset"
+        )
+        
+        if not saved:
+            raise DatabaseException("Failed to save reset code")
+        
+        # Отправляем email с кодом
+        await self._send_password_reset_email(email, code)
+        
+        logger.info(f"Password reset code sent to {email}")
+        
+        return {
+            "status": "success",
+            "message": "If an account exists with this email, you will receive a password reset code.",
+            "expires_in_minutes": 15
+        }
+
+
+    async def confirm_password_reset(self, email: str, code: str, new_password: str) -> Dict[str, Any]:
+        """
+        Подтвердить сброс пароля — проверить код и установить новый пароль
+        """
+        # Проверяем код в Redis
+        saved_code = await self.verification_service.get_verification_code(
+            email, prefix="password_reset"
+        )
+        
+        if not saved_code or saved_code != code:
+            raise ValidationException("Invalid or expired reset code")
+        
+        # Получаем пользователя из БД
+        user = await self.get_user_by_email(email)
+        if not user:
+            raise ValidationException("User not found")
+        
+        # Получаем пользователя из Keycloak
+        keycloak_user = self.kc.get_user_by_email(email)
+        if not keycloak_user:
+            raise DatabaseException("User not found in Keycloak")
+        
+        keycloak_id = keycloak_user.get("id")
+        
+        # Устанавливаем новый пароль
+        success = self.kc.reset_user_password(keycloak_id, new_password, temporary=False)
+        
+        if not success:
+            raise DatabaseException("Failed to reset password")
+        
+        # Удаляем код из Redis
+        await self.verification_service.delete_verification_code(email, prefix="password_reset")
+        
+        # Опционально: отправляем уведомление об успешном сбросе
+        await self._send_password_reset_confirmation_email(email)
+        
+        logger.info(f"Password reset confirmed for {email}")
+        
+        return {
+            "status": "success",
+            "message": "Password has been reset successfully. You can now log in with your new password."
+        }
+
+    async def _send_password_reset_email(self, email: str, code: str):
+        """Отправить письмо с кодом для сброса пароля"""
+        await self._send_email_notification(
+            "password_reset",
+            email,
+            name=email.split('@')[0],
+            code=code
+        )
+
+
+    async def _send_password_reset_confirmation_email(self, email: str):
+        """Отправить подтверждение об успешном сбросе пароля"""
+        await self._send_email_notification(
+            "password_reset_confirmation",
+            email,
+            name=email.split('@')[0],
+            timestamp=datetime.utcnow().isoformat()
+        )

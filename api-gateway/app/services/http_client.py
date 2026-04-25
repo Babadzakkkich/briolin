@@ -29,7 +29,7 @@ class HTTPClient:
         
         if path.startswith("/api/v1/auth"):
             return self.auth_service_url
-        elif path.startswith("/api/v1/auth/verify"):  # Добавлено!
+        elif path.startswith("/api/v1/auth/verify"):  
             return self.auth_service_url
         elif path.startswith("/api/v1/users"):
             return self.user_service_url

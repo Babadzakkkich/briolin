@@ -28,49 +28,55 @@ class VerificationService:
         """Сгенерировать 6-значный код верификации"""
         return ''.join(random.choices(string.digits, k=length))
     
-    async def save_verification_code(self, email: str, code: str, expires_minutes: int = 15) -> bool:
-        """Сохранить код верификации в Redis с TTL"""
+    async def save_verification_code(
+        self, 
+        email: str, 
+        code: str, 
+        expires_minutes: int = 15,
+        prefix: str = "email_verification"
+    ) -> bool:
+        """Сохранить код верификации в Redis с TTL и возможностью указать префикс"""
         try:
             redis_client = await self._get_redis()
-            key = f"email_verification:{email.lower()}"
+            key = f"{prefix}:{email.lower()}"
             await redis_client.setex(key, timedelta(minutes=expires_minutes), code)
-            logger.info(f"Verification code saved for {email}, expires in {expires_minutes} minutes")
+            logger.info(f"Code saved for {email} with key {key}, expires in {expires_minutes} minutes")
             return True
         except Exception as e:
-            logger.error(f"Failed to save verification code for {email}: {e}")
+            logger.error(f"Failed to save code for {email}: {e}")
             return False
     
-    async def get_verification_code(self, email: str) -> Optional[str]:
+    async def get_verification_code(self, email: str, prefix: str = "email_verification") -> Optional[str]:
         """Получить код верификации из Redis"""
         try:
             redis_client = await self._get_redis()
-            key = f"email_verification:{email.lower()}"
+            key = f"{prefix}:{email.lower()}"
             code = await redis_client.get(key)
             return code
         except Exception as e:
-            logger.error(f"Failed to get verification code for {email}: {e}")
+            logger.error(f"Failed to get code for {email}: {e}")
             return None
     
-    async def verify_code(self, email: str, code: str) -> bool:
-        """Проверить код верификации"""
-        saved_code = await self.get_verification_code(email)
-        if saved_code and saved_code == code:
-            await self.delete_verification_code(email)
-            logger.info(f"Email {email} verified successfully")
-            return True
-        logger.warning(f"Invalid verification code for {email}")
-        return False
-    
-    async def delete_verification_code(self, email: str) -> bool:
+    async def delete_verification_code(self, email: str, prefix: str = "email_verification") -> bool:
         """Удалить код верификации"""
         try:
             redis_client = await self._get_redis()
-            key = f"email_verification:{email.lower()}"
+            key = f"{prefix}:{email.lower()}"
             await redis_client.delete(key)
             return True
         except Exception as e:
-            logger.error(f"Failed to delete verification code for {email}: {e}")
+            logger.error(f"Failed to delete code for {email}: {e}")
             return False
+    
+    async def verify_code(self, email: str, code: str, prefix: str = "email_verification") -> bool:
+        """Проверить код верификации"""
+        saved_code = await self.get_verification_code(email, prefix)
+        if saved_code and saved_code == code:
+            await self.delete_verification_code(email, prefix)
+            logger.info(f"Code verified for {email}")
+            return True
+        logger.warning(f"Invalid code for {email}")
+        return False
 
 
 # Singleton

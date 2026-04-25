@@ -109,6 +109,14 @@ class EmailService:
             EmailType.VERIFICATION: {
                 "subject": "Email Verification Code",
                 "body_template": "verification"
+            },
+            EmailType.PASSWORD_RESET: {
+                "subject": "Password Reset Code",
+                "body_template": "password_reset"
+            },
+            EmailType.PASSWORD_RESET_CONFIRMATION: {
+                "subject": "Password Reset Confirmation",
+                "body_template": "password_reset_confirmation"
             }
         }
         
@@ -194,6 +202,34 @@ Your verification code is: {code}
 This code expires in 15 minutes.
 
 If you didn't request this, please ignore this email.
+
+Best regards,
+Briolin Team
+"""
+        
+        elif template_name == EmailType.PASSWORD_RESET:
+            code = context.get("code", "000000")
+            return f"""
+Hello {name},
+
+You requested to reset your password. Your verification code is: {code}
+
+This code expires in 15 minutes.
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+Briolin Team
+"""
+        
+        elif template_name == EmailType.PASSWORD_RESET_CONFIRMATION:
+            timestamp = context.get("timestamp", "recently")
+            return f"""
+Hello {name},
+
+Your password has been successfully reset at {timestamp}.
+
+If you did not perform this action, please contact support immediately.
 
 Best regards,
 Briolin Team
