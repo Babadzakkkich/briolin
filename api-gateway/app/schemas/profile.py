@@ -23,8 +23,8 @@ class BasicProfileResponse(BaseModel):
     date_of_birth: date
     city: str
     online: bool
-    avatar_url: Optional[str] = None  # Добавляем
-    thumbnail_url: Optional[str] = None  # Добавляем
+    avatar_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     last_login_at: Optional[datetime]
@@ -43,6 +43,11 @@ class DetailedProfileCreate(BaseModel):
     education: str = Field(..., min_length=1, max_length=500)
     hobbies: str = Field(..., min_length=1, max_length=1000)
     partner_preferences: str = Field(..., min_length=10, max_length=2000)
+    red_flags: Optional[List[str]] = Field(
+        None, 
+        max_length=20,
+        description="Список вещей, которые пользователь НЕ приемлет в партнёре"
+    )
 
 
 class DetailedProfileResponse(BaseModel):
@@ -53,6 +58,7 @@ class DetailedProfileResponse(BaseModel):
     education: str
     hobbies: str
     partner_preferences: str
+    red_flags: Optional[List[str]] = None
 
 
 class DetailedProfileUpdate(BaseModel):
@@ -60,6 +66,7 @@ class DetailedProfileUpdate(BaseModel):
     education: Optional[str] = Field(None, min_length=1, max_length=500)
     hobbies: Optional[str] = Field(None, min_length=1, max_length=1000)
     partner_preferences: Optional[str] = Field(None, min_length=10, max_length=2000)
+    red_flags: Optional[List[str]] = Field(None, max_length=20)
 
 
 class FullProfileResponse(BaseModel):

@@ -1,5 +1,4 @@
-import random
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete, update, and_
@@ -19,6 +18,7 @@ from app.schemas.recommendation import (
     RecommendationProfile,
     RecommendationListResponse
 )
+from app.services.red_flag_checker import get_red_flag_checker
 from app.schemas.pagination import PaginationInfo
 from app.schemas.lock import TargetedSearchLockInfo, LikeUsageInfo
 from app.services.profile_client import profile_client
@@ -29,11 +29,9 @@ from app.core.exceptions import (
     LikeLimitExceededException,
     AlreadySwipedException,
     UserNotFoundException,
-    DatabaseException,
     TargetedSearchLockedException
 )
 from app.core.logger import logger
-
 
 class MatchingService:
     def __init__(self, db: AsyncSession):
@@ -544,11 +542,15 @@ class MatchingService:
         
         Автоматически определяются:
         - Пол: противоположный полу пользователя (для OTHER - все)
-        - Возраст: ±5 лет от возраста пользователя (расширяется до ±10 если мало)
+        - Возраст: ±5 лет от возраста пользователя (расширяется при малом количестве)
         - Город: из фильтров или город пользователя
         
         Блокируются по количеству просмотренных профилей.
+        Фильтруются по Red Flags пользователя.
+        Применяется тональный ре-ранкинг на основе sentiment embeddings.
         """
+
+        
         if not await self._check_user_exists(user_id):
             raise UserNotFoundException(f"Пользователь {user_id} не найден")
         
@@ -610,6 +612,15 @@ class MatchingService:
         # Входящие лайки (наивысший приоритет)
         incoming_likes = await self._get_users_who_liked_me(user_id)
         
+        # Получаем Red Flags пользователя для последующей фильтрации
+        red_flag_checker = get_red_flag_checker()
+        
+        user_detailed = await profile_client.get_detailed_profile(user_id)
+        user_red_flags = user_detailed.get("red_flags", []) if user_detailed else []
+        
+        # Получаем тональный эмбеддинг пользователя для ре-ранкинга
+        user_sentiment_emb = await profile_client.get_sentiment_embedding(user_id)
+        
         # Получаем эмбеддинг пользователя
         embedding = await redis_cache.get(f"embedding:{user_id}")
         if not embedding:
@@ -625,6 +636,7 @@ class MatchingService:
                         total_results=0, page_size=limit
                     ),
                     lock_info=lock_status,
+                    sentiment_boost_applied=False,
                     applied_filters={
                         "gender": target_gender,
                         "city": search_city,
@@ -643,7 +655,7 @@ class MatchingService:
                 "city": city_val
             }
             
-            fetch_limit = effective_limit * 3 + len(incoming_likes)  # Запрашиваем больше для фильтрации
+            fetch_limit = effective_limit * 3 + len(incoming_likes)
             results = await profile_client.search_by_embedding(
                 embedding=embedding,
                 filters=profile_filters,
@@ -664,36 +676,145 @@ class MatchingService:
             max_age = min(100, user_age + age_range)
             results, applied_filters = await do_search(min_age, max_age, search_city)
         
-        # Если всё ещё мало, пробуем убрать город (если он был)
-        if len(results) < effective_limit and search_city:
-            logger.info(f"Few results ({len(results)}) for user {user_id[:8]}..., removing city filter")
-            search_city = None
-            results, applied_filters = await do_search(min_age, max_age, None)
-        
         # Если и так мало, пробуем расширить возраст до ±15
-        if len(results) < effective_limit and age_range == 10:
+        if len(results) < effective_limit and age_range <= 10:
             logger.info(f"Few results ({len(results)}) for user {user_id[:8]}..., expanding age range to ±15")
             age_range = 15
             min_age = max(18, user_age - age_range)
             max_age = min(100, user_age + age_range)
             results, applied_filters = await do_search(min_age, max_age, search_city)
         
-        # Конвертируем в RecommendationProfile с комбинированным скором
+        # ========== ФИЛЬТРАЦИЯ ПО RED FLAGS ==========
+        red_flag_filtered_count = 0
+        
+        if user_red_flags and results:
+            logger.info(
+                f"Applying Red Flag filter for user {user_id[:8]}... "
+                f"(red flags: {user_red_flags}, candidates: {len(results)})"
+            )
+            
+            compatible_results = []
+            
+            for item in results:
+                candidate_keycloak_id = item.get('keycloak_id')
+                
+                if not candidate_keycloak_id:
+                    compatible_results.append(item)
+                    continue
+                
+                try:
+                    candidate_detailed = await profile_client.get_detailed_profile(candidate_keycloak_id)
+                    
+                    if candidate_detailed:
+                        candidate_text = red_flag_checker.get_profile_text({"detailed": candidate_detailed})
+                        
+                        is_compatible, checks = await red_flag_checker.is_profile_compatible(
+                            user_red_flags, candidate_text
+                        )
+                        
+                        if is_compatible:
+                            compatible_results.append(item)
+                        else:
+                            red_flag_filtered_count += 1
+                            conflict_flags = [c['red_flag'] for c in checks if c['conflict']]
+                            logger.debug(
+                                f"Red Flag: excluded candidate {candidate_keycloak_id[:8]}... "
+                                f"for user {user_id[:8]}... "
+                                f"(conflicts: {conflict_flags})"
+                            )
+                    else:
+                        logger.debug(
+                            f"Red Flag: no detailed profile for {candidate_keycloak_id[:8]}..., "
+                            f"keeping in results"
+                        )
+                        compatible_results.append(item)
+                        
+                except Exception as e:
+                    logger.warning(
+                        f"Red Flag check failed for {candidate_keycloak_id[:8]}...: {e}, "
+                        f"keeping in results"
+                    )
+                    compatible_results.append(item)
+            
+            logger.info(
+                f"Red Flag filtering complete: {len(results)} → {len(compatible_results)} "
+                f"(filtered out: {red_flag_filtered_count})"
+            )
+            results = compatible_results
+        
+        # ========== ТОНАЛЬНЫЙ РЕ-РАНКИНГ ==========
+        sentiment_boost_applied = False
+
+        if user_sentiment_emb and results:
+            logger.info(f"Applying sentiment re-ranking for {len(results)} candidates")
+            
+            for item in results:
+                candidate_id = item.get('keycloak_id')
+                
+                try:
+                    candidate_sentiment_emb = await profile_client.get_sentiment_embedding(candidate_id)
+                    
+                    if candidate_sentiment_emb and len(candidate_sentiment_emb) == 3:
+                        # user_sentiment_emb = [pos, neg, neu] для пользователя
+                        # candidate_sentiment_emb = [pos, neg, neu] для кандидата
+                        
+                        # Вычисляем тональную совместимость:
+                        # 1. Если оба POSITIVE — высокая совместимость
+                        # 2. Если оба NEGATIVE — средняя совместимость (общая нелюбовь)
+                        # 3. Если один POSITIVE, другой NEGATIVE — низкая совместимость
+                        
+                        user_pos = user_sentiment_emb[0]   # POSITIVE (индекс 0)
+                        user_neg = user_sentiment_emb[1]   # NEGATIVE (индекс 1)
+                        cand_pos = candidate_sentiment_emb[0]
+                        cand_neg = candidate_sentiment_emb[1]
+                        
+                        # Тональная совместимость: совпадение позитива + совпадение негатива
+                        # Формула: pos_match + neg_match - pos_neg_mismatch
+                        pos_match = user_pos * cand_pos           # оба позитивны
+                        neg_match = user_neg * cand_neg           # оба негативны
+                        mismatch = user_pos * cand_neg + user_neg * cand_pos  # противоположны
+                        
+                        tonal_compatibility = pos_match + neg_match - mismatch
+                        # Нормализуем в [-1, 1]
+                        tonal_compatibility = max(-1.0, min(1.0, tonal_compatibility))
+                        
+                        # Применяем к similarity
+                        original_similarity = item.get('similarity', 0.0)
+                        # 15% веса на тональность: повышаем при совместимости > 0, понижаем при < 0
+                        boosted_similarity = original_similarity + (0.15 * tonal_compatibility)
+                        boosted_similarity = max(0.0, min(1.0, boosted_similarity))
+                        
+                        item['similarity'] = round(boosted_similarity, 4)
+                        sentiment_boost_applied = True
+                        
+                        logger.debug(
+                            f"Sentiment boost for {candidate_id[:8]}...: "
+                            f"{original_similarity:.3f} → {boosted_similarity:.3f} "
+                            f"(tonal_compat={tonal_compatibility:.3f}, "
+                            f"user=[P:{user_pos:.2f} N:{user_neg:.2f}], "
+                            f"cand=[P:{cand_pos:.2f} N:{cand_neg:.2f}])"
+                        )
+                except Exception as e:
+                    logger.debug(f"Failed to get sentiment for {candidate_id[:8]}...: {e}")
+            
+            if sentiment_boost_applied:
+                results = sorted(results, key=lambda x: x.get('similarity', 0), reverse=True)
+                logger.info("Sentiment re-ranking applied and results re-sorted")
+        
+        # ========== КОНВЕРТАЦИЯ В RECOMMENDATION PROFILE ==========
+        
         recommendations = []
         max_age_diff = age_range
         
         for item in results:
             profile_age = item.get('age', 0)
             
-            # Базовый similarity из эмбеддинга
             similarity = item.get('similarity', 0.0)
             
-            # Скор по возрасту (1.0 - нормализованная разница)
             age_diff = abs(profile_age - user_age)
             age_score = 1.0 - (age_diff / max_age_diff) if max_age_diff > 0 else 1.0
             age_score = max(0.0, min(1.0, age_score))
             
-            # Комбинированный скор: 80% similarity, 20% возраст
             combined_score = (0.8 * similarity) + (0.2 * age_score)
             
             rec = RecommendationProfile(
@@ -707,10 +828,9 @@ class MatchingService:
             )
             recommendations.append(rec)
         
-        # Сортируем по комбинированному скору
         recommendations.sort(key=lambda x: x.combined_score or 0, reverse=True)
         
-        # Добавляем входящие лайки в начало (с максимальным скором)
+        # Добавляем входящие лайки в начало
         incoming_profiles = []
         existing_keys = {r.keycloak_id for r in recommendations}
         for like_user_id in incoming_likes:
@@ -730,11 +850,9 @@ class MatchingService:
         
         all_recs = incoming_profiles + recommendations
         
-        # Ограничиваем количество
         paginated_recs = all_recs[:effective_limit]
         total_returned = len(paginated_recs)
         
-        # Увеличиваем счётчик просмотров
         if total_returned > 0:
             views_count, is_locked, locked_until = await self._increment_targeted_views(user_id, total_returned)
         else:
@@ -755,6 +873,7 @@ class MatchingService:
             profiles=paginated_recs,
             pagination=pagination,
             lock_info=final_lock_status,
+            sentiment_boost_applied=sentiment_boost_applied,
             applied_filters={
                 "gender": target_gender,
                 "city": applied_filters.get("city"),
@@ -763,7 +882,10 @@ class MatchingService:
                 "age_range": age_range,
                 "user_age": user_age,
                 "user_gender": user_gender,
-                "user_city": user_city
+                "user_city": user_city,
+                "red_flag_filtered": red_flag_filtered_count,
+                "user_red_flags": user_red_flags,
+                "sentiment_boost_applied": sentiment_boost_applied
             }
         )
 

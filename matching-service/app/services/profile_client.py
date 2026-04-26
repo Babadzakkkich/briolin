@@ -36,11 +36,30 @@ class ProfileServiceClient:
         """GET /api/v1/internal/profiles/{keycloak_id}/basic"""
         return await self._request("GET", f"/api/v1/internal/profiles/{keycloak_id}/basic")
 
+    async def get_detailed_profile(self, keycloak_id: str) -> Optional[Dict]:
+        """
+        Получение детального профиля пользователя.
+        GET /api/v1/internal/profiles/{keycloak_id}
+        """
+        result = await self._request("GET", f"/api/v1/internal/profiles/{keycloak_id}")
+        if result:
+            return result.get("detailed")
+        return None
+
     async def get_embedding(self, keycloak_id: str) -> Optional[List[float]]:
         """GET /api/v1/internal/profiles/{keycloak_id}/embedding"""
         result = await self._request("GET", f"/api/v1/internal/profiles/{keycloak_id}/embedding")
         if result:
             return result.get("embedding")
+        return None
+
+    async def get_sentiment_embedding(self, keycloak_id: str) -> Optional[List[float]]:
+        """
+        GET /api/v1/internal/profiles/{keycloak_id}/sentiment-embedding
+        """
+        result = await self._request("GET", f"/api/v1/internal/profiles/{keycloak_id}/sentiment-embedding")
+        if result:
+            return result.get("sentiment_embedding")
         return None
 
     async def search_by_embedding(

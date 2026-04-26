@@ -2,6 +2,7 @@ import enum
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey, Text, Date
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 from shared.schemas.shared import Gender
@@ -32,8 +33,10 @@ class BasicProfile(Base):
     )
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
-    # NEW: embedding vector for semantic search (dimension 384 for paraphrase-multilingual-MiniLM-L12-v2)
+    # embedding vector for semantic search (dimension 384)
     embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(384), nullable=True)
+    
+    sentiment_embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(3), nullable=True)
     
     detailed_profile: Mapped["DetailedProfile"] = relationship(
         "DetailedProfile",
@@ -53,6 +56,9 @@ class DetailedProfile(Base):
     education: Mapped[str] = mapped_column(String, nullable=False)
     hobbies: Mapped[str] = mapped_column(Text, nullable=False)
     partner_preferences: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # NEW: Red flags - список вещей, которые пользователь НЕ приемлет
+    red_flags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String(200)), nullable=True)
     
     basic_profile: Mapped["BasicProfile"] = relationship(
         "BasicProfile",

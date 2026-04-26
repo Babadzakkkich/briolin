@@ -4,6 +4,7 @@ from sqlalchemy import select, update
 from app.database.session import async_session_factory
 from app.database.models import BasicProfile, DetailedProfile
 from app.services.embedding_service import get_embedding_service
+from app.services.sentiment_service import get_sentiment_service
 from app.core.logger import logger
 
 
@@ -12,10 +13,11 @@ class EmbeddingUpdater:
     
     def __init__(self):
         self.embedding_service = get_embedding_service()
+        self.sentiment_service = get_sentiment_service()
     
     async def update_embedding_for_profile(self, basic_profile_id: int) -> bool:
         """
-        Update embedding for a specific profile based on its detailed data.
+        Update both semantic and sentiment embeddings for a profile.
         
         Args:
             basic_profile_id: ID of the basic profile
@@ -42,34 +44,52 @@ class EmbeddingUpdater:
                 detailed = result.scalar_one_or_none()
                 
                 if not detailed:
-                    logger.debug(f"No detailed profile for {basic.keycloak_id}, skipping embedding")
+                    logger.debug(f"No detailed profile for {basic.keycloak_id}, skipping embeddings")
                     return False
                 
-                # Generate embedding
-                embedding = await self.embedding_service.generate_profile_embedding(
+                # Generate semantic embedding
+                semantic_embedding = await self.embedding_service.generate_profile_embedding(
                     about_me=detailed.about_me,
                     hobbies=detailed.hobbies,
                     partner_preferences=detailed.partner_preferences
                 )
                 
-                if embedding is None:
-                    logger.warning(f"Failed to generate embedding for profile {basic_profile_id}")
+                # Generate sentiment embedding (только из about_me)
+                sentiment_embedding = await self.sentiment_service.generate_sentiment_embedding(
+                    detailed.about_me
+                )
+                
+                if semantic_embedding is None and sentiment_embedding is None:
+                    logger.warning(f"Failed to generate any embeddings for profile {basic_profile_id}")
                     return False
                 
-                # Update embedding
-                stmt = (
-                    update(BasicProfile)
-                    .where(BasicProfile.id == basic_profile_id)
-                    .values(embedding=embedding)
-                )
-                await session.execute(stmt)
-                await session.commit()
+                # Update both embeddings
+                update_values = {}
+                if semantic_embedding is not None:
+                    update_values["embedding"] = semantic_embedding
+                if sentiment_embedding is not None:
+                    update_values["sentiment_embedding"] = sentiment_embedding
                 
-                logger.info(f"Updated embedding for user {basic.keycloak_id}")
-                return True
+                if update_values:
+                    stmt = (
+                        update(BasicProfile)
+                        .where(BasicProfile.id == basic_profile_id)
+                        .values(**update_values)
+                    )
+                    await session.execute(stmt)
+                    await session.commit()
+                    
+                    logger.info(
+                        f"Updated embeddings for user {basic.keycloak_id}: "
+                        f"semantic={semantic_embedding is not None}, "
+                        f"sentiment={sentiment_embedding is not None}"
+                    )
+                    return True
+                
+                return False
                 
         except Exception as e:
-            logger.error(f"Failed to update embedding for profile {basic_profile_id}: {e}")
+            logger.error(f"Failed to update embeddings for profile {basic_profile_id}: {e}")
             return False
     
     async def update_embedding_on_profile_change(
@@ -80,7 +100,7 @@ class EmbeddingUpdater:
         partner_preferences: Optional[str] = None
     ) -> bool:
         """
-        Update embedding when profile fields change.
+        Update embeddings when profile fields change.
         Called from SAGA handlers or directly.
         """
         try:
@@ -100,7 +120,7 @@ class EmbeddingUpdater:
                 detailed = result.scalar_one_or_none()
                 
                 if not detailed:
-                    logger.debug(f"No detailed profile for {keycloak_id}, skipping embedding")
+                    logger.debug(f"No detailed profile for {keycloak_id}, skipping embeddings")
                     return False
                 
                 # Use provided values or existing ones
@@ -108,31 +128,49 @@ class EmbeddingUpdater:
                 final_hobbies = hobbies if hobbies is not None else detailed.hobbies
                 final_partner_preferences = partner_preferences if partner_preferences is not None else detailed.partner_preferences
                 
-                # Generate new embedding
-                embedding = await self.embedding_service.generate_profile_embedding(
+                # Generate semantic embedding
+                semantic_embedding = await self.embedding_service.generate_profile_embedding(
                     about_me=final_about_me,
                     hobbies=final_hobbies,
                     partner_preferences=final_partner_preferences
                 )
                 
-                if embedding is None:
-                    logger.warning(f"Failed to generate embedding for {keycloak_id}")
+                # Generate sentiment embedding (только из about_me)
+                sentiment_embedding = await self.sentiment_service.generate_sentiment_embedding(
+                    final_about_me
+                )
+                
+                if semantic_embedding is None and sentiment_embedding is None:
+                    logger.warning(f"Failed to generate any embeddings for {keycloak_id}")
                     return False
                 
-                # Update embedding
-                stmt = (
-                    update(BasicProfile)
-                    .where(BasicProfile.keycloak_id == keycloak_id)
-                    .values(embedding=embedding)
-                )
-                await session.execute(stmt)
-                await session.commit()
+                # Update both embeddings
+                update_values = {}
+                if semantic_embedding is not None:
+                    update_values["embedding"] = semantic_embedding
+                if sentiment_embedding is not None:
+                    update_values["sentiment_embedding"] = sentiment_embedding
                 
-                logger.info(f"Updated embedding for {keycloak_id} after profile change")
-                return True
+                if update_values:
+                    stmt = (
+                        update(BasicProfile)
+                        .where(BasicProfile.keycloak_id == keycloak_id)
+                        .values(**update_values)
+                    )
+                    await session.execute(stmt)
+                    await session.commit()
+                    
+                    logger.info(
+                        f"Updated embeddings for {keycloak_id} after profile change: "
+                        f"semantic={semantic_embedding is not None}, "
+                        f"sentiment={sentiment_embedding is not None}"
+                    )
+                    return True
+                
+                return False
                 
         except Exception as e:
-            logger.error(f"Failed to update embedding on profile change: {e}")
+            logger.error(f"Failed to update embeddings on profile change: {e}")
             return False
 
 

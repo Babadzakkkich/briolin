@@ -144,7 +144,8 @@ class ProfileService:
             about_me=detailed_data.about_me,
             education=detailed_data.education,
             hobbies=detailed_data.hobbies,
-            partner_preferences=detailed_data.partner_preferences
+            partner_preferences=detailed_data.partner_preferences,
+            red_flags=detailed_data.red_flags
         )
         
         self.db.add(new_detailed)
@@ -427,7 +428,8 @@ class ProfileService:
                 about_me=detailed.about_me,
                 education=detailed.education,
                 hobbies=detailed.hobbies,
-                partner_preferences=detailed.partner_preferences
+                partner_preferences=detailed.partner_preferences,
+                red_flags=detailed.red_flags
             )
         
         return FullProfileResponse(
@@ -598,7 +600,8 @@ class ProfileService:
                         "about_me": detailed.about_me,
                         "education": detailed.education,
                         "hobbies": detailed.hobbies,
-                        "partner_preferences": detailed.partner_preferences
+                        "partner_preferences": detailed.partner_preferences,
+                        "red_flags": detailed.red_flags  # NEW
                     }
                 else:
                     profile_data["detailed"] = None
@@ -777,7 +780,8 @@ class ProfileService:
                         "about_me": detailed.about_me,
                         "education": detailed.education,
                         "hobbies": detailed.hobbies,
-                        "partner_preferences": detailed.partner_preferences
+                        "partner_preferences": detailed.partner_preferences,
+                        "red_flags": detailed.red_flags
                     }
                 else:
                     profile_data["detailed"] = None
@@ -820,6 +824,25 @@ class ProfileService:
             if hasattr(profile.embedding, 'tolist'):
                 return profile.embedding.tolist()
             return profile.embedding
+    
+    async def get_sentiment_embedding(self, keycloak_id: str) -> Optional[List[float]]:
+        """
+        Get sentiment embedding vector for a user.
+        """
+        async with async_session_factory() as session:
+            stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
+            result = await session.execute(stmt)
+            profile = result.scalar_one_or_none()
+            
+            if not profile:
+                return None
+            
+            if profile.sentiment_embedding is None:
+                return None
+            
+            if hasattr(profile.sentiment_embedding, 'tolist'):
+                return profile.sentiment_embedding.tolist()
+            return profile.sentiment_embedding
     
     async def search_profiles_by_embedding(
         self,
@@ -948,6 +971,7 @@ class ProfileService:
                         profile_data["hobbies"] = detailed.hobbies
                         profile_data["about_me"] = detailed.about_me
                         profile_data["partner_preferences"] = detailed.partner_preferences
+                        profile_data["red_flags"] = detailed.red_flags
                     
                     profiles.append(profile_data)
                 

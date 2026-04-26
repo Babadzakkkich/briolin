@@ -175,7 +175,8 @@ class ProfileSagaHandlers:
                 about_me=detailed_data.get("about_me", ""),
                 education=detailed_data.get("education", ""),
                 hobbies=detailed_data.get("hobbies", ""),
-                partner_preferences=detailed_data.get("partner_preferences", "")
+                partner_preferences=detailed_data.get("partner_preferences", ""),
+                red_flags=detailed_data.get("red_flags")
             )
             session.add(new_detailed)
             await session.commit()
@@ -353,6 +354,10 @@ class ProfileSagaHandlers:
                 if detailed.education != update_data['education']:
                     detailed.education = update_data['education']
                     updated_fields.append('education')
+            
+            if 'red_flags' in update_data:
+                detailed.red_flags = update_data['red_flags']
+                updated_fields.append('red_flags')
             
             if updated_fields:
                 await session.commit()

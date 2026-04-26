@@ -30,7 +30,8 @@ class RecommendationProfile(BaseModel):
 
 class RecommendationListResponse(BaseModel):
     """Ответ со списком рекомендаций и пагинацией"""
-    profiles: List[RecommendationProfile] = Field(..., description="Список профилей")
-    pagination: PaginationInfo = Field(..., description="Информация о пагинации")
-    lock_info: Optional[TargetedSearchLockInfo] = Field(None, description="Информация о блокировке")
-    applied_filters: dict = Field(..., description="Фактически применённые фильтры")
+    profiles: List[RecommendationProfile]
+    pagination: PaginationInfo
+    lock_info: Optional[TargetedSearchLockInfo] = None
+    applied_filters: dict = Field(...)
+    sentiment_boost_applied: bool = Field(False, description="Был ли применён тональный ре-ранкинг")

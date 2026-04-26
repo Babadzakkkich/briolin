@@ -23,6 +23,4 @@ ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 ENV HF_HOME=/root/.cache/huggingface
 ENV SENTENCE_TRANSFORMERS_HOME=/root/.cache/sentence_transformers
 
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')" || true
-
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]

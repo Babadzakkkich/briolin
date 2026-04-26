@@ -178,6 +178,26 @@ async def get_profile_embedding(
         logger.error(f"Failed to get embedding: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/profiles/{keycloak_id}/sentiment-embedding")
+async def get_profile_sentiment_embedding(
+    keycloak_id: str,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Get sentiment embedding vector for a user profile.
+    Used by matching-service for tonal re-ranking.
+    """
+    try:
+        sentiment_embedding = await service.get_sentiment_embedding(keycloak_id)
+        if sentiment_embedding is None:
+            return {"sentiment_embedding": []}
+        return {"sentiment_embedding": sentiment_embedding}
+    except ProfileNotFoundException:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    except Exception as e:
+        logger.error(f"Failed to get sentiment embedding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/profiles/search_by_embedding", response_model=SearchByEmbeddingResponse)
 async def search_profiles_by_embedding(
     request: SearchByEmbeddingRequest,

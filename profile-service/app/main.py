@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import os
 from app.core.config import settings
 from app.core.logger import logger
 from app.database.session import dispose_engine, engine
@@ -67,6 +68,22 @@ async def lifespan(app: FastAPI):
         logger.info("SAGA Worker started")
     except Exception as e:
         logger.error(f"Failed to start SAGA worker: {e}")
+        
+    # Проверяем наличие моделей в кэше
+    cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+    
+    models = [
+        "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2",
+        "models--blanchefort--rubert-base-cased-sentiment"
+    ]
+    
+    for model in models:
+        model_path = os.path.join(cache_dir, model)
+        if os.path.exists(model_path):
+            logger.info(f"Model cached: {model}")
+        else:
+            logger.info(f"Model not cached (will download on first use): {model}")
+
     
     yield
     
