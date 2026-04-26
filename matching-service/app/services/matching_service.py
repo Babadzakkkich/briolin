@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete, update, and_
+from sqlalchemy import or_, select, func, delete, update, and_
 from sqlalchemy.exc import IntegrityError
 
-from app.database.models import Swipe, Match, TargetedSearchLock, DailyLikeUsage
+from app.database.models import Swipe, Match, TargetedSearchLock, DailyLikeUsage, LikeWithAnswers, MatchWithAnswers
 from app.schemas.swipe import SwipeResponse
 from app.schemas.match import MatchResponse, PartnerInfo
 from app.schemas.search import (
@@ -23,13 +23,14 @@ from app.schemas.pagination import PaginationInfo
 from app.schemas.lock import TargetedSearchLockInfo, LikeUsageInfo
 from app.services.profile_client import profile_client
 from app.services.redis_cache import redis_cache
-from app.services.rabbitmq import event_publisher
+from app.services.event_service import event_publisher
 from app.core.config import settings
 from app.core.exceptions import (
     LikeLimitExceededException,
     AlreadySwipedException,
     UserNotFoundException,
-    TargetedSearchLockedException
+    TargetedSearchLockedException,
+    MatchingServiceException
 )
 from app.core.logger import logger
 
@@ -53,6 +54,140 @@ class MatchingService:
         for user_id in user_ids:
             if not await self._check_user_exists(user_id):
                 raise UserNotFoundException(f"Пользователь {user_id} не найден")
+    
+    def _validate_answers(self, questions: Dict[str, str], answers: Dict[str, str]) -> None:
+        """Валидация ответов на вопросы"""
+        required_keys = ["question_1", "question_2", "question_3", "question_4", "question_5"]
+        
+        for key in required_keys:
+            if key not in answers:
+                raise MatchingServiceException(
+                    message=f"Отсутствует ответ на вопрос: {key}",
+                    status_code=400
+                )
+            if not answers[key] or not answers[key].strip():
+                raise MatchingServiceException(
+                    message=f"Ответ на вопрос {key} не может быть пустым",
+                    status_code=400
+                )
+            if len(answers[key]) > 500:
+                raise MatchingServiceException(
+                    message=f"Ответ на вопрос {key} слишком длинный (макс. 500 символов)",
+                    status_code=400
+                )
+            
+    async def _ensure_has_questions(self, user_id: str) -> None:
+        """
+        Проверяет, что у пользователя заполнены все 5 вопросов.
+        Если нет — выбрасывает исключение.
+        """
+        has_questions = await profile_client.has_questions(user_id)
+        if not has_questions:
+            raise MatchingServiceException(
+                message="Для поиска и рекомендаций необходимо заполнить все 5 вопросов в профиле",
+                status_code=403
+            )
+
+    async def _get_like_with_answers(
+        self,
+        from_user_id: str,
+        to_user_id: str
+    ) -> Optional[LikeWithAnswers]:
+        """Получение существующего лайка с ответами"""
+        stmt = select(LikeWithAnswers).where(
+            and_(
+                LikeWithAnswers.from_user_id == from_user_id,
+                LikeWithAnswers.to_user_id == to_user_id
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+
+    async def _create_match_with_answers(
+        self,
+        user1_id: str,
+        user2_id: str,
+        user1_answers: Dict[str, str],
+        user2_answers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Создание матча с сохранением ответов.
+        Также создает обычный матч для обратной совместимости.
+        """
+        user_a, user_b = sorted([user1_id, user2_id])
+        is_user1_a = user1_id == user_a
+        
+        # Получаем вопросы обоих
+        q1 = await profile_client.get_user_questions(user1_id)
+        q2 = await profile_client.get_user_questions(user2_id)
+        
+        # Создаем матч с ответами
+        match = MatchWithAnswers(
+            user1_id=user_a,
+            user2_id=user_b,
+            user1_answers=user1_answers if is_user1_a else user2_answers,
+            user2_answers=user2_answers if is_user1_a else user1_answers,
+            user1_questions=q1 if is_user1_a else q2,
+            user2_questions=q2 if is_user1_a else q1,
+        )
+        self.db.add(match)
+        
+        # Создаем обычный матч для совместимости с chat-service
+        regular_match = Match(
+            user1_id=user_a,
+            user2_id=user_b,
+            is_active=True
+        )
+        self.db.add(regular_match)
+        await self.db.flush()
+        
+        # Обновляем статусы лайков
+        stmt = (
+            update(LikeWithAnswers)
+            .where(
+                or_(
+                    and_(
+                        LikeWithAnswers.from_user_id == user1_id,
+                        LikeWithAnswers.to_user_id == user2_id
+                    ),
+                    and_(
+                        LikeWithAnswers.from_user_id == user2_id,
+                        LikeWithAnswers.to_user_id == user1_id
+                    )
+                )
+            )
+            .values(status="matched")
+        )
+        await self.db.execute(stmt)
+        
+        await self.db.commit()
+        
+        logger.info(f"Match with answers created: {match.id} between {user1_id[:8]}... and {user2_id[:8]}...")
+        
+        # Публикуем событие о матче
+        try:
+            await event_publisher.publish_match_created(
+                user1_id, 
+                user2_id, 
+                match_id=regular_match.id
+            )
+        except Exception as e:
+            logger.error(f"Failed to publish match event: {e}")
+        
+        return {
+            "status": "matched",
+            "message": "Взаимный лайк! Матч создан.",
+            "match_id": match.id,
+            "regular_match_id": regular_match.id,
+            "show_answers": True,
+            "answers": {
+                "my_answers": user1_answers,
+                "my_questions": q1,
+                "partner_answers": user2_answers,
+                "partner_questions": q2
+            }
+        }
     
     async def _get_users_who_disliked_me(self, user_id: str) -> List[str]:
         """Возвращает список пользователей, которые поставили ДИЗЛАЙК текущему пользователю."""
@@ -205,13 +340,260 @@ class MatchingService:
     # ========== ПУБЛИЧНЫЕ МЕТОДЫ СВАЙПОВ ==========
     
     async def like_profile(self, from_user_id: str, to_user_id: str) -> SwipeResponse:
-        """Поставить лайк профилю (с проверкой лимита)."""
+        """
+        ⚠️ DEPRECATED: Старый метод лайка без вопросов.
+        
+        Теперь проверяет наличие вопросов у целевого пользователя.
+        Если вопросы есть - требует использовать новый метод like_with_answers.
+        """
+        # Проверяем, есть ли вопросы у целевого пользователя
+        has_questions = await profile_client.has_questions(to_user_id)
+        
+        if has_questions:
+            raise MatchingServiceException(
+                message="У пользователя есть вопросы. Используйте POST /api/v1/matching/like-with-answers",
+                status_code=400
+            )
+        
+        # Если вопросов нет - работаем по-старому
         await self._check_and_increment_likes(from_user_id)
         return await self._create_swipe(from_user_id, to_user_id, 'like')
     
     async def dislike_profile(self, from_user_id: str, to_user_id: str) -> SwipeResponse:
         """Поставить дизлайк профилю (без проверки лимита)."""
         return await self._create_swipe(from_user_id, to_user_id, 'dislike')
+
+    async def like_with_answers(
+        self,
+        from_user_id: str,
+        to_user_id: str,
+        answers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Лайк с обязательными ответами на вопросы.
+        
+        Flow:
+        1. Проверяем, что у целевого пользователя есть вопросы
+        2. Валидируем ответы (все 5 заполнены)
+        3. Проверяем лимиты лайков
+        4. Проверяем, не лайкали ли уже
+        5. Проверяем взаимный лайк
+        6. Если взаимно - создаем матч с ответами
+        7. Если нет - сохраняем лайк с ответами
+        """
+        if from_user_id == to_user_id:
+            raise UserNotFoundException("Нельзя лайкнуть самого себя")
+        
+        # Получаем вопросы целевого пользователя
+        questions = await profile_client.get_user_questions(to_user_id)
+        if not questions:
+            raise MatchingServiceException(
+                message="У пользователя нет вопросов. Используйте обычный лайк POST /api/v1/matching/like",
+                status_code=400
+            )
+        
+        # Валидируем ответы
+        self._validate_answers(questions, answers)
+        
+        # Проверяем существование пользователей
+        if not await self._check_user_exists(to_user_id):
+            raise UserNotFoundException(f"Пользователь {to_user_id} не найден")
+        if not await self._check_user_exists(from_user_id):
+            raise UserNotFoundException(f"Пользователь {from_user_id} не найден")
+        
+        # Проверяем лимиты
+        await self._check_and_increment_likes(from_user_id)
+        
+        # Проверяем существующий лайк
+        existing = await self._get_like_with_answers(from_user_id, to_user_id)
+        if existing:
+            raise AlreadySwipedException("Вы уже отправили лайк этому пользователю")
+        
+        # Проверяем взаимный лайк
+        reciprocal = await self._get_like_with_answers(to_user_id, from_user_id)
+        
+        if reciprocal and reciprocal.status == "pending":
+            # ВЗАИМНЫЙ ЛАЙК - создаем матч
+            return await self._create_match_with_answers(
+                user1_id=from_user_id,
+                user2_id=to_user_id,
+                user1_answers=answers,
+                user2_answers=reciprocal.answers
+            )
+        
+        # Сохраняем лайк с ответами
+        new_like = LikeWithAnswers(
+            from_user_id=from_user_id,
+            to_user_id=to_user_id,
+            answers=answers,
+            status="pending"
+        )
+        self.db.add(new_like)
+        await self.db.commit()
+        
+        logger.info(f"Like with answers sent: {from_user_id[:8]}... -> {to_user_id[:8]}...")
+        
+        return {
+            "status": "liked",
+            "message": "Лайк с ответами отправлен. Ожидайте ответа.",
+            "match_id": None,
+            "show_answers": False
+        }
+        
+    async def get_pending_likes(
+        self,
+        user_id: str,
+        page: int = 1,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Получение входящих лайков с ответами.
+        Пользователь видит, кто его лайкнул и какие ответы дал.
+        """
+        # Получаем свои вопросы (для контекста)
+        my_questions = await profile_client.get_user_questions(user_id)
+        
+        stmt = (
+            select(LikeWithAnswers)
+            .where(
+                and_(
+                    LikeWithAnswers.to_user_id == user_id,
+                    LikeWithAnswers.status == "pending"
+                )
+            )
+            .order_by(LikeWithAnswers.created_at.desc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        likes = result.scalars().all()
+        
+        pending = []
+        for like in likes:
+            profile = await profile_client.get_basic_profile(like.from_user_id)
+            
+            display_name = like.from_user_id[:8]
+            avatar_url = None
+            if profile:
+                first = profile.get('first_name', '')
+                last = profile.get('last_name', '')
+                display_name = f"{first} {last}".strip() or like.from_user_id[:8]
+                avatar_url = profile.get('avatar_url') or profile.get('thumbnail_url')
+            
+            pending.append({
+                "from_user_id": like.from_user_id,
+                "from_user_display_name": display_name,
+                "from_user_avatar": avatar_url,
+                "answers": like.answers,
+                "questions": my_questions,
+                "created_at": like.created_at.isoformat() if like.created_at else None
+            })
+        
+        return pending
+
+
+    async def reverse_like_with_answers(
+        self,
+        user_id: str,
+        from_user_id: str,
+        answers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Ответный лайк на входящий.
+        Текущий пользователь отвечает на вопросы того, кто лайкнул первым.
+        """
+        # Получаем вопросы того, кто лайкнул первым
+        questions = await profile_client.get_user_questions(from_user_id)
+        if questions:
+            self._validate_answers(questions, answers)
+        
+        # Проверяем входящий лайк
+        incoming = await self._get_like_with_answers(from_user_id, user_id)
+        if not incoming or incoming.status != "pending":
+            raise MatchingServiceException(
+                message="Входящий лайк не найден или уже обработан",
+                status_code=404
+            )
+        
+        # Проверяем лимиты
+        await self._check_and_increment_likes(user_id)
+        
+        # Создаем матч
+        return await self._create_match_with_answers(
+            user1_id=user_id,
+            user2_id=from_user_id,
+            user1_answers=answers,
+            user2_answers=incoming.answers
+        )
+
+
+    async def decline_like(self, user_id: str, from_user_id: str) -> bool:
+        """Отклонить входящий лайк"""
+        stmt = (
+            update(LikeWithAnswers)
+            .where(
+                and_(
+                    LikeWithAnswers.from_user_id == from_user_id,
+                    LikeWithAnswers.to_user_id == user_id,
+                    LikeWithAnswers.status == "pending"
+                )
+            )
+            .values(status="declined")
+        )
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount > 0
+
+
+    async def get_match_with_answers(
+        self,
+        match_id: int,
+        user_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Получение матча с ответами"""
+        stmt = select(MatchWithAnswers).where(
+            and_(
+                MatchWithAnswers.id == match_id,
+                MatchWithAnswers.is_active == True,
+                or_(
+                    MatchWithAnswers.user1_id == user_id,
+                    MatchWithAnswers.user2_id == user_id
+                )
+            )
+        )
+        result = await self.db.execute(stmt)
+        match = result.scalar_one_or_none()
+        
+        if not match:
+            return None
+        
+        # Определяем партнера
+        is_user1 = match.user1_id == user_id
+        partner_id = match.user2_id if is_user1 else match.user1_id
+        
+        # Получаем профиль партнера
+        partner_profile = await profile_client.get_basic_profile(partner_id)
+        partner_display_name = partner_id[:8]
+        partner_avatar = None
+        if partner_profile:
+            first = partner_profile.get('first_name', '')
+            last = partner_profile.get('last_name', '')
+            partner_display_name = f"{first} {last}".strip() or partner_id[:8]
+            partner_avatar = partner_profile.get('avatar_url') or partner_profile.get('thumbnail_url')
+        
+        return {
+            "match_id": match.id,
+            "partner": {
+                "keycloak_id": partner_id,
+                "display_name": partner_display_name,
+                "avatar_url": partner_avatar
+            },
+            "matched_at": match.matched_at.isoformat() if match.matched_at else None,
+            "my_answers": match.user1_answers if is_user1 else match.user2_answers,
+            "my_questions": match.user1_questions if is_user1 else match.user2_questions,
+            "partner_answers": match.user2_answers if is_user1 else match.user1_answers,
+            "partner_questions": match.user2_questions if is_user1 else match.user1_questions,
+        }
 
     # ========== УПРАВЛЕНИЕ БЛОКИРОВКОЙ ТАРГЕТИРОВАННЫХ РЕКОМЕНДАЦИЙ (ЭМБЕДДИНГИ) ==========
     
@@ -407,6 +789,8 @@ class MatchingService:
         if not await self._check_user_exists(user_id):
             raise UserNotFoundException(f"Пользователь {user_id} не найден")
         
+        await self._ensure_has_questions(user_id)
+        
         # Кого я уже свайпнул
         swiped_stmt = select(Swipe.to_user_id).where(Swipe.from_user_id == user_id)
         swiped_result = await self.db.execute(swiped_stmt)
@@ -473,6 +857,8 @@ class MatchingService:
         """
         if not await self._check_user_exists(user_id):
             raise UserNotFoundException(f"Пользователь {user_id} не найден")
+        
+        await self._ensure_has_questions(user_id)
         
         # Кого я уже свайпнул
         swiped_stmt = select(Swipe.to_user_id).where(Swipe.from_user_id == user_id)
@@ -550,9 +936,10 @@ class MatchingService:
         Применяется тональный ре-ранкинг на основе sentiment embeddings.
         """
 
-        
         if not await self._check_user_exists(user_id):
             raise UserNotFoundException(f"Пользователь {user_id} не найден")
+        
+        await self._ensure_has_questions(user_id)
         
         # Получаем профиль пользователя для автоматических фильтров
         user_profile = await profile_client.get_basic_profile(user_id)
@@ -805,30 +1192,30 @@ class MatchingService:
         
         recommendations = []
         max_age_diff = age_range
-        
+
         for item in results:
             profile_age = item.get('age', 0)
-            
             similarity = item.get('similarity', 0.0)
-            
+
             age_diff = abs(profile_age - user_age)
             age_score = 1.0 - (age_diff / max_age_diff) if max_age_diff > 0 else 1.0
             age_score = max(0.0, min(1.0, age_score))
-            
+
             combined_score = (0.8 * similarity) + (0.2 * age_score)
-            
+
             rec = RecommendationProfile(
                 keycloak_id=item['keycloak_id'],
                 display_name=f"{item.get('first_name', '')} {item.get('last_name', '')}".strip() or item['keycloak_id'][:8],
                 age=profile_age,
                 city=item.get('city', ''),
                 avatar_url=item.get('thumbnail_url'),
+                about_me=item.get('about_me'),
+                hobbies=item.get('hobbies'),
+                red_flags=item.get('red_flags'),
                 similarity=round(similarity, 4),
-                combined_score=round(combined_score, 4)
+                combined_score=round(combined_score, 4),
             )
             recommendations.append(rec)
-        
-        recommendations.sort(key=lambda x: x.combined_score or 0, reverse=True)
         
         # Добавляем входящие лайки в начало
         incoming_profiles = []
@@ -838,14 +1225,21 @@ class MatchingService:
                 profile = await profile_client.get_basic_profile(like_user_id)
                 if profile:
                     age = self._calculate_age(profile.get('date_of_birth'))
+                    
+                    # Получаем детальный профиль для about_me, hobbies, red_flags
+                    detailed = await profile_client.get_detailed_profile(like_user_id)
+                    
                     incoming_profiles.append(RecommendationProfile(
                         keycloak_id=like_user_id,
                         display_name=f"{profile.get('first_name', '')} {profile.get('last_name', '')}".strip() or like_user_id[:8],
                         age=age,
                         city=profile.get('city', ''),
                         avatar_url=profile.get('thumbnail_url'),
+                        about_me=detailed.get('about_me') if detailed else None,
+                        hobbies=detailed.get('hobbies') if detailed else None,
+                        red_flags=detailed.get('red_flags') if detailed else None,
                         similarity=1.0,
-                        combined_score=1.0
+                        combined_score=1.0,
                     ))
         
         all_recs = incoming_profiles + recommendations

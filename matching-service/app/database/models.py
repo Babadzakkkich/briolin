@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from sqlalchemy import Column, BigInteger, String, DateTime, Boolean, UniqueConstraint, Index, Integer, Date
+from sqlalchemy import JSON, Column, BigInteger, String, DateTime, Boolean, UniqueConstraint, Index, Integer, Date
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -35,6 +35,58 @@ class Match(Base):
     __table_args__ = (
         UniqueConstraint('user1_id', 'user2_id', name='uq_match'),
         Index('idx_match_users', 'user1_id', 'user2_id'),
+    )
+
+class LikeWithAnswers(Base):
+    """
+    Лайк с ответами на вопросы.
+    Заменяет обычный Swipe для like, когда у пользователя есть вопросы.
+    """
+    __tablename__ = "likes_with_answers"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    from_user_id = Column(String(255), nullable=False, index=True)
+    to_user_id = Column(String(255), nullable=False, index=True)
+    status = Column(String(20), default="pending")  # pending, matched, declined
+
+    # Ответы на вопросы в JSON
+    answers = Column(JSON, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('from_user_id', 'to_user_id', name='uq_like_with_answers'),
+        Index('idx_like_answers_from_to', 'from_user_id', 'to_user_id'),
+        Index('idx_like_answers_to_status', 'to_user_id', 'status'),
+    )
+
+
+class MatchWithAnswers(Base):
+    """
+    Матч с сохранением ответов на вопросы.
+    Содержит ответы обоих пользователей и вопросы для контекста.
+    """
+    __tablename__ = "matches_with_answers"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user1_id = Column(String(255), nullable=False, index=True)
+    user2_id = Column(String(255), nullable=False, index=True)
+
+    # Ответы пользователей
+    user1_answers = Column(JSON, nullable=True)
+    user2_answers = Column(JSON, nullable=True)
+
+    # Вопросы для контекста
+    user1_questions = Column(JSON, nullable=True)
+    user2_questions = Column(JSON, nullable=True)
+
+    matched_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+    __table_args__ = (
+        UniqueConstraint('user1_id', 'user2_id', name='uq_match_with_answers'),
+        Index('idx_match_answers_users', 'user1_id', 'user2_id'),
     )
 
 

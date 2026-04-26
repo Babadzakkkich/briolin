@@ -25,7 +25,10 @@ class RecommendationProfile(BaseModel):
     city: str = Field(..., description="Город")
     avatar_url: Optional[str] = Field(None, description="URL аватарки")
     similarity: Optional[float] = Field(None, description="Степень схожести (0-1)")
-    combined_score: Optional[float] = Field(None, description="Комбинированный скор (similarity + близость по возрасту)")
+    combined_score: Optional[float] = Field(None, description="Комбинированный скор")
+    about_me: Optional[str] = Field(None, description="О себе")
+    hobbies: Optional[str] = Field(None, description="Хобби")
+    red_flags: Optional[List[str]] = Field(None, description="Red flags")
 
 
 class RecommendationListResponse(BaseModel):

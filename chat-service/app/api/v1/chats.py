@@ -12,6 +12,7 @@ from app.schemas.chat import (
     SearchMessagesResponse, MessageReadStatusResponse
 )
 from app.services.websocket_manager import websocket_manager
+from app.services.matching_service_client import get_matching_client
 from shared.schemas.shared import UserRole
 from app.core.logger import logger
 
@@ -40,6 +41,38 @@ async def search_messages(
         query=query
     )
 
+
+@router.get(
+    "/{chat_id}/match-answers",
+    summary="Ответы на вопросы в матче",
+    description="""
+    Возвращает ответы на вопросы друг друга, если чат создан из матча.
+    
+    Включает:
+    - Мои ответы на его вопросы
+    - Мои вопросы
+    - Его ответы на мои вопросы
+    - Его вопросы
+    """
+)
+async def get_chat_match_answers(
+    chat_id: uuid.UUID,
+    current_user: dict = Depends(get_current_active_user),
+    service: ChatService = Depends(get_chat_service)
+):
+    """Получение ответов на вопросы для чата"""
+    answers = await service.get_chat_match_answers(
+        chat_id=chat_id,
+        keycloak_id=current_user["keycloak_id"]
+    )
+    
+    if not answers:
+        raise HTTPException(
+            status_code=404,
+            detail="Этот чат не связан с матчем или ответы не найдены"
+        )
+    
+    return answers
 
 @router.get("/online/users", response_model=OnlineUsersResponse)
 async def get_online_users(

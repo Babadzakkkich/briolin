@@ -37,6 +37,14 @@ class BasicProfileUpdate(BaseModel):
     date_of_birth: Optional[date] = None
     city: Optional[str] = Field(None, min_length=1, max_length=200)
 
+class ProfileQuestionsUpdate(BaseModel):
+    """Частичное обновление вопросов"""
+    question_1: Optional[str] = Field(None, min_length=10, max_length=500)
+    question_2: Optional[str] = Field(None, min_length=10, max_length=500)
+    question_3: Optional[str] = Field(None, min_length=10, max_length=500)
+    question_4: Optional[str] = Field(None, min_length=10, max_length=500)
+    question_5: Optional[str] = Field(None, min_length=10, max_length=500)
+
 
 class DetailedProfileCreate(BaseModel):
     about_me: str = Field(..., min_length=10, max_length=2000)
@@ -49,6 +57,14 @@ class DetailedProfileCreate(BaseModel):
         description="Список вещей, которые пользователь НЕ приемлет в партнёре"
     )
 
+class ProfileQuestionsCreate(BaseModel):
+    """Создание вопросов профиля"""
+    question_1: str = Field(..., min_length=10, max_length=500)
+    question_2: str = Field(..., min_length=10, max_length=500)
+    question_3: str = Field(..., min_length=10, max_length=500)
+    question_4: str = Field(..., min_length=10, max_length=500)
+    question_5: str = Field(..., min_length=10, max_length=500)
+
 
 class DetailedProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -59,6 +75,18 @@ class DetailedProfileResponse(BaseModel):
     hobbies: str
     partner_preferences: str
     red_flags: Optional[List[str]] = None
+
+class ProfileQuestionsResponse(BaseModel):
+    """Ответ с вопросами профиля"""
+    model_config = ConfigDict(from_attributes=True)
+    
+    question_1: str
+    question_2: str
+    question_3: str
+    question_4: str
+    question_5: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class DetailedProfileUpdate(BaseModel):
@@ -74,6 +102,7 @@ class FullProfileResponse(BaseModel):
     
     basic: BasicProfileResponse
     detailed: Optional[DetailedProfileResponse] = None
+    questions: Optional[ProfileQuestionsResponse] = None
 
 
 class FullProfileCreate(BaseModel):
@@ -91,7 +120,6 @@ class ProfileListResponse(BaseModel):
     total: int
     page: int
     size: int
-
 
 class AsyncOperationResponse(BaseModel):
     status: str = Field(..., description="Статус операции (accepted)")

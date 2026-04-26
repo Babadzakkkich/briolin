@@ -158,6 +158,40 @@ async def delete_internal_profile(
         logger.error(f"Failed to delete internal profile: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/profiles/{keycloak_id}/questions")
+async def get_internal_questions(
+    keycloak_id: str,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """Внутренний эндпоинт для получения вопросов профиля"""
+    questions = await service.get_questions(keycloak_id)
+    if not questions:
+        return {"questions": None}
+    return {
+        "questions": {
+            "question_1": questions.question_1,
+            "question_2": questions.question_2,
+            "question_3": questions.question_3,
+            "question_4": questions.question_4,
+            "question_5": questions.question_5,
+        }
+    }
+
+
+@router.get("/profiles/{keycloak_id}/has-questions")
+async def check_internal_questions(
+    keycloak_id: str,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Внутренний эндпоинт для проверки наличия вопросов.
+    Используется matching-service перед лайком.
+    """
+    has_questions = await service.has_questions(keycloak_id)
+    return {
+        "has_questions": has_questions
+    }
+
 @router.get("/profiles/{keycloak_id}/embedding")
 async def get_profile_embedding(
     keycloak_id: str,

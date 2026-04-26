@@ -1,4 +1,3 @@
-# api-gateway/app/api/v1/media.py
 from fastapi import APIRouter, Request, Depends, Response, status, UploadFile, File, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, List
@@ -75,6 +74,54 @@ async def get_my_avatars(
         headers=dict(response.headers)
     )
 
+@router.get(
+    "/my-avatar",
+    responses={
+        200: {"description": "Current avatar image"},
+        404: {"model": ErrorResponse, "description": "No current avatar found"}
+    },
+    summary="Get my current avatar",
+    description="Получить свою текущую аватарку (не нужно указывать ID). Автоматически находит is_current=True."
+)
+async def get_my_avatar(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Получение своей текущей аватарки.
+    Не требует указания keycloak_id или avatar_id.
+    """
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.get(
+    "/my-thumbnail",
+    responses={
+        200: {"description": "Current thumbnail image"},
+        404: {"model": ErrorResponse, "description": "No current thumbnail found"}
+    },
+    summary="Get my current thumbnail",
+    description="Получить свой текущий thumbnail (не нужно указывать ID). Автоматически находит is_current=True."
+)
+async def get_my_thumbnail(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Получение своего текущего thumbnail.
+    Не требует указания keycloak_id или avatar_id.
+    """
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
 
 @router.put(
     "/avatar/{avatar_id}/set-current",
@@ -134,6 +181,40 @@ async def get_avatar_thumbnail(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Получение thumbnail аватарки"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.delete(
+    "/my-avatar",
+    status_code=status.HTTP_200_OK,
+    response_model=AvatarDeleteResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "No current avatar found"},
+        503: {"model": ErrorResponse, "description": "MinIO unavailable"}
+    },
+    summary="Delete my current avatar",
+    description="""
+    Удаление своей текущей аватарки (soft delete).
+    
+    - Автоматически находит аватарку с is_current=True
+    - Не нужно указывать avatar_id
+    - Следующая по дате загрузки становится текущей
+    """
+)
+async def delete_my_avatar(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Удаление своей текущей аватарки.
+    Не требует указания avatar_id.
+    """
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,

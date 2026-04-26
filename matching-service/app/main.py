@@ -11,7 +11,9 @@ from app.core.exceptions import MatchingServiceException
 from app.core.exception_handlers import matching_exception_handler, global_exception_handler
 from app.api.v1 import router as api_router
 from app.services.redis_cache import redis_cache
-from app.services.rabbitmq import event_publisher
+from app.services.event_service import event_publisher
+from app.consumers import register_consumers
+from app.services.rabbitmq import rabbitmq_consumer
 
 
 @asynccontextmanager
@@ -28,6 +30,8 @@ async def lifespan(app: FastAPI):
     # Connect to RabbitMQ
     try:
         await event_publisher.connect()
+        await rabbitmq_consumer.connect()
+        await register_consumers()
         logger.info("RabbitMQ connected")
     except Exception as e:
         logger.error(f"RabbitMQ connection failed: {e}")

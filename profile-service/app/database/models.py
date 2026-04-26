@@ -44,6 +44,13 @@ class BasicProfile(Base):
         uselist=False,
         cascade="all, delete-orphan"
     )
+    
+    questions: Mapped[Optional["ProfileQuestions"]] = relationship(
+        "ProfileQuestions",
+        back_populates="basic_profile",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
 
 
 class DetailedProfile(Base):
@@ -63,4 +70,32 @@ class DetailedProfile(Base):
     basic_profile: Mapped["BasicProfile"] = relationship(
         "BasicProfile",
         back_populates="detailed_profile"
+    )
+    
+class ProfileQuestions(Base):
+    """Вопросы пользователя для предварительного знакомства"""
+    __tablename__ = "profile_questions"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    basic_profile_id: Mapped[int] = mapped_column(
+        Integer, 
+        ForeignKey("basic_profiles.id", ondelete="CASCADE"),
+        unique=True,
+        index=True
+    )
+    question_1: Mapped[str] = mapped_column(String(500), nullable=False)
+    question_2: Mapped[str] = mapped_column(String(500), nullable=False)
+    question_3: Mapped[str] = mapped_column(String(500), nullable=False)
+    question_4: Mapped[str] = mapped_column(String(500), nullable=False)
+    question_5: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, 
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+    
+    basic_profile: Mapped["BasicProfile"] = relationship(
+        "BasicProfile", 
+        back_populates="questions"
     )

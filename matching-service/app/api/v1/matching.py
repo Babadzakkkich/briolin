@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import Optional, List
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from typing import Dict, Optional, List
 
 from app.services.matching_service import MatchingService
 from app.dependencies import get_matching_service, require_admin
@@ -17,12 +17,21 @@ from app.schemas.recommendation import (
     TargetedRecommendationFilters,
     RecommendationListResponse
 )
+from app.schemas.like_with_answers import (
+    DeclineLikeRequest,
+    LikeWithAnswersRequest,
+    LikeWithAnswersResponse,
+    PendingLikeInfo,
+    ReverseLikeRequest,
+    MatchAnswersResponse
+)
 from app.schemas.lock import TargetedSearchLockInfo, LikeUsageInfo
 from app.core.exceptions import (
     LikeLimitExceededException,
     AlreadySwipedException,
     UserNotFoundException,
-    TargetedSearchLockedException
+    TargetedSearchLockedException,
+    MatchingServiceException
 )
 from shared.auth.dependencies import get_current_user
 from shared.schemas.shared import Gender
@@ -32,26 +41,77 @@ router = APIRouter(prefix="/matching", tags=["Matching"])
 
 # ========== LIKE/DISLIKE ENDPOINTS ==========
 
-@router.post("/like", response_model=SwipeResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/like",
+    response_model=SwipeResponse,
+    status_code=status.HTTP_200_OK,
+    summary="⚠️ DEPRECATED: Обычный лайк",
+    description="""
+    Устаревший метод лайка. 
+    
+    Если у пользователя есть вопросы - вернет 400 с указанием использовать /like-with-answers.
+    Если вопросов нет - работает как раньше.
+    """
+)
 async def like_profile(
     request: LikeRequest,
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Поставить лайк профилю (с проверкой дневного лимита)"""
+    """Обычный лайк (без вопросов)"""
     try:
         return await service.like_profile(
             from_user_id=current_user["keycloak_id"],
             to_user_id=request.target_user_id
         )
-    except LikeLimitExceededException as e:
+    except MatchingServiceException as e:
         raise HTTPException(
             status_code=e.status_code,
             detail={
                 "message": e.message,
-                "likes_used": e.likes_used,
-                "daily_limit": e.daily_limit
+                "deprecated": True,
+                "use_instead": "/api/v1/matching/like-with-answers"
             }
+        )
+    except LikeLimitExceededException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "likes_used": e.likes_used, "daily_limit": e.daily_limit}
+        )
+    except AlreadySwipedException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except UserNotFoundException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+@router.post(
+    "/like-with-answers",
+    response_model=LikeWithAnswersResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Лайк с ответами на вопросы",
+    description="""
+    Лайк с обязательными ответами на 5 вопросов пользователя.
+    
+    Если пользователь уже лайкнул вас - создается матч и возвращаются ответы обоих.
+    """
+)
+async def like_with_answers(
+    request: LikeWithAnswersRequest,
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Лайк с ответами на вопросы"""
+    try:
+        return await service.like_with_answers(
+            from_user_id=current_user["keycloak_id"],
+            to_user_id=request.target_user_id,
+            answers=request.answers.model_dump()
+        )
+    except MatchingServiceException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except LikeLimitExceededException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "likes_used": e.likes_used, "daily_limit": e.daily_limit}
         )
     except AlreadySwipedException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
@@ -76,6 +136,92 @@ async def dislike_profile(
     except UserNotFoundException as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
+@router.post(
+    "/reverse-like",
+    response_model=LikeWithAnswersResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Ответный лайк",
+    description="Ответный лайк на входящий. Нужно ответить на вопросы пользователя."
+)
+async def reverse_like(
+    request: ReverseLikeRequest,
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Ответный лайк с ответами на вопросы"""
+    try:
+        return await service.reverse_like_with_answers(
+            user_id=current_user["keycloak_id"],
+            from_user_id=request.from_user_id,
+            answers=request.answers.model_dump()
+        )
+    except MatchingServiceException as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except LikeLimitExceededException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"message": e.message, "likes_used": e.likes_used, "daily_limit": e.daily_limit}
+        )
+
+
+@router.post(
+    "/decline-like",
+    status_code=status.HTTP_200_OK,
+    summary="Отклонить лайк",
+    description="Отклонить входящий лайк."
+)
+async def decline_like(
+    request: DeclineLikeRequest,
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Отклонить входящий лайк"""
+    success = await service.decline_like(
+        user_id=current_user["keycloak_id"],
+        from_user_id=request.from_user_id
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Входящий лайк не найден")
+    return {"declined": True}
+
+@router.get(
+    "/pending-likes",
+    response_model=List[PendingLikeInfo],
+    summary="Входящие лайки с ответами",
+    description="Получение списка входящих лайков с ответами на ваши вопросы."
+)
+async def get_pending_likes(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=50),
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Получение входящих лайков с ответами"""
+    return await service.get_pending_likes(
+        user_id=current_user["keycloak_id"],
+        page=page,
+        limit=limit
+    )
+
+@router.get(
+    "/matches/{match_id}/answers",
+    response_model=MatchAnswersResponse,
+    summary="Матч с ответами",
+    description="Получение матча с ответами на вопросы друг друга."
+)
+async def get_match_answers(
+    match_id: int,
+    current_user: dict = Depends(get_current_user),
+    service: MatchingService = Depends(get_matching_service)
+):
+    """Получение матча с ответами"""
+    match = await service.get_match_with_answers(
+        match_id=match_id,
+        user_id=current_user["keycloak_id"]
+    )
+    if not match:
+        raise HTTPException(status_code=404, detail="Матч не найден")
+    return match
 
 @router.get("/like-usage", response_model=LikeUsageInfo)
 async def get_like_usage(

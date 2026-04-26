@@ -45,6 +45,32 @@ class ProfileServiceClient:
         if result:
             return result.get("detailed")
         return None
+    
+    async def get_user_questions(self, keycloak_id: str) -> Optional[Dict[str, str]]:
+        """
+        Получение вопросов пользователя.
+        GET /api/v1/internal/profiles/{keycloak_id}/questions
+        """
+        result = await self._request(
+            "GET",
+            f"/api/v1/internal/profiles/{keycloak_id}/questions"
+        )
+        if result and result.get("questions"):
+            return result["questions"]
+        return None
+
+    async def has_questions(self, keycloak_id: str) -> bool:
+        """
+        Проверка наличия вопросов у пользователя.
+        GET /api/v1/internal/profiles/{keycloak_id}/has-questions
+        """
+        result = await self._request(
+            "GET",
+            f"/api/v1/internal/profiles/{keycloak_id}/has-questions"
+        )
+        if result:
+            return result.get("has_questions", False)
+        return False
 
     async def get_embedding(self, keycloak_id: str) -> Optional[List[float]]:
         """GET /api/v1/internal/profiles/{keycloak_id}/embedding"""

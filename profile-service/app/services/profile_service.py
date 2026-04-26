@@ -6,12 +6,13 @@ from typing import Dict, Any, Optional, Tuple, List
 
 import sqlalchemy
 
-from app.database.models import BasicProfile, DetailedProfile
+from app.database.models import BasicProfile, DetailedProfile, ProfileQuestions
 from app.database.session import async_session_factory
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.profile import (
     BasicProfileCreate, BasicProfileResponse, DetailedProfileCreate, DetailedProfileResponse, FullProfileResponse, FullProfileUpdate
 )
+from app.schemas.questions import ProfileQuestionsCreate, ProfileQuestionsResponse, ProfileQuestionsUpdate
 from app.services.keycloak_client import KeycloakClient
 
 from app.services.event_service import get_event_service
@@ -391,7 +392,6 @@ class ProfileService:
         return result.scalar_one_or_none()
 
     async def get_full_profile_by_keycloak_id(self, keycloak_id: str) -> FullProfileResponse:
-        """Получение полного профиля по keycloak_id"""
         stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
         result = await self.db.execute(stmt)
         basic = result.scalar_one_or_none()
@@ -403,7 +403,6 @@ class ProfileService:
         result = await self.db.execute(stmt)
         detailed = result.scalar_one_or_none()
         
-        # Преобразуем BasicProfile в BasicProfileResponse
         basic_response = BasicProfileResponse(
             id=basic.id,
             keycloak_id=basic.keycloak_id,
@@ -420,7 +419,6 @@ class ProfileService:
             last_login_at=basic.last_login_at
         )
         
-        # Преобразуем DetailedProfile в DetailedProfileResponse если есть
         detailed_response = None
         if detailed:
             detailed_response = DetailedProfileResponse(
@@ -432,9 +430,25 @@ class ProfileService:
                 red_flags=detailed.red_flags
             )
         
+        # ДОБАВИТЬ получение вопросов
+        questions = await self._get_questions_by_profile_id(basic.id)
+        questions_response = None
+        if questions:
+            from app.schemas.questions import ProfileQuestionsResponse
+            questions_response = ProfileQuestionsResponse(
+                question_1=questions.question_1,
+                question_2=questions.question_2,
+                question_3=questions.question_3,
+                question_4=questions.question_4,
+                question_5=questions.question_5,
+                created_at=questions.created_at,
+                updated_at=questions.updated_at
+            )
+        
         return FullProfileResponse(
             basic=basic_response,
-            detailed=detailed_response
+            detailed=detailed_response,
+            questions=questions_response
         )
 
     async def delete_profiles_by_keycloak_id(self, keycloak_id: str) -> bool:
@@ -547,6 +561,107 @@ class ProfileService:
         except Exception as e:
             logger.error(f"Failed to get user online status: {e}")
             return None
+    
+    
+    async def set_questions(
+        self,
+        keycloak_id: str,
+        questions_data: ProfileQuestionsCreate,
+        current_user: dict
+    ) -> FullProfileResponse:
+        """Установка или обновление вопросов профиля"""
+        if current_user["keycloak_id"] != keycloak_id:
+            raise PermissionDeniedException("Cannot set questions for another user")
+        
+        basic_profile = await self._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic_profile:
+            raise ProfileNotFoundException("Basic profile not found. Create basic profile first.")
+        
+        existing = await self._get_questions_by_profile_id(basic_profile.id)
+        
+        if existing:
+            for field in ['question_1', 'question_2', 'question_3', 'question_4', 'question_5']:
+                setattr(existing, field, getattr(questions_data, field))
+        else:
+            new_questions = ProfileQuestions(
+                basic_profile_id=basic_profile.id,
+                **questions_data.model_dump()
+            )
+            self.db.add(new_questions)
+        
+        await self.db.commit()
+        logger.info(f"Questions set for user {keycloak_id}")
+        
+        return await self.get_full_profile_by_keycloak_id(keycloak_id)
+    
+    async def update_questions(
+        self,
+        keycloak_id: str,
+        questions_data: ProfileQuestionsUpdate,
+        current_user: dict
+    ) -> FullProfileResponse:
+        """Частичное обновление вопросов профиля"""
+        if current_user["keycloak_id"] != keycloak_id:
+            raise PermissionDeniedException("Cannot update questions for another user")
+        
+        basic_profile = await self._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic_profile:
+            raise ProfileNotFoundException("Basic profile not found")
+        
+        existing = await self._get_questions_by_profile_id(basic_profile.id)
+        if not existing:
+            raise ProfileNotFoundException("Questions not found. Use POST to create them first.")
+        
+        update_data = questions_data.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(existing, field, value)
+        
+        await self.db.commit()
+        logger.info(f"Questions updated for user {keycloak_id}")
+        
+        return await self.get_full_profile_by_keycloak_id(keycloak_id)
+    
+    async def get_questions(self, keycloak_id: str) -> Optional[ProfileQuestionsResponse]:
+        """Получение вопросов пользователя"""
+        basic = await self._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic:
+            return None
+        questions = await self._get_questions_by_profile_id(basic.id)
+        if not questions:
+            return None
+        
+        from app.schemas.questions import ProfileQuestionsResponse
+        return ProfileQuestionsResponse(
+            question_1=questions.question_1,
+            question_2=questions.question_2,
+            question_3=questions.question_3,
+            question_4=questions.question_4,
+            question_5=questions.question_5,
+            created_at=questions.created_at,
+            updated_at=questions.updated_at
+        )
+    
+    async def has_questions(self, keycloak_id: str) -> bool:
+        """Проверка, заполнены ли вопросы"""
+        questions = await self.get_questions(keycloak_id)
+        if not questions:
+            return False
+        questions_dict = {
+            "question_1": questions.question_1,
+            "question_2": questions.question_2,
+            "question_3": questions.question_3,
+            "question_4": questions.question_4,
+            "question_5": questions.question_5,
+        }
+        return all(v and v.strip() for v in questions_dict.values())
+    
+    async def _get_questions_by_profile_id(self, basic_profile_id: int) -> Optional[ProfileQuestions]:
+        """Внутренний метод получения вопросов по ID профиля"""
+        stmt = select(ProfileQuestions).where(
+            ProfileQuestions.basic_profile_id == basic_profile_id
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
     
 # ========== МЕТОДЫ ДЛЯ SEARCH-SERVICE ==========
 

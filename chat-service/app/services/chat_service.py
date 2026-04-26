@@ -16,6 +16,7 @@ from app.database.mongo.session import get_mongo_db
 from app.services.websocket_manager import websocket_manager
 from app.services.user_service_client import get_user_service_client
 from app.services.profile_service_client import get_profile_service_client
+from app.services.matching_service_client import get_matching_client
 from app.core.exceptions import (
     ChatNotFoundException,
     MessageNotFoundException,
@@ -267,6 +268,26 @@ class ChatService:
         """Получение информации о чате"""
         chat = await self._check_chat_permission(chat_id, keycloak_id)
         return await self._format_chat_response(chat, keycloak_id)
+    
+    async def get_chat_match_answers(
+        self,
+        chat_id: uuid.UUID,
+        keycloak_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Получение ответов на вопросы для чата.
+        Если чат создан из матча — ходит в matching-service за ответами.
+        """
+        chat = await self._check_chat_permission(chat_id, keycloak_id)
+        
+        if not chat.match_id:
+            return None
+        
+        matching_client = get_matching_client()
+        return await matching_client.get_match_answers(
+            match_id=chat.match_id,
+            keycloak_id=keycloak_id
+        )
     
     async def list_chats(
         self,
@@ -966,7 +987,7 @@ class ChatService:
             raise DatabaseException("Failed to search messages")
     
     async def _format_chat_response(self, chat: Chat, keycloak_id: str) -> ChatResponse:
-        """Форматирование ответа чата с персонализацией для текущего пользователя"""
+        """Форматирование ответа чата с информацией о матче и вопросах"""
         stmt = (
             select(Message)
             .where(Message.chat_id == chat.id)
@@ -976,7 +997,7 @@ class ChatService:
         result = await self.db.execute(stmt)
         last_message = result.scalar_one_or_none()
         
-        # Подсчет непрочитанных сообщений для этого пользователя
+        # Подсчет непрочитанных
         unread_stmt = (
             select(func.count())
             .select_from(Message)
@@ -990,7 +1011,7 @@ class ChatService:
             .where(
                 Message.chat_id == chat.id,
                 Message.sender_keycloak_id != keycloak_id,
-                MessageReadStatus.id.is_(None)  # Нет записи о прочтении
+                MessageReadStatus.id.is_(None)
             )
         )
         unread_result = await self.db.execute(unread_stmt)
@@ -1065,7 +1086,8 @@ class ChatService:
             created_at=chat.created_at,
             updated_at=chat.updated_at,
             last_message=last_message_data,
-            unread_count=unread_count
+            unread_count=unread_count,
+            match_id=chat.match_id
         )
     
     async def _format_message_response(

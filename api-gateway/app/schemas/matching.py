@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from datetime import datetime
 from shared.schemas.shared import Gender
 
@@ -133,8 +133,11 @@ class RecommendationProfile(BaseModel):
     age: int = Field(..., description="Возраст")
     city: str = Field(..., description="Город")
     avatar_url: Optional[str] = Field(None, description="URL аватарки")
-    similarity: Optional[float] = Field(None, description="Степень семантической схожести (0-1)")
-    combined_score: Optional[float] = Field(None, description="Комбинированный скор (similarity + близость по возрасту)")
+    similarity: Optional[float] = Field(None, description="Степень схожести (0-1)")
+    combined_score: Optional[float] = Field(None, description="Комбинированный скор")
+    about_me: Optional[str] = Field(None, description="О себе")
+    hobbies: Optional[str] = Field(None, description="Хобби")
+    red_flags: Optional[List[str]] = Field(None, description="Red flags")
 
 
 class RecommendationListResponse(BaseModel):
@@ -144,6 +147,55 @@ class RecommendationListResponse(BaseModel):
     lock_info: Optional[TargetedSearchLockInfo] = None
     applied_filters: dict = Field(...)
     sentiment_boost_applied: bool = Field(False, description="Был ли применён тональный ре-ранкинг")
+
+class QuestionAnswers(BaseModel):
+    """Ответы на 5 вопросов"""
+    question_1: str = Field(..., min_length=1, max_length=500, description="Ответ на вопрос 1")
+    question_2: str = Field(..., min_length=1, max_length=500, description="Ответ на вопрос 2")
+    question_3: str = Field(..., min_length=1, max_length=500, description="Ответ на вопрос 3")
+    question_4: str = Field(..., min_length=1, max_length=500, description="Ответ на вопрос 4")
+    question_5: str = Field(..., min_length=1, max_length=500, description="Ответ на вопрос 5")
+
+
+class LikeWithAnswersRequest(BaseModel):
+    target_user_id: str = Field(..., description="Keycloak ID пользователя")
+    answers: QuestionAnswers = Field(..., description="Ответы на 5 вопросов")
+
+class LikeWithAnswersResponse(BaseModel):
+    """Ответ на лайк с вопросами"""
+    status: str = Field(..., description="liked или matched")
+    message: str
+    match_id: Optional[int] = None
+    regular_match_id: Optional[int] = None
+    show_answers: bool = False
+    answers: Optional[Dict[str, Any]] = None
+
+
+class PendingLikeInfo(BaseModel):
+    """Входящий лайк с ответами"""
+    from_user_id: str
+    from_user_display_name: str
+    from_user_avatar: Optional[str] = None
+    answers: Dict[str, str]
+    questions: Optional[Dict[str, str]] = None
+    created_at: datetime
+
+class ReverseLikeRequest(BaseModel):
+    from_user_id: str = Field(..., description="ID пользователя, который лайкнул первым")
+    answers: QuestionAnswers = Field(..., description="Ответы на его вопросы")
+
+class DeclineLikeRequest(BaseModel):
+    from_user_id: str = Field(..., description="ID пользователя, чей лайк отклонить")
+
+class MatchAnswersResponse(BaseModel):
+    """Матч с ответами"""
+    match_id: int
+    partner: Dict[str, Any]
+    matched_at: datetime
+    my_answers: Dict[str, str]
+    my_questions: Optional[Dict[str, str]] = None
+    partner_answers: Dict[str, str]
+    partner_questions: Optional[Dict[str, str]] = None
 
 
 # ========== ADMIN SCHEMAS ==========

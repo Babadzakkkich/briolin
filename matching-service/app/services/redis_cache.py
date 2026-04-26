@@ -51,6 +51,10 @@ class RedisCache:
             await self.redis.delete(key)
         except Exception as e:
             logger.warning(f"Redis delete error: {e}")
+    
+    async def invalidate_user_cache(self, keycloak_id: str):
+        await self.delete(f"embedding:{keycloak_id}")
+        logger.info(f"Invalidated cache for user {keycloak_id[:8]}...")
 
     async def incr(self, key: str) -> int:
         if not self._connected:

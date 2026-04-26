@@ -17,12 +17,11 @@ from sqlalchemy import func, select, and_
 async def handle_match_created(event: Dict[str, Any]) -> bool:
     """
     Обработка события создания матча от matching-service.
-    Создаёт личный чат между двумя пользователями.
+    Создаёт личный чат между двумя пользователями и сохраняет ID матча.
     """
     try:
         base_event = BaseEvent(**event)
         
-        # Проверяем, не обрабатывали ли мы уже это событие
         if base_event.is_processed_by(settings.service_name):
             logger.debug(f"Event {base_event.event_id[:8]} already processed by chat-service")
             return True
@@ -37,14 +36,11 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
         
         logger.info(f"Processing match.created event: creating chat between {user1_id} and {user2_id}")
         
-        # Получаем профили пользователей для отображаемых имён
         profile_client = get_profile_service_client()
         
-        # Формируем отображаемые имена
         display_name1 = await profile_client.get_display_name(user1_id)
         display_name2 = await profile_client.get_display_name(user2_id)
         
-        # Получаем аватарки
         profile1 = await profile_client.get_profile_by_keycloak_id(user1_id)
         profile2 = await profile_client.get_profile_by_keycloak_id(user2_id)
         
@@ -61,7 +57,7 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
             username2 = profile2["basic"].get("username")
         
         async with async_session_factory() as session:
-            # Проверяем, существует ли уже чат между этими пользователями
+            # Проверяем существующий чат
             stmt = (
                 select(Chat)
                 .join(ChatParticipant, Chat.id == ChatParticipant.chat_id)
@@ -77,19 +73,23 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
             existing_chat = result.scalar_one_or_none()
             
             if existing_chat:
-                logger.info(f"Direct chat already exists between {user1_id} and {user2_id}: {existing_chat.id}")
+                # Обновляем match_id у существующего чата
+                if not existing_chat.match_id:
+                    existing_chat.match_id = user_data.get("regular_match_id") or user_data.get("match_id")
+                    await session.commit()
+                    logger.info(f"Updated match_id for existing chat {existing_chat.id}: {existing_chat.match_id}")
                 return True
             
-            # Создаём новый личный чат
+            # Создаём новый чат
             new_chat = Chat(
                 id=uuid.uuid4(),
                 type=ChatType.DIRECT,
                 status=ChatStatus.ACTIVE,
+                match_id=user_data.get("regular_match_id") or user_data.get("match_id")  # НОВОЕ
             )
             session.add(new_chat)
             await session.flush()
             
-            # Создаём участников
             participant1 = ChatParticipant(
                 chat_id=new_chat.id,
                 keycloak_id=user1_id,
@@ -108,7 +108,6 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
             )
             session.add_all([participant1, participant2])
             
-            # Сохраняем маппинг для быстрого доступа к партнёру
             direct_chat_mapping = {
                 user1_id: user2_id,
                 user2_id: user1_id
@@ -117,22 +116,21 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
             
             await session.commit()
             
-            logger.info(f"Direct chat created for match: {new_chat.id} between {user1_id} and {user2_id}")
+            logger.info(f"Direct chat created for match: {new_chat.id} (match_id={new_chat.match_id})")
             
-            # Отправляем WebSocket уведомления обоим пользователям о новом чате
+            # WebSocket уведомления
             chat_info = {
                 "type": "chat_created",
                 "chat_id": str(new_chat.id),
                 "participants": [user1_id, user2_id],
                 "created_by": "system",
+                "has_match_answers": new_chat.match_id is not None,
+                "match_id": new_chat.match_id,
                 "timestamp": datetime.utcnow().isoformat()
             }
             
-            # Уведомляем пользователей
             await websocket_manager.send_personal_message(chat_info, user1_id)
             await websocket_manager.send_personal_message(chat_info, user2_id)
-            
-            logger.info(f"WebSocket notifications sent for new chat {new_chat.id}")
             
             return True
             

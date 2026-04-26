@@ -1,4 +1,3 @@
-# app/api/v1/media.py
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Query
 from typing import List, Optional
 
@@ -18,6 +17,7 @@ from app.schemas.media import (
     AvatarResponse,
     ErrorResponse
 )
+from fastapi.responses import Response
 
 router = APIRouter(prefix="/media", tags=["Media"])
 
@@ -76,6 +76,85 @@ async def upload_avatar(
         logger.error(f"Failed to upload avatar: {e}")
         raise HTTPException(status_code=500, detail="Failed to upload avatar")
 
+
+@router.get(
+    "/my-avatar",
+    responses={
+        200: {"description": "Current avatar image"},
+        404: {"model": ErrorResponse, "description": "No current avatar found"}
+    },
+    summary="Get my current avatar",
+    description="Получить свою текущую аватарку (не нужно указывать ID)"
+)
+async def get_my_avatar(
+    current_user: dict = Depends(get_current_user),
+    media_service: MediaService = Depends(get_media_service)
+):
+    """
+    Получение своей текущей аватарки.
+    Автоматически находит аватарку с is_current=True.
+    """
+    try:
+        file_data, content_type = await media_service.get_my_avatar(
+            keycloak_id=current_user["keycloak_id"]
+        )
+        
+        return Response(
+            content=file_data,
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=300"
+            }
+        )
+        
+    except FileNotFoundException:
+        raise HTTPException(
+            status_code=404, 
+            detail="No current avatar found. Upload an avatar first."
+        )
+    except Exception as e:
+        logger.error(f"Failed to get current avatar: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get avatar")
+
+
+@router.get(
+    "/my-thumbnail",
+    responses={
+        200: {"description": "Current thumbnail image"},
+        404: {"model": ErrorResponse, "description": "No current thumbnail found"}
+    },
+    summary="Get my current thumbnail",
+    description="Получить свой текущий thumbnail (не нужно указывать ID)"
+)
+async def get_my_thumbnail(
+    current_user: dict = Depends(get_current_user),
+    media_service: MediaService = Depends(get_media_service)
+):
+    """
+    Получение своего текущего thumbnail.
+    Автоматически находит аватарку с is_current=True.
+    """
+    try:
+        file_data, content_type = await media_service.get_my_avatar_thumbnail(
+            keycloak_id=current_user["keycloak_id"]
+        )
+        
+        return Response(
+            content=file_data,
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=300"
+            }
+        )
+        
+    except FileNotFoundException:
+        raise HTTPException(
+            status_code=404, 
+            detail="No current thumbnail found. Upload an avatar first."
+        )
+    except Exception as e:
+        logger.error(f"Failed to get current thumbnail: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get thumbnail")
 
 @router.get(
     "/avatars",
@@ -143,7 +222,6 @@ async def get_avatar(
             avatar_id=avatar_id
         )
         
-        from fastapi.responses import Response
         return Response(
             content=file_data,
             media_type=content_type,
@@ -181,7 +259,6 @@ async def get_avatar_thumbnail(
             avatar_id=avatar_id
         )
         
-        from fastapi.responses import Response
         return Response(
             content=file_data,
             media_type=content_type,
@@ -196,6 +273,49 @@ async def get_avatar_thumbnail(
         logger.error(f"Failed to get thumbnail: {e}")
         raise HTTPException(status_code=404, detail="Thumbnail not found")
 
+
+@router.delete(
+    "/my-avatar",
+    status_code=status.HTTP_200_OK,
+    response_model=AvatarDeleteResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "No current avatar found"},
+        503: {"model": ErrorResponse, "description": "MinIO unavailable"}
+    },
+    summary="Delete my current avatar",
+    description="""
+    Удаление своей текущей аватарки (soft delete).
+    
+    - Автоматически находит аватарку с is_current=True
+    - Не нужно указывать avatar_id
+    - Следующая по дате загрузки становится текущей
+    - Аватарка помечается как удаленная, но файлы остаются в MinIO
+    """
+)
+async def delete_my_avatar(
+    current_user: dict = Depends(get_current_user),
+    media_service: MediaService = Depends(get_media_service)
+):
+    """
+    Удаление своей текущей аватарки.
+    После удаления следующая аватарка автоматически становится текущей.
+    """
+    try:
+        result = await media_service.delete_my_avatar(
+            keycloak_id=current_user["keycloak_id"]
+        )
+        
+        return result
+        
+    except FileNotFoundException:
+        raise HTTPException(
+            status_code=404,
+            detail="No current avatar to delete. Upload an avatar first."
+        )
+    except Exception as e:
+        logger.error(f"Failed to delete current avatar: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete avatar")
 
 @router.delete(
     "/avatar",

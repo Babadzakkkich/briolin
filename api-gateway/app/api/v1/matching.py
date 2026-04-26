@@ -15,7 +15,14 @@ from app.schemas.matching import (
     TargetedSearchLockInfo,
     ResetUserDataResponse,
     LikeLimitErrorResponse,
-    TargetedSearchLockedErrorResponse
+    TargetedSearchLockedErrorResponse,
+    LikeWithAnswersRequest,
+    LikeWithAnswersResponse,
+    PendingLikeInfo,
+    ReverseLikeRequest,
+    MatchAnswersResponse,
+    DeclineLikeRequest
+    
 )
 from shared.schemas.shared import Gender
 
@@ -29,29 +36,22 @@ security = HTTPBearer(auto_error=False)
     "/like",
     response_model=SwipeResponse,
     status_code=status.HTTP_200_OK,
-    summary="Лайкнуть профиль",
-    description="Поставить лайк профилю. Действует дневной лимит лайков.",
-    responses={
-        200: {"description": "Лайк успешно поставлен"},
-        400: {"description": "Неверные параметры запроса"},
-        401: {"description": "Не авторизован"},
-        404: {"description": "Пользователь не найден"},
-        409: {"description": "Уже был совершён свайп на этого пользователя"},
-        429: {"description": "Дневной лимит лайков исчерпан", "model": LikeLimitErrorResponse}
-    }
+    summary="⚠️ DEPRECATED: Обычный лайк",
+    description="Устаревший метод. Если у пользователя есть вопросы — вернет ошибку с указанием использовать /like-with-answers."
 )
 async def like_profile(
     request: Request,
     like_data: LikeRequest,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Поставить лайк профилю (с проверкой дневного лимита)"""
+    """Обычный лайк (устаревший)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
         status_code=response.status_code,
         headers=dict(response.headers)
     )
+
 
 
 @router.post(
@@ -81,6 +81,106 @@ async def dislike_profile(
         headers=dict(response.headers)
     )
 
+@router.post(
+    "/like-with-answers",
+    response_model=LikeWithAnswersResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Лайк с ответами на вопросы",
+    description="Лайк с обязательными ответами на 5 вопросов пользователя. Если взаимно — создается матч."
+)
+async def like_with_answers(
+    request: Request,
+    like_data: LikeWithAnswersRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Лайк с ответами на вопросы"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+    
+
+@router.post(
+    "/reverse-like",
+    response_model=LikeWithAnswersResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Ответный лайк",
+    description="Ответный лайк на входящий. Нужно ответить на вопросы пользователя."
+)
+async def reverse_like(
+    request: Request,
+    reverse_data: ReverseLikeRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Ответный лайк с ответами"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.post(
+    "/decline-like",
+    status_code=status.HTTP_200_OK,
+    summary="Отклонить лайк",
+    description="Отклонить входящий лайк."
+)
+async def decline_like(
+    request: Request,
+    decline_data: DeclineLikeRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Отклонить входящий лайк"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.get(
+    "/pending-likes",
+    response_model=List[PendingLikeInfo],
+    summary="Входящие лайки",
+    description="Получение входящих лайков с ответами на ваши вопросы."
+)
+async def get_pending_likes(
+    request: Request,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=50),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Входящие лайки с ответами"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+@router.get(
+    "/matches/{match_id}/answers",
+    response_model=MatchAnswersResponse,
+    summary="Матч с ответами",
+    description="Получение матча с ответами на вопросы друг друга."
+)
+async def get_match_answers(
+    match_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Матч с ответами"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
 
 @router.get(
     "/like-usage",

@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime, date
 from shared.schemas.shared import Gender
+from .questions import ProfileQuestionsResponse
 
 
 class BasicProfileCreate(BaseModel):
@@ -74,6 +75,7 @@ class FullProfileResponse(BaseModel):
     
     basic: BasicProfileResponse
     detailed: Optional[DetailedProfileResponse] = None
+    questions: Optional[ProfileQuestionsResponse] = None
 
 
 class FullProfileCreate(BaseModel):
