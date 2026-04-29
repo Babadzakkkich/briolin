@@ -1,16 +1,10 @@
 import type React from 'react';
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-
-import { ProfileStep } from './steps/ProfileStep';
-import { ResultStep } from './steps/ResultStep';
-import { TestStep } from './steps/TestStep';
-
-export type StepProps<TData = undefined> = {
-  onNext: (data?: TData) => void;
-  onRetry?: () => void;
-  data?: unknown;
-};
+import { ProfileStep } from '@/features/onboarding/steps/ProfileStep';
+import { ResultStep } from '@/features/onboarding/steps/ResultStep';
+import { TestStep } from '@/features/onboarding/steps/TestStep';
+import type { StepProps } from '@/features/onboarding/model/types';
 
 const STEPS: React.ComponentType<StepProps<unknown>>[] = [ProfileStep, TestStep, ResultStep];
 

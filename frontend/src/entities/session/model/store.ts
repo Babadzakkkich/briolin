@@ -13,6 +13,7 @@ const decodeJwt = (token: string): JwtPayload | null => {
 interface AuthState {
   accessToken: string | null;
   username: string | null;
+  keycloakId: string | null;
   isAuthenticated: boolean;
   isTestPassed: boolean;
   setAccessToken: (token: string | null) => void;
@@ -25,6 +26,7 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       accessToken: null,
       username: null,
+      keycloakId: null,
       isAuthenticated: false,
       isTestPassed: false,
       setAccessToken: (token) => {
@@ -33,10 +35,11 @@ export const useAuthStore = create<AuthState>()(
           accessToken: token,
           isAuthenticated: !!token,
           username: payload?.preferred_username ?? null,
+          keycloakId: payload?.sub ?? null,
         });
       },
       setTestPassed: (passed) => set({ isTestPassed: passed }),
-      clear: () => set({ accessToken: null, isAuthenticated: false, username: null, isTestPassed: false }),
+      clear: () => set({ accessToken: null, isAuthenticated: false, username: null, keycloakId: null, isTestPassed: false }),
     }),
     { name: 'auth' },
   ),

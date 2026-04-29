@@ -3,7 +3,7 @@ import { Button } from '@/shared/uikit/Button';
 import { Input } from '@/shared/uikit/Input';
 import { RadioCardGroup } from '@/shared/uikit/RadioCardGroup';
 import { Text } from '@/shared/uikit/Text';
-import type { StepProps } from '@/features/onboarding/OnboardingPage';
+import type { StepProps } from '@/features/onboarding/model/types';
 import { toast } from '@/shared/toast/toast';
 import { profileApi } from '@/entities/profile';
 import { DatePickerField } from '@/shared/uikit/DatePicker';

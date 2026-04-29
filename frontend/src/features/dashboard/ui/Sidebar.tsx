@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { LogoIcon } from '@/shared/icons/Logo';
-import { sessionApi, useAuthStore } from '@/entities/session';
+import { useAuthStore } from '@/entities/session';
 import { profileApi, useProfileStore } from '@/entities/profile';
 import {
   Briefcase,
@@ -14,6 +14,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
+import { useAuth } from '@/features/auth/useAuth';
 
 export function SidebarItem({
   to,
@@ -48,14 +49,15 @@ function UserCard() {
   const firstName = useProfileStore((p) => p.firstName);
   const lastName = useProfileStore((p) => p.lastName);
   const setProfile = useProfileStore((p) => p.setProfile);
-  const clear = useAuthStore((s) => s.clear);
-  const clearProfile = useProfileStore((p) => p.clear);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const navigate = useNavigate();
+  const { logout } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated && !firstName) {
-      profileApi.getMe().then((res) => setProfile(res.data.basic)).catch(() => {});
+      profileApi
+        .getMe()
+        .then((res) => setProfile(res.data.basic))
+        .catch(() => {});
     }
   }, [isAuthenticated, firstName, setProfile]);
 
@@ -67,10 +69,7 @@ function UserCard() {
         : '?';
 
   const handleLogout = async () => {
-    await sessionApi.logout().catch(() => {});
-    clear();
-    clearProfile();
-    navigate('/login');
+    await logout();
   };
 
   return (

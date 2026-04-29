@@ -41,7 +41,7 @@ export function AppLayout() {
   return (
     <>
       <div className='bg-surface min-h-screen'>
-        <header className='sticky top-0 backdrop-blur-sm'>
+        <header className='sticky top-0 px-2 backdrop-blur-sm'>
           <div className='mx-auto flex h-16 max-w-[1280px] items-center justify-between'>
             <Link to='/'>
               <div className='flex items-center gap-2'>

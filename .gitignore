@@ -225,3 +225,5 @@ dist-ssr
 chat-test-app
 CLAUDE.md
 frontend/package-lock.json
+/.claude
+/frontend/.claude

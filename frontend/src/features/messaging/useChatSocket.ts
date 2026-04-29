@@ -2,8 +2,16 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/entities/session';
 import type { WsMessage } from '@/entities/message';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-const WS_BASE = API_URL.replace(/^https?/, (m: string) => (m === 'https' ? 'wss' : 'ws'));
+const API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
+const WS_URL = (() => {
+  try {
+    const { protocol, host } = new URL(API_URL);
+    return `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/ws`;
+  } catch {
+    return 'ws://localhost:8000/ws';
+  }
+})();
 
 interface Options {
   onMessage: (msg: WsMessage) => void;
@@ -15,6 +23,8 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
 
+  const subscribedChats = useRef<Set<string>>(new Set());
+
   const send = useCallback((data: object) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(data));
@@ -22,12 +32,18 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
   }, []);
 
   const subscribe = useCallback(
-    (chatId: string) => send({ type: 'subscribe', chat_id: chatId }),
+    (chatId: string) => {
+      subscribedChats.current.add(chatId);
+      send({ type: 'subscribe', chat_id: chatId });
+    },
     [send],
   );
 
   const unsubscribe = useCallback(
-    (chatId: string) => send({ type: 'unsubscribe', chat_id: chatId }),
+    (chatId: string) => {
+      subscribedChats.current.delete(chatId);
+      send({ type: 'unsubscribe', chat_id: chatId });
+    },
     [send],
   );
 
@@ -39,33 +55,75 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
 
   useEffect(() => {
     if (!enabled) return;
-    const token = useAuthStore.getState().accessToken;
-    if (!token) return;
 
-    const socket = new WebSocket(`${WS_BASE}/ws?token=${token}`);
-    ws.current = socket;
+    let active = true;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let retryDelay = 1000;
+    let currentSocket: WebSocket | null = null;
 
-    socket.onmessage = (event) => {
-      try {
-        const msg: WsMessage = JSON.parse(event.data as string);
-        if (msg.type !== 'pong') onMessageRef.current(msg);
-      } catch {
-        // ignore malformed frames
-      }
-    };
+    function connect() {
+      const token = useAuthStore.getState().accessToken;
+      if (!token || !active) return;
 
-    const ping = setInterval(() => {
-      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }));
-    }, 30_000);
+      const socket = new WebSocket(`${WS_URL}?token=${token}`);
+      currentSocket = socket;
+      ws.current = socket;
 
-    socket.onclose = () => {
-      ws.current = null;
-      clearInterval(ping);
-    };
+      const ping = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }));
+      }, 30_000);
+
+      socket.onopen = () => {
+        if (!active) {
+          socket.close();
+          return;
+        }
+        retryDelay = 1000;
+        subscribedChats.current.forEach((chatId) => {
+          socket.send(JSON.stringify({ type: 'subscribe', chat_id: chatId }));
+        });
+      };
+
+      socket.onmessage = (event) => {
+        if (!active) return;
+        try {
+          const msg: WsMessage = JSON.parse(event.data as string);
+          if (msg.type !== 'pong') onMessageRef.current(msg);
+        } catch {}
+      };
+
+      socket.onerror = () => {
+        socket.close();
+      };
+
+      socket.onclose = () => {
+        clearInterval(ping);
+        if (ws.current === socket) ws.current = null;
+        currentSocket = null;
+        if (active) {
+          retryTimeout = setTimeout(connect, retryDelay);
+          retryDelay = Math.min(retryDelay * 2, 30_000);
+        }
+      };
+    }
+
+    connect();
 
     return () => {
-      clearInterval(ping);
-      socket.close();
+      active = false;
+      if (retryTimeout) clearTimeout(retryTimeout);
+      if (currentSocket) {
+        const s = currentSocket;
+        currentSocket = null;
+        s.onclose = null;
+        s.onerror = null;
+        if (s.readyState === WebSocket.CONNECTING) {
+          s.onopen = () => s.close();
+        } else {
+          s.close();
+        }
+        if (ws.current === s) ws.current = null;
+      }
     };
   }, [enabled]);
 

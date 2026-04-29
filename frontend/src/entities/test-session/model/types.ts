@@ -55,3 +55,7 @@ export interface TestHistory {
   history: TestHistoryItem[];
   total: number;
 }
+
+export interface CurrentTestResponse extends TestStartResponse {
+  total_answered?: number;
+}

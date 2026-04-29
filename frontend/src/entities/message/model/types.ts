@@ -35,8 +35,10 @@ export type WsEventType =
   | 'message'
   | 'typing'
   | 'read_receipt'
+  | 'bulk_read_receipt'
   | 'error'
   | 'connection'
+  | 'connection_established'
   | 'message_update'
   | 'message_delete'
   | 'user_online'
@@ -51,6 +53,7 @@ export interface WsMessage {
   display_name?: string;
   is_typing?: boolean;
   message_id?: string;
+  message_ids?: string[];
   timestamp?: string;
   connection_id?: string;
   user_id?: string;

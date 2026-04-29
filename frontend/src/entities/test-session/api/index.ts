@@ -1,6 +1,7 @@
 import { apiClient } from '@/shared/api/client';
 import type {
   TestStartResponse,
+  CurrentTestResponse,
   AnswerSubmitResponse,
   TestCompleteResponse,
   TestHistory,
@@ -9,7 +10,11 @@ import type {
 export const testSessionApi = {
   getHistory: () => apiClient.get<TestHistory>('/tests/history'),
 
-  start: () => apiClient.post<TestStartResponse>('/tests/start', {}),
+  start: (signal?: AbortSignal) =>
+    apiClient.post<TestStartResponse>('/tests/start', {}, { signal }),
+
+  getCurrent: (signal?: AbortSignal) =>
+    apiClient.get<CurrentTestResponse>('/tests/current', { signal }),
 
   submitAnswer: (sessionId: string, questionId: string, answer: string | number | boolean) =>
     apiClient.post<AnswerSubmitResponse>(`/tests/${sessionId}/answers/${questionId}`, { answer }),

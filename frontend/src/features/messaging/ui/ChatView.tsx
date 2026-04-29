@@ -1,5 +1,5 @@
 import { MessageCircle, Send } from 'lucide-react';
-import { MessageBubble, TypingIndicator } from '@/entities/message';
+import { MessageBubble } from '@/entities/message';
 import { ChatAvatar } from '@/entities/chat';
 import { Button } from '@/shared/uikit/Button';
 import { Loader } from '@/shared/uikit/Loader';
@@ -41,9 +41,26 @@ export function ChatView({
         <ChatAvatar name={chat.name} size='lg' />
         <div className='min-w-0 flex-1'>
           <p className='text-primary truncate text-[15px] font-semibold'>{chat.name ?? 'Чат'}</p>
-          <p className='text-secondary text-[12px]'>
-            {chat.type === 'GROUP' ? `${chat.participants.length} участников` : 'Личный чат'}
-          </p>
+          {typingNames.length > 0 ? (
+            <span className='text-accent flex items-center gap-1.5 text-[12px]'>
+              <span className='flex gap-0.5'>
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className='bg-accent h-1 w-1 animate-bounce rounded-full'
+                    style={{ animationDelay: `${i * 0.15}s` }}
+                  />
+                ))}
+              </span>
+              {typingNames.length === 1
+                ? `${typingNames[0]} печатает`
+                : 'Несколько человек печатают'}
+            </span>
+          ) : (
+            <p className='text-secondary text-[12px]'>
+              {chat.type === 'GROUP' ? `${chat.participants.length} участников` : 'Личный чат'}
+            </p>
+          )}
         </div>
       </div>
       <div className='flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-5'>
@@ -63,7 +80,6 @@ export function ChatView({
             />
           ))
         )}
-        <TypingIndicator names={typingNames} />
         <div ref={messagesEndRef} />
       </div>
       <div className='border-border shrink-0 border-t bg-white px-6 py-4'>

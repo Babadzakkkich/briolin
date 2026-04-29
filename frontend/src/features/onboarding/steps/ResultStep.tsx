@@ -1,6 +1,6 @@
 import { Button } from '@/shared/uikit/Button';
 import { Text } from '@/shared/uikit/Text';
-import type { StepProps } from '../OnboardingPage';
+import type { StepProps } from '@/features/onboarding/model/types';
 import { CircleCheck, CircleX } from 'lucide-react';
 
 interface TestResults {
