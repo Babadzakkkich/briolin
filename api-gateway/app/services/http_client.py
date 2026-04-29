@@ -21,6 +21,7 @@ class HTTPClient:
         self.testing_service_url = settings.services.testing
         self.search_service_url = settings.services.search
         self.chat_service_url = settings.services.chat
+        self.media_service_url = settings.services.media
     
     def _get_service_url(self, path: str) -> str:
         """Определяет URL сервиса по пути"""
@@ -45,6 +46,8 @@ class HTTPClient:
             return self.profile_service_url
         elif path.startswith("/api/v1/internal/tests"):
             return self.testing_service_url
+        elif path.startswith("/api/v1/media"):
+            return self.media_service_url
         else:
             return self.auth_service_url
     
@@ -63,19 +66,15 @@ class HTTPClient:
         
         service_url = self._get_service_url(path)
         
-        # Формируем URL для целевого сервиса
         target_url = urljoin(service_url.rstrip("/") + "/", path.lstrip("/"))
         
-        # Формируем заголовки
         headers = {}
-        
-        # Копируем оригинальные заголовки (кроме host и content-length)
         for header_name, header_value in request.headers.items():
             header_name_lower = header_name.lower()
+
             if header_name_lower not in ['host', 'content-length']:
                 headers[header_name] = header_value
         
-        # Передаем внутренний токен если есть
         internal_token = request.headers.get("x-internal-token")
         signature = request.headers.get("x-token-signature")
         
@@ -84,17 +83,69 @@ class HTTPClient:
             headers["x-token-signature"] = signature
             logger.debug(f"Proxying with internal token: {internal_token[:30]}...")
         
-        # Получаем тело запроса
+        content_type = request.headers.get("content-type", "")
+        
+        if "multipart/form-data" in content_type:
+            if "content-type" in headers:
+                del headers["content-type"]
+            
+            form_data = await request.form()
+            
+            files = []
+            data = {}
+            
+            for key, value in form_data.items():
+                if hasattr(value, 'filename') and hasattr(value, 'read') and hasattr(value, 'content_type'):
+                    file_content = await value.read()
+                    files.append(
+                        (key, (value.filename, file_content, value.content_type))
+                    )
+                    logger.debug(f"Added file: {key} -> {value.filename} ({len(file_content)} bytes)")
+                else:
+                    # Это обычное поле
+                    data[key] = value
+                    logger.debug(f"Added data field: {key} -> {value}")
+            
+            logger.info(f"Proxying multipart request {request.method} {path} -> {target_url}")
+            logger.debug(f"Files count: {len(files)}, Data fields: {list(data.keys())}")
+            
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.request(
+                        method=request.method,
+                        url=target_url,
+                        headers=headers,
+                        data=data,
+                        files=files,
+                        params=request.query_params
+                    )
+                    
+                    logger.debug(f"Proxied to service: {response.status_code}")
+                    return response
+            except Exception as e:
+                logger.error(f"Error proxying multipart request: {e}", exc_info=True)
+                raise
+        
+        # Для обычных запросов (включая JSON)
         body = None
         if request.method in ["POST", "PUT", "PATCH"]:
-            body_bytes = await request.body()
-            if body_bytes:
-                try:
-                    body_json = json.loads(body_bytes.decode())
-                    logger.debug(f"Request body: {body_json}")
+            try:
+                body_bytes = await request.body()
+                if body_bytes:
+                    # Логируем тело запроса для отладки
+                    try:
+                        body_json = json.loads(body_bytes.decode())
+                        logger.debug(f"Request body (JSON): {body_json}")
+                    except json.JSONDecodeError:
+                        logger.debug(f"Request body (non-JSON): {body_bytes[:200]}...")
+                    except Exception as e:
+                        logger.debug(f"Request body (raw): {body_bytes[:200]}...")
                     body = body_bytes
-                except:
-                    body = body_bytes
+            except RuntimeError as e:
+                if "Stream consumed" in str(e):
+                    logger.error("Stream already consumed, cannot proxy request")
+                    raise ServiceUnavailableException("Stream already consumed")
+                raise
         
         logger.info(f"Proxying {request.method} {path} -> {target_url}")
         
@@ -103,7 +154,7 @@ class HTTPClient:
                 response = await client.request(
                     method=request.method,
                     url=target_url,
-                    headers=headers,
+                    headers=headers,  # Теперь включает Content-Type
                     content=body,
                     params=request.query_params
                 )
@@ -114,8 +165,13 @@ class HTTPClient:
         except httpx.ConnectError:
             logger.error(f"Cannot connect to service at {service_url}")
             raise ServiceUnavailableException("service")
+        except httpx.TimeoutException:
+            logger.error(f"Timeout connecting to service at {service_url}")
+            raise ServiceUnavailableException("service")
         except Exception as e:
-            logger.error(f"Error proxying request: {e}")
+            logger.error(f"Error proxying request: {e}", exc_info=True)
             raise ServiceUnavailableException("service")
 
+
+# Глобальный экземпляр клиента
 http_client = HTTPClient()

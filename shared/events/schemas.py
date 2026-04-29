@@ -13,6 +13,11 @@ class EventType(str, Enum):
     USER_PROFILE_UPDATE_REQUESTED = "user.profile_update_requested"
     USER_PROFILE_UPDATED = "user.profile_updated"
     
+    # События аватарок
+    AVATAR_UPLOADED = "avatar.uploaded"
+    AVATAR_DELETED = "avatar.deleted"
+    AVATAR_UPDATED = "avatar.updated"
+    
     # События статуса
     USER_STATUS_CHANGE_REQUESTED = "user.status_change_requested"
     USER_STATUS_CHANGED = "user.status_changed"

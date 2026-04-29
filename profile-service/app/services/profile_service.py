@@ -9,7 +9,7 @@ from app.database.models import BasicProfile, DetailedProfile
 from app.database.session import async_session_factory
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.profile import (
-    BasicProfileCreate, DetailedProfileCreate, FullProfileUpdate
+    BasicProfileCreate, BasicProfileResponse, DetailedProfileCreate, DetailedProfileResponse, FullProfileResponse, FullProfileUpdate
 )
 from app.services.keycloak_client import KeycloakClient
 
@@ -48,9 +48,10 @@ class ProfileService:
         keycloak_id: str,
         basic_data: BasicProfileCreate,
         current_user: dict
-    ) -> Dict[str, Any]:
+    ) -> FullProfileResponse:
         """
-        АСИНХРОННОЕ создание только базового профиля через SAGA
+        СИНХРОННОЕ создание базового профиля
+        Возвращает созданный профиль с кодом 201
         """
         # Проверяем права пользователя
         if current_user["keycloak_id"] != keycloak_id:
@@ -60,57 +61,49 @@ class ProfileService:
         existing = await self._get_basic_profile_by_keycloak_id(keycloak_id)
         if existing:
             logger.info(f"Basic profile already exists for {keycloak_id}")
-            full_profile = await self.get_full_profile_by_keycloak_id(keycloak_id)
-            return {
-                "status": "success",
-                "profile": full_profile,
-                "already_exists": True,
-                "message": "Basic profile already exists"
-            }
+            # Возвращаем существующий профиль
+            return await self.get_full_profile_by_keycloak_id(keycloak_id)
         
-        # Генерируем ID саги
-        saga_id = str(uuid.uuid4())
-        
-        # Шаг 1: Создание базового профиля
-        await self.saga_worker.create_saga_outbox(
-            saga_id=saga_id,
-            saga_name="profile_creation",
-            step_name="create_basic_profile",
-            event_type="saga.step.create_basic_profile",
-            payload={
-                "keycloak_id": keycloak_id,
-                "basic_data": basic_data.model_dump()
-            },
-            headers={
-                "source_service": "profile-service",
-                "correlation_id": saga_id
-            }
+        # Создаем базовый профиль
+        new_profile = BasicProfile(
+            keycloak_id=keycloak_id,
+            first_name=basic_data.first_name,
+            last_name=basic_data.last_name,
+            gender=basic_data.gender,
+            date_of_birth=basic_data.date_of_birth,
+            city=basic_data.city,
+            online=False
         )
         
-        # Шаг 2: Публикация события о создании базового профиля
-        await self.saga_worker.create_saga_outbox(
-            saga_id=saga_id,
-            saga_name="profile_creation",
-            step_name="publish_profile_created",
-            event_type="saga.step.publish_profile_created",
-            payload={},
-            headers={
-                "source_service": "profile-service",
-                "correlation_id": saga_id,
-                "depends_on": "create_basic_profile"
-            }
-        )
-        
+        self.db.add(new_profile)
         await self.db.commit()
+        await self.db.refresh(new_profile)
         
-        logger.info(f"Basic profile creation initiated for {keycloak_id} with saga_id: {saga_id}")
+        logger.info(f"Basic profile created: {new_profile.id} for user {keycloak_id}")
         
-        return {
-            "status": "accepted",
-            "message": "Basic profile creation initiated",
-            "saga_id": saga_id,
-            "check_status_url": f"/api/v1/profiles/saga/{saga_id}/status"
-        }
+        # Публикуем событие о создании профиля (асинхронно, не блокируя ответ)
+        try:
+            await self.event_service.publish_profile_updated(
+                keycloak_id=keycloak_id,
+                updated_fields={
+                    "first_name": basic_data.first_name,
+                    "last_name": basic_data.last_name,
+                    "profile_created": True
+                }
+            )
+            
+            # Отправляем запрос на обновление имени в Keycloak
+            await self.event_service.publish_keycloak_update_requested(
+                keycloak_id=keycloak_id,
+                first_name=basic_data.first_name,
+                last_name=basic_data.last_name
+            )
+        except Exception as e:
+            # Логируем ошибку публикации, но не блокируем ответ
+            logger.error(f"Failed to publish profile created event: {e}")
+        
+        # Возвращаем полный профиль
+        return await self.get_full_profile_by_keycloak_id(keycloak_id)
 
 
     async def create_detailed_profile(
@@ -118,9 +111,10 @@ class ProfileService:
         keycloak_id: str,
         detailed_data: DetailedProfileCreate,
         current_user: dict
-    ) -> Dict[str, Any]:
+    ) -> FullProfileResponse:
         """
-        АСИНХРОННОЕ создание только детального профиля через SAGA
+        СИНХРОННОЕ создание детального профиля
+        Возвращает полный профиль с кодом 201
         """
         # Проверяем права пользователя
         if current_user["keycloak_id"] != keycloak_id:
@@ -138,61 +132,35 @@ class ProfileService:
         
         if existing_detailed:
             logger.info(f"Detailed profile already exists for {keycloak_id}")
-            full_profile = await self.get_full_profile_by_keycloak_id(keycloak_id)
-            return {
-                "status": "success",
-                "profile": full_profile,
-                "already_exists": True,
-                "message": "Detailed profile already exists"
-            }
+            # Возвращаем существующий полный профиль
+            return await self.get_full_profile_by_keycloak_id(keycloak_id)
         
-        # Генерируем ID саги
-        saga_id = str(uuid.uuid4())
-        
-        # Шаг 1: Создание детального профиля (без зависимостей, т.к. basic уже есть)
-        await self.saga_worker.create_saga_outbox(
-            saga_id=saga_id,
-            saga_name="profile_creation",
-            step_name="create_detailed_profile",
-            event_type="saga.step.create_detailed_profile",
-            payload={
-                "keycloak_id": keycloak_id,
-                "basic_profile_id": basic_profile.id,
-                "detailed_data": detailed_data.model_dump()
-            },
-            headers={
-                "source_service": "profile-service",
-                "correlation_id": saga_id
-            }
+        # Создаем детальный профиль
+        new_detailed = DetailedProfile(
+            basic_profile_id=basic_profile.id,
+            about_me=detailed_data.about_me,
+            education=detailed_data.education,
+            hobbies=detailed_data.hobbies,
+            partner_preferences=detailed_data.partner_preferences
         )
         
-        # Шаг 2: Публикация события об обновлении профиля (добавлен детальный)
-        await self.saga_worker.create_saga_outbox(
-            saga_id=saga_id,
-            saga_name="profile_creation",
-            step_name="publish_profile_updated",
-            event_type="saga.step.publish_profile_updated",
-            payload={
-                "keycloak_id": keycloak_id,
-                "updated_fields": {"detailed_profile_created": True}
-            },
-            headers={
-                "source_service": "profile-service",
-                "correlation_id": saga_id,
-                "depends_on": "create_detailed_profile"
-            }
-        )
-        
+        self.db.add(new_detailed)
         await self.db.commit()
+        await self.db.refresh(new_detailed)
         
-        logger.info(f"Detailed profile creation initiated for {keycloak_id} with saga_id: {saga_id}")
+        logger.info(f"Detailed profile created: {new_detailed.id} for user {keycloak_id}")
         
-        return {
-            "status": "accepted",
-            "message": "Detailed profile creation initiated",
-            "saga_id": saga_id,
-            "check_status_url": f"/api/v1/profiles/saga/{saga_id}/status"
-        }
+        # Публикуем событие об обновлении профиля (добавлен детальный)
+        try:
+            await self.event_service.publish_profile_updated(
+                keycloak_id=keycloak_id,
+                updated_fields={"detailed_profile_created": True}
+            )
+        except Exception as e:
+            logger.error(f"Failed to publish profile updated event: {e}")
+        
+        # Возвращаем полный профиль
+        return await self.get_full_profile_by_keycloak_id(keycloak_id)
     
     # ========== ОБНОВЛЕНИЕ ПРОФИЛЯ ==========
     
@@ -394,7 +362,7 @@ class ProfileService:
         
         return status
 
-    # ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ (с использованием self.db) ==========
+    # ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
 
     async def _get_basic_profile_by_keycloak_id(self, keycloak_id: str) -> Optional[BasicProfile]:
         """Получение базового профиля по keycloak_id (внутренний метод)"""
@@ -402,7 +370,7 @@ class ProfileService:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_full_profile_by_keycloak_id(self, keycloak_id: str) -> Dict[str, Any]:
+    async def get_full_profile_by_keycloak_id(self, keycloak_id: str) -> FullProfileResponse:
         """Получение полного профиля по keycloak_id"""
         stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
         result = await self.db.execute(stmt)
@@ -415,34 +383,38 @@ class ProfileService:
         result = await self.db.execute(stmt)
         detailed = result.scalar_one_or_none()
         
-        response_data = {
-            "basic": {
-                "id": basic.id,
-                "keycloak_id": basic.keycloak_id,
-                "first_name": basic.first_name,
-                "last_name": basic.last_name,
-                "gender": basic.gender.value if hasattr(basic.gender, 'value') else basic.gender,
-                "date_of_birth": basic.date_of_birth.isoformat() if basic.date_of_birth else None,
-                "city": basic.city,
-                "online": basic.online,
-                "created_at": basic.created_at.isoformat() if basic.created_at else None,
-                "updated_at": basic.updated_at.isoformat() if basic.updated_at else None,
-                "last_login_at": basic.last_login_at.isoformat() if basic.last_login_at else None
-            }
-        }
+        # Преобразуем BasicProfile в BasicProfileResponse
+        basic_response = BasicProfileResponse(
+            id=basic.id,
+            keycloak_id=basic.keycloak_id,
+            first_name=basic.first_name,
+            last_name=basic.last_name,
+            gender=basic.gender,
+            date_of_birth=basic.date_of_birth,
+            city=basic.city,
+            online=basic.online,
+            avatar_url=basic.avatar_url,
+            thumbnail_url=basic.thumbnail_url,
+            created_at=basic.created_at,
+            updated_at=basic.updated_at,
+            last_login_at=basic.last_login_at
+        )
         
+        # Преобразуем DetailedProfile в DetailedProfileResponse если есть
+        detailed_response = None
         if detailed:
-            response_data["detailed"] = {
-                "id": detailed.id,
-                "about_me": detailed.about_me,
-                "education": detailed.education,
-                "hobbies": detailed.hobbies,
-                "partner_preferences": detailed.partner_preferences
-            }
-        else:
-            response_data["detailed"] = None
+            detailed_response = DetailedProfileResponse(
+                id=detailed.id,
+                about_me=detailed.about_me,
+                education=detailed.education,
+                hobbies=detailed.hobbies,
+                partner_preferences=detailed.partner_preferences
+            )
         
-        return response_data
+        return FullProfileResponse(
+            basic=basic_response,
+            detailed=detailed_response
+        )
 
     async def delete_profiles_by_keycloak_id(self, keycloak_id: str) -> bool:
         try:
@@ -597,6 +569,8 @@ class ProfileService:
                         "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
                         "city": profile.city,
                         "online": profile.online,
+                        "avatar_url": profile.avatar_url,
+                        "thumbnail_url": profile.thumbnail_url,
                         "created_at": profile.created_at.isoformat() if profile.created_at else None,
                         "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
                         "last_login_at": profile.last_login_at.isoformat() if profile.last_login_at else None
@@ -774,6 +748,8 @@ class ProfileService:
                         "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
                         "city": profile.city,
                         "online": profile.online,
+                        "avatar_url": profile.avatar_url,  # Добавляем
+                        "thumbnail_url": profile.thumbnail_url,  # Добавляем
                         "created_at": profile.created_at.isoformat() if profile.created_at else None,
                         "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
                         "last_login_at": profile.last_login_at.isoformat() if profile.last_login_at else None
