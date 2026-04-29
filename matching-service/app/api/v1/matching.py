@@ -188,7 +188,16 @@ async def decline_like(
     "/pending-likes",
     response_model=List[PendingLikeInfo],
     summary="Входящие лайки с ответами",
-    description="Получение списка входящих лайков с ответами на ваши вопросы."
+    description="""
+    Получение списка входящих лайков с ответами на ваши вопросы.
+    
+    Возвращает расширенную информацию о профиле отправителя:
+    - Базовая информация (имя, возраст, город, аватар)
+    - О себе (about_me)
+    - Хобби (hobbies)
+    - Red flags
+    - Предпочтения партнёра (partner_preferences)
+    """
 )
 async def get_pending_likes(
     page: int = Query(1, ge=1),
@@ -196,7 +205,7 @@ async def get_pending_likes(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Получение входящих лайков с ответами"""
+    """Получение входящих лайков с ответами и расширенной информацией о профиле"""
     return await service.get_pending_likes(
         user_id=current_user["keycloak_id"],
         page=page,

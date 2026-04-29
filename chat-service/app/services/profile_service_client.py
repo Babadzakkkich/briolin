@@ -80,12 +80,19 @@ class ProfileServiceClient:
         logger.warning(f"Using fallback for display name: {keycloak_id[:8]}...")
         return keycloak_id[:8]
     
+    async def get_thumbnail_url(self, keycloak_id: str) -> Optional[str]:
+        """Получение URL thumbnail пользователя"""
+        profile = await self.get_basic_profile_by_keycloak_id(keycloak_id)
+        if profile:
+            return profile.get("thumbnail_url") or profile.get("avatar_url")
+        return None
+    
     async def get_avatar_url(self, keycloak_id: str) -> Optional[str]:
         """Получение URL аватарки пользователя"""
         profile = await self.get_profile_by_keycloak_id(keycloak_id)
         
         if profile and "basic" in profile:
-            return profile["basic"].get("avatar_url") or profile["basic"].get("thumbnail_url")
+            return profile["basic"].get("thumbnail_url") or profile["basic"].get("avatar_url")
         
         return None
 

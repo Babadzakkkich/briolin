@@ -103,7 +103,7 @@ async def get_my_avatar(
             content=file_data,
             media_type=content_type,
             headers={
-                "Cache-Control": "public, max-age=300"
+                "Cache-Control": "private, max-age=300"
             }
         )
         
@@ -143,7 +143,7 @@ async def get_my_thumbnail(
             content=file_data,
             media_type=content_type,
             headers={
-                "Cache-Control": "public, max-age=300"
+                "Cache-Control": "private, max-age=300"
             }
         )
         

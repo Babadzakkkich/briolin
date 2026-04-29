@@ -22,20 +22,24 @@ class LikeWithAnswersResponse(BaseModel):
     status: str = Field(..., description="liked или matched")
     message: str
     match_id: Optional[int] = None
-    regular_match_id: Optional[int] = None
     show_answers: bool = Field(False, description="Показывать ли ответы")
     answers: Optional[Dict[str, Any]] = None
 
 
 class PendingLikeInfo(BaseModel):
-    """Информация о входящем лайке"""
+    """Расширенная информация о входящем лайке"""
     from_user_id: str
     from_user_display_name: str
+    from_user_age: int = Field(0, description="Возраст пользователя")
+    from_user_city: str = Field("", description="Город пользователя")
     from_user_avatar: Optional[str] = None
+    from_user_about_me: str = Field("", description="О себе")
+    from_user_hobbies: str = Field("", description="Хобби")
+    from_user_red_flags: List[str] = Field(default_factory=list, description="Red flags")
+    from_user_partner_preferences: str = Field("", description="Предпочтения партнёра")
     answers: Dict[str, str]
     questions: Optional[Dict[str, str]] = None
     created_at: datetime
-
 
 class ReverseLikeRequest(BaseModel):
     """Запрос на ответный лайк"""

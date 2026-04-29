@@ -132,14 +132,6 @@ class MatchingService:
             user2_questions=q2 if is_user1_a else q1,
         )
         self.db.add(match)
-        
-        # Создаем обычный матч для совместимости с chat-service
-        regular_match = Match(
-            user1_id=user_a,
-            user2_id=user_b,
-            is_active=True
-        )
-        self.db.add(regular_match)
         await self.db.flush()
         
         # Обновляем статусы лайков
@@ -170,7 +162,7 @@ class MatchingService:
             await event_publisher.publish_match_created(
                 user1_id, 
                 user2_id, 
-                match_id=regular_match.id
+                match_id=match.id
             )
         except Exception as e:
             logger.error(f"Failed to publish match event: {e}")
@@ -179,7 +171,6 @@ class MatchingService:
             "status": "matched",
             "message": "Взаимный лайк! Матч создан.",
             "match_id": match.id,
-            "regular_match_id": regular_match.id,
             "show_answers": True,
             "answers": {
                 "my_answers": user1_answers,
@@ -449,6 +440,7 @@ class MatchingService:
         """
         Получение входящих лайков с ответами.
         Пользователь видит, кто его лайкнул и какие ответы дал.
+        Теперь возвращает расширенную информацию о профиле отправителя.
         """
         # Получаем свои вопросы (для контекста)
         my_questions = await profile_client.get_user_questions(user_id)
@@ -470,24 +462,43 @@ class MatchingService:
         
         pending = []
         for like in likes:
-            profile = await profile_client.get_basic_profile(like.from_user_id)
+            # Получаем полный профиль отправителя (базовый + детальный)
+            profile = await profile_client.get_full_profile_for_display(like.from_user_id)
             
-            display_name = like.from_user_id[:8]
-            avatar_url = None
             if profile:
-                first = profile.get('first_name', '')
-                last = profile.get('last_name', '')
-                display_name = f"{first} {last}".strip() or like.from_user_id[:8]
-                avatar_url = profile.get('avatar_url') or profile.get('thumbnail_url')
+                # Используем расширенный профиль
+                like_info = {
+                    "from_user_id": like.from_user_id,
+                    "from_user_display_name": profile["display_name"],
+                    "from_user_age": profile["age"],
+                    "from_user_city": profile["city"],
+                    "from_user_avatar": profile["avatar_url"],
+                    "from_user_about_me": profile["about_me"],
+                    "from_user_hobbies": profile["hobbies"],
+                    "from_user_red_flags": profile["red_flags"],
+                    "from_user_partner_preferences": profile["partner_preferences"],
+                    "answers": like.answers,
+                    "questions": my_questions,
+                    "created_at": like.created_at.isoformat() if like.created_at else None
+                }
+            else:
+                # Fallback: минимальная информация
+                like_info = {
+                    "from_user_id": like.from_user_id,
+                    "from_user_display_name": like.from_user_id[:8],
+                    "from_user_age": 0,
+                    "from_user_city": "",
+                    "from_user_avatar": None,
+                    "from_user_about_me": "",
+                    "from_user_hobbies": "",
+                    "from_user_red_flags": [],
+                    "from_user_partner_preferences": "",
+                    "answers": like.answers,
+                    "questions": my_questions,
+                    "created_at": like.created_at.isoformat() if like.created_at else None
+                }
             
-            pending.append({
-                "from_user_id": like.from_user_id,
-                "from_user_display_name": display_name,
-                "from_user_avatar": avatar_url,
-                "answers": like.answers,
-                "questions": my_questions,
-                "created_at": like.created_at.isoformat() if like.created_at else None
-            })
+            pending.append(like_info)
         
         return pending
 
@@ -1212,11 +1223,12 @@ class MatchingService:
                 about_me=item.get('about_me'),
                 hobbies=item.get('hobbies'),
                 red_flags=item.get('red_flags'),
+                partner_preferences=item.get('partner_preferences'),  # ДОБАВЛЯЕМ
                 similarity=round(similarity, 4),
                 combined_score=round(combined_score, 4),
             )
             recommendations.append(rec)
-        
+
         # Добавляем входящие лайки в начало
         incoming_profiles = []
         existing_keys = {r.keycloak_id for r in recommendations}
@@ -1226,7 +1238,7 @@ class MatchingService:
                 if profile:
                     age = self._calculate_age(profile.get('date_of_birth'))
                     
-                    # Получаем детальный профиль для about_me, hobbies, red_flags
+                    # Получаем детальный профиль для about_me, hobbies, red_flags, partner_preferences
                     detailed = await profile_client.get_detailed_profile(like_user_id)
                     
                     incoming_profiles.append(RecommendationProfile(
@@ -1238,6 +1250,7 @@ class MatchingService:
                         about_me=detailed.get('about_me') if detailed else None,
                         hobbies=detailed.get('hobbies') if detailed else None,
                         red_flags=detailed.get('red_flags') if detailed else None,
+                        partner_preferences=detailed.get('partner_preferences') if detailed else None,  # ДОБАВЛЯЕМ
                         similarity=1.0,
                         combined_score=1.0,
                     ))

@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 from app.core.config import settings
 from app.core.logger import logger
 from app.core.exceptions import ProfileServiceException
+from datetime import datetime
 
 
 class ProfileServiceClient:
@@ -45,6 +46,42 @@ class ProfileServiceClient:
         if result:
             return result.get("detailed")
         return None
+    
+    async def get_full_profile_for_display(self, keycloak_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Получение полного профиля для отображения (базовый + детальный).
+        Возвращает объединённые данные или None.
+        """
+        full_profile = await self._request("GET", f"/api/v1/internal/profiles/{keycloak_id}")
+        if not full_profile:
+            return None
+        
+        basic = full_profile.get("basic", {})
+        detailed = full_profile.get("detailed") or {}
+        
+        # Вычисляем возраст
+        age = 0
+        date_of_birth = basic.get("date_of_birth")
+        if date_of_birth:
+            try:
+                birth = datetime.fromisoformat(date_of_birth).date()
+                today = datetime.utcnow().date()
+                age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+                age = max(0, age)
+            except:
+                pass
+        
+        return {
+            "keycloak_id": basic.get("keycloak_id", keycloak_id),
+            "display_name": f"{basic.get('first_name', '')} {basic.get('last_name', '')}".strip() or keycloak_id[:8],
+            "age": age,
+            "city": basic.get("city", ""),
+            "avatar_url": basic.get("thumbnail_url") or basic.get("avatar_url"),
+            "about_me": detailed.get("about_me", ""),
+            "hobbies": detailed.get("hobbies", ""),
+            "red_flags": detailed.get("red_flags", []),
+            "partner_preferences": detailed.get("partner_preferences", ""),
+        }
     
     async def get_user_questions(self, keycloak_id: str) -> Optional[Dict[str, str]]:
         """

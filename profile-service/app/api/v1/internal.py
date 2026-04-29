@@ -128,6 +128,8 @@ async def get_internal_basic_profile(
             "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
             "city": profile.city,
             "online": profile.online,
+            "avatar_url": profile.avatar_url,
+            "thumbnail_url": profile.thumbnail_url,
             "created_at": profile.created_at.isoformat() if profile.created_at else None,
             "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
             "last_login_at": profile.last_login_at.isoformat() if profile.last_login_at else None

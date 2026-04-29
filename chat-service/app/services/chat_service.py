@@ -1051,7 +1051,8 @@ class ChatService:
             if partner_id:
                 partner_profile = await self._get_profile_info(partner_id)
                 chat_name = partner_profile["display_name"]
-                chat_avatar = partner_profile["avatar_url"]
+                # Используем thumbnail аватарку партнёра для чата
+                chat_avatar = partner_profile.get("thumbnail_url") or partner_profile.get("avatar_url")
             
             for p in chat.participants:
                 if p.left_at is None:

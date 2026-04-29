@@ -50,10 +50,12 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
         username2 = None
         
         if profile1 and "basic" in profile1:
-            avatar1 = profile1["basic"].get("avatar_url") or profile1["basic"].get("thumbnail_url")
+            # Для чатов используем thumbnail
+            avatar1 = profile1["basic"].get("thumbnail_url") or profile1["basic"].get("avatar_url")
             username1 = profile1["basic"].get("username")
         if profile2 and "basic" in profile2:
-            avatar2 = profile2["basic"].get("avatar_url") or profile2["basic"].get("thumbnail_url")
+            # Для чатов используем thumbnail
+            avatar2 = profile2["basic"].get("thumbnail_url") or profile2["basic"].get("avatar_url")
             username2 = profile2["basic"].get("username")
         
         async with async_session_factory() as session:
@@ -75,7 +77,7 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
             if existing_chat:
                 # Обновляем match_id у существующего чата
                 if not existing_chat.match_id:
-                    existing_chat.match_id = user_data.get("regular_match_id") or user_data.get("match_id")
+                    existing_chat.match_id = user_data.get("match_id")
                     await session.commit()
                     logger.info(f"Updated match_id for existing chat {existing_chat.id}: {existing_chat.match_id}")
                 return True
@@ -85,7 +87,7 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
                 id=uuid.uuid4(),
                 type=ChatType.DIRECT,
                 status=ChatStatus.ACTIVE,
-                match_id=user_data.get("regular_match_id") or user_data.get("match_id")  # НОВОЕ
+                match_id=user_data.get("match_id")
             )
             session.add(new_chat)
             await session.flush()
@@ -113,6 +115,10 @@ async def handle_match_created(event: Dict[str, Any]) -> bool:
                 user2_id: user1_id
             }
             new_chat.direct_chat_partner_mapping = json.dumps(direct_chat_mapping)
+            
+            # Устанавливаем аватарку чата (thumbnail второго участника)
+            # _format_chat_response переопределит для каждого пользователя
+            new_chat.avatar_url = avatar2 or avatar1
             
             await session.commit()
             

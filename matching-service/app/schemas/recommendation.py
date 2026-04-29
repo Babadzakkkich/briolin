@@ -29,6 +29,7 @@ class RecommendationProfile(BaseModel):
     about_me: Optional[str] = Field(None, description="О себе")
     hobbies: Optional[str] = Field(None, description="Хобби")
     red_flags: Optional[List[str]] = Field(None, description="Red flags")
+    partner_preferences: Optional[str] = Field(None, description="Предпочтения партнёра")
 
 
 class RecommendationListResponse(BaseModel):
