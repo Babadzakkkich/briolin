@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
-from app.services.auth_service import AuthService
-from app.dependencies import get_auth_service
 from app.core.exceptions import UserAlreadyExistsException, ValidationException
+from app.dependencies import get_auth_service
 from app.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
+from app.services.auth_service import AuthService
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+
+REFRESH_COOKIE = "refresh_token"
+REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -58,6 +61,7 @@ async def login_user(
         "access_token": token_data["access_token"],
         "token_type": token_data["token_type"],
         "expires_in": token_data["expires_in"],
+        "refresh_expires_in": token_data.get("refresh_expires_in", REFRESH_COOKIE_MAX_AGE),
     }
 
 
@@ -86,6 +90,7 @@ async def refresh_token(
         "access_token": token_data["access_token"],
         "token_type": token_data["token_type"],
         "expires_in": token_data["expires_in"],
+        "refresh_expires_in": token_data.get("refresh_expires_in", REFRESH_COOKIE_MAX_AGE),
     }
 
 
@@ -118,6 +123,6 @@ async def validate_token(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Token required"
         )
-    
+
     response = await service.validate_token(token)
     return response
