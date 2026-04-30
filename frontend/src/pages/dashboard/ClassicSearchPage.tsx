@@ -1,8 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
-import { searchApi, ProfileCard, SearchSkeleton, LockBanner } from '@/entities/search';
-import type { SearchResponse, SearchLockInfo } from '@/entities/search';
+import { Search, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { searchApi, ProfileCard, SearchSkeleton } from '@/entities/search';
+import type { SearchResponse, ProfilePreview } from '@/entities/search';
+import { profileApi } from '@/entities/profile';
+import type { QuestionsStatus, ProfileQuestions } from '@/entities/profile';
+import { LikeWithAnswersModal } from '@/features/matching/ui/LikeWithAnswersModal';
 import { ClassicFilterBar } from '@/features/search/ui/ClassicFilterBar';
 import { Button } from '@/shared/uikit/Button';
 import { toast } from '@/shared/toast/toast';
@@ -51,6 +54,34 @@ function Pagination({
   );
 }
 
+function QuestionsRequiredBanner({ count }: { count: number }) {
+  const navigate = useNavigate();
+  return (
+    <div className='mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4'>
+      <AlertCircle size={18} className='mt-0.5 shrink-0 text-amber-500' />
+      <div className='flex-1'>
+        <p className='text-[14px] font-medium text-amber-800'>
+          Заполните вопросы для партнёра ({count}/5)
+        </p>
+        <p className='mt-0.5 text-[13px] text-amber-700'>
+          Чтобы использовать поиск, необходимо заполнить все 5 вопросов в профиле.
+        </p>
+      </div>
+      <button
+        onClick={() => navigate('/dashboard/profile')}
+        className='shrink-0 rounded-xl bg-amber-100 px-3 py-1.5 text-[13px] font-medium text-amber-800 hover:bg-amber-200 transition-colors'
+      >
+        Перейти
+      </button>
+    </div>
+  );
+}
+
+interface LikeTarget {
+  profile: ProfilePreview;
+  questions: ProfileQuestions;
+}
+
 export function ClassicSearchPage() {
   const navigate = useNavigate();
   const [gender, setGender] = useState<string | undefined>(undefined);
@@ -61,11 +92,23 @@ export function ClassicSearchPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [result, setResult] = useState<SearchResponse | null>(null);
-  const [lockInfo, setLockInfo] = useState<SearchLockInfo | null>(null);
   const [page, setPage] = useState(1);
+
+  const [questionsStatus, setQuestionsStatus] = useState<QuestionsStatus | null>(null);
+  const [likeTarget, setLikeTarget] = useState<LikeTarget | null>(null);
+
+  useEffect(() => {
+    profileApi
+      .getQuestionsStatus()
+      .then((res) => setQuestionsStatus(res.data))
+      .catch(() => {});
+  }, []);
+
+  const searchBlocked = questionsStatus !== null && !questionsStatus.can_receive_likes;
 
   const runSearch = useCallback(
     async (p: number) => {
+      if (searchBlocked) return;
       setLoading(true);
       try {
         const res = await searchApi.classic({
@@ -79,29 +122,25 @@ export function ClassicSearchPage() {
         setResult(res.data);
         setPage(p);
         setSearched(true);
-      } catch (err: unknown) {
-        const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data
-          ?.detail;
-        if (typeof detail === 'object' && detail !== null && 'message' in detail) {
-          const lockErr = detail as { time_until_unlock?: number; profiles_viewed?: number };
-          setLockInfo({
-            search_type: 'classic',
-            is_locked: true,
-            profiles_viewed: lockErr.profiles_viewed ?? 0,
-            time_until_unlock: lockErr.time_until_unlock,
-          });
-          toast.warn('Поиск временно заблокирован');
-        } else {
-          toast.error('Ошибка поиска');
-        }
+      } catch {
+        toast.error('Ошибка поиска');
       } finally {
         setLoading(false);
       }
     },
-    [gender, minAge, maxAge, city],
+    [gender, minAge, maxAge, city, searchBlocked],
   );
 
-  const showPagination = result && result.total_pages > 1 && !loading;
+  async function handleLike(profile: ProfilePreview) {
+    try {
+      const res = await profileApi.getUserQuestions(profile.keycloak_id);
+      setLikeTarget({ profile, questions: res.data });
+    } catch {
+      toast.error('Не удалось получить вопросы пользователя');
+    }
+  }
+
+  const showPagination = result && result.pagination.total_pages > 1 && !loading;
 
   return (
     <div className='flex-1 overflow-y-auto px-8 py-8'>
@@ -113,10 +152,8 @@ export function ClassicSearchPage() {
           </p>
         </div>
 
-        {lockInfo?.is_locked && (
-          <div className='mb-4'>
-            <LockBanner lockInfo={lockInfo} />
-          </div>
+        {searchBlocked && (
+          <QuestionsRequiredBanner count={questionsStatus?.questions_count ?? 0} />
         )}
 
         <ClassicFilterBar
@@ -128,7 +165,7 @@ export function ClassicSearchPage() {
           onMaxAgeChange={setMaxAge}
           city={city}
           onCityChange={setCity}
-          loading={loading}
+          loading={loading || searchBlocked}
           onSubmit={() => runSearch(1)}
         />
 
@@ -138,28 +175,20 @@ export function ClassicSearchPage() {
               <SearchSkeleton />
             ) : result && result.profiles.length > 0 ? (
               <>
-                <div className='mb-4 flex items-center justify-between'>
-                  <p className='text-secondary text-[13px]'>
-                    Найдено {result.total_results}{' '}
-                    {result.total_results === 1
-                      ? 'анкета'
-                      : result.total_results < 5
-                        ? 'анкеты'
-                        : 'анкет'}
-                  </p>
-                  {result && (
-                    <span className='text-muted flex items-center gap-1.5 text-[13px]'>
-                      <Clock size={13} />
-                      Сессия {result.search_session_id}
-                    </span>
-                  )}
-                </div>
+                <p className='text-secondary mb-4 text-[13px]'>
+                  Найдено {result.pagination.total_results}{' '}
+                  {result.pagination.total_results === 1
+                    ? 'анкета'
+                    : result.pagination.total_results < 5
+                      ? 'анкеты'
+                      : 'анкет'}
+                </p>
                 <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
                   {result.profiles.map((p, i) => (
                     <ProfileCard
-                      key={i}
+                      key={`${p.keycloak_id}-${i}`}
                       profile={p}
-                      onLike={() => toast.info(`Лайк — ${p.first_name}`)}
+                      onLike={() => handleLike(p)}
                       onView={() =>
                         navigate('/dashboard/users/' + p.keycloak_id, { state: { profile: p } })
                       }
@@ -168,8 +197,8 @@ export function ClassicSearchPage() {
                 </div>
                 {showPagination && (
                   <Pagination
-                    current={result.current_page}
-                    total={result.total_pages}
+                    current={result.pagination.current_page}
+                    total={result.pagination.total_pages}
                     onPrev={() => runSearch(page - 1)}
                     onNext={() => runSearch(page + 1)}
                   />
@@ -181,6 +210,19 @@ export function ClassicSearchPage() {
           </div>
         )}
       </div>
+
+      {likeTarget && (
+        <LikeWithAnswersModal
+          targetUserId={likeTarget.profile.keycloak_id}
+          targetDisplayName={likeTarget.profile.display_name}
+          questions={likeTarget.questions}
+          onClose={() => setLikeTarget(null)}
+          onMatched={(matchId) => {
+            setLikeTarget(null);
+            navigate('/dashboard/matches', { state: { newMatchId: matchId } });
+          }}
+        />
+      )}
     </div>
   );
 }

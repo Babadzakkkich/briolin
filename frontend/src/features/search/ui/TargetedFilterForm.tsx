@@ -93,7 +93,6 @@ export function TargetedFilterForm({ loading, onSubmit }: TargetedFilterFormProp
             .map((h) => h.trim())
             .filter(Boolean)
         : undefined,
-      partner_preferences: d.partnerPreferences.trim() || undefined,
       online_only: d.onlineOnly || undefined,
       page: 1,
       limit: 12,

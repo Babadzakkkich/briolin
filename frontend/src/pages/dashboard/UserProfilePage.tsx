@@ -11,14 +11,13 @@ import {
 } from 'lucide-react';
 import { chatApi } from '@/entities/chat';
 import { profileApi } from '@/entities/profile';
+import type { ProfileQuestions } from '@/entities/profile';
+import { LikeWithAnswersModal } from '@/features/matching/ui/LikeWithAnswersModal';
+import { AuthImage } from '@/shared/uikit/AuthImage';
 import { Button } from '@/shared/uikit/Button';
 import { toast } from '@/shared/toast/toast';
 import type { ProfilePreview } from '@/entities/search';
 import axios from 'axios';
-
-function getInitials(first: string, last: string) {
-  return `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
-}
 
 function InfoBlock({
   icon,
@@ -76,6 +75,20 @@ function Skeleton() {
   );
 }
 
+function AvatarFallback({ name }: { name: string }) {
+  const initials = name
+    .split(' ')
+    .slice(0, 2)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .toUpperCase();
+  return (
+    <div className='bg-accent/15 text-accent flex h-full w-full items-center justify-center text-2xl font-semibold'>
+      {initials || '?'}
+    </div>
+  );
+}
+
 export function UserProfilePage() {
   const { keycloakId } = useParams<{ keycloakId: string }>();
   const location = useLocation();
@@ -85,6 +98,7 @@ export function UserProfilePage() {
   const [profile, setProfile] = useState<ProfilePreview | null>(stateProfile ?? null);
   const [loading, setLoading] = useState(!stateProfile);
   const [starting, setStarting] = useState(false);
+  const [likeTarget, setLikeTarget] = useState<{ questions: ProfileQuestions } | null>(null);
 
   useEffect(() => {
     if (stateProfile) return;
@@ -101,16 +115,16 @@ export function UserProfilePage() {
         const { basic, detailed } = res.data;
         setProfile({
           keycloak_id: keycloakId,
-          first_name: basic.first_name,
-          last_name: basic.last_name,
-          gender: basic.gender,
+          display_name: `${basic.first_name} ${basic.last_name}`,
           age: calculateAge(basic.date_of_birth),
           city: basic.city,
           online: basic.online ?? false,
+          avatar_url: basic.thumbnail_url ?? null,
           education: detailed?.education ?? null,
           hobbies: detailed?.hobbies ?? null,
           about_me: detailed?.about_me ?? null,
           partner_preferences: detailed?.partner_preferences ?? null,
+          red_flags: detailed?.red_flags ?? null,
         });
       })
       .catch((err: unknown) => {
@@ -138,6 +152,16 @@ export function UserProfilePage() {
     }
   };
 
+  async function handleLike() {
+    if (!profile?.keycloak_id) return;
+    try {
+      const res = await profileApi.getUserQuestions(profile.keycloak_id);
+      setLikeTarget({ questions: res.data });
+    } catch {
+      toast.error('Не удалось получить вопросы пользователя');
+    }
+  }
+
   if (loading) {
     return (
       <div className='flex-1 overflow-y-auto px-8 py-8'>
@@ -164,13 +188,8 @@ export function UserProfilePage() {
   }
 
   const hobbies = profile.hobbies
-    ? profile.hobbies
-        .split(',')
-        .map((h) => h.trim())
-        .filter(Boolean)
+    ? profile.hobbies.split(',').map((h) => h.trim()).filter(Boolean)
     : [];
-
-  const effectiveKeycloakId = profile.keycloak_id || keycloakId;
 
   return (
     <div className='flex-1 overflow-y-auto px-8 py-8'>
@@ -184,13 +203,22 @@ export function UserProfilePage() {
         </button>
         <div className='mb-4 rounded-2xl bg-white p-6'>
           <div className='flex items-center gap-5'>
-            <div className='bg-accent/15 text-accent flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl text-2xl font-semibold'>
-              {getInitials(profile.first_name, profile.last_name)}
+            <div className='relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl'>
+              {profile.avatar_url ? (
+                <AuthImage
+                  src={profile.avatar_url}
+                  alt={profile.display_name}
+                  className='h-full w-full object-cover'
+                  fallback={<AvatarFallback name={profile.display_name} />}
+                />
+              ) : (
+                <AvatarFallback name={profile.display_name} />
+              )}
             </div>
             <div className='min-w-0 flex-1'>
               <div className='flex items-center gap-2'>
                 <h1 className='font-onest text-primary text-2xl font-medium'>
-                  {profile.first_name} {profile.last_name}, {profile.age}
+                  {profile.display_name}, {profile.age}
                 </h1>
                 {profile.online && (
                   <span className='flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[12px] font-medium text-green-600'>
@@ -209,22 +237,19 @@ export function UserProfilePage() {
           <div className='mt-5 flex gap-2 border-t border-[#F0E9E0] pt-5'>
             <Button
               onClick={handleMessage}
-              disabled={starting || !effectiveKeycloakId}
+              disabled={starting}
               className='flex-1'
             >
               <MessageCircle size={15} />
               {starting ? 'Открываем...' : 'Написать'}
             </Button>
-            <Button
-              variant='secondary'
-              onClick={() => toast.info('Функция в разработке')}
-              className='flex-1'
-            >
+            <Button variant='secondary' onClick={handleLike} className='flex-1'>
               <Heart size={15} />
               Лайк
             </Button>
           </div>
         </div>
+
         <div className='rounded-2xl bg-white p-6'>
           <h2 className='font-onest text-primary mb-5 text-[16px] font-medium'>О человеке</h2>
           <div className='flex flex-col gap-5'>
@@ -260,11 +285,27 @@ export function UserProfilePage() {
                   </p>
                   <div className='mt-2 flex flex-wrap gap-1.5'>
                     {hobbies.map((h, i) => (
-                      <span
-                        key={i}
-                        className='bg-surface text-secondary rounded-xl px-3 py-1.5 text-[13px]'
-                      >
+                      <span key={i} className='bg-surface text-secondary rounded-xl px-3 py-1.5 text-[13px]'>
                         {h}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            {profile.red_flags && profile.red_flags.length > 0 && (
+              <div className='flex items-start gap-3'>
+                <div className='bg-surface mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl'>
+                  <span className='text-[14px]'>🚩</span>
+                </div>
+                <div>
+                  <p className='text-muted text-[11px] font-medium tracking-wide uppercase'>
+                    Не приемлет
+                  </p>
+                  <div className='mt-2 flex flex-wrap gap-1.5'>
+                    {profile.red_flags.map((flag, i) => (
+                      <span key={i} className='rounded-xl bg-red-50 px-3 py-1.5 text-[13px] text-red-600'>
+                        {flag}
                       </span>
                     ))}
                   </div>
@@ -280,6 +321,19 @@ export function UserProfilePage() {
           </div>
         </div>
       </div>
+
+      {likeTarget && profile && (
+        <LikeWithAnswersModal
+          targetUserId={profile.keycloak_id}
+          targetDisplayName={profile.display_name}
+          questions={likeTarget.questions}
+          onClose={() => setLikeTarget(null)}
+          onMatched={(matchId) => {
+            setLikeTarget(null);
+            navigate('/dashboard/matches', { state: { newMatchId: matchId } });
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -8,4 +8,6 @@ export type {
   ProfileBasic,
   ProfileDetailed,
   ProfileResponse,
+  ProfileQuestions,
+  QuestionsStatus,
 } from './model/types';

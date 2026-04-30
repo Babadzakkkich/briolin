@@ -6,11 +6,13 @@ import { profileApi, useProfileStore } from '@/entities/profile';
 import {
   Briefcase,
   Dice5,
+  Heart,
   LogOut,
   MessageCircle,
   SlidersHorizontal,
   Target,
   User,
+  Users,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -113,8 +115,11 @@ export function Sidebar() {
         <SidebarItem to='/dashboard/messages' icon={MessageCircle}>
           Сообщения
         </SidebarItem>
-        <SidebarItem to='/dashboard/services' icon={Briefcase}>
-          Услуги
+        <SidebarItem to='/dashboard/likes' icon={Heart}>
+          Входящие лайки
+        </SidebarItem>
+        <SidebarItem to='/dashboard/matches' icon={Users}>
+          Матчи
         </SidebarItem>
         <SidebarItem to='/dashboard/search/classic' icon={SlidersHorizontal}>
           Классический поиск
@@ -124,6 +129,9 @@ export function Sidebar() {
         </SidebarItem>
         <SidebarItem to='/dashboard/cupidon' icon={Zap}>
           Купидон
+        </SidebarItem>
+        <SidebarItem to='/dashboard/services' icon={Briefcase}>
+          Услуги
         </SidebarItem>
         <SidebarItem to='/dashboard/fortune' icon={Dice5}>
           Фортуна

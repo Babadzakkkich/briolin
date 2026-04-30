@@ -1,5 +1,5 @@
 import { BrowserRouter, Route, Routes } from 'react-router';
-import { IndexPage } from '@/pages/Index';
+import { IndexPage } from '@/pages/index';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { AppLayout } from '@/app/layouts/AppLayout';
 import { DashboardLayout } from '@/app/layouts/DashboardLayout';
@@ -17,6 +17,8 @@ import { ClassicSearchPage } from '@/pages/dashboard/ClassicSearchPage';
 import { TargetedSearchPage } from '@/pages/dashboard/TargetedSearchPage';
 import { UserProfilePage } from '@/pages/dashboard/UserProfilePage';
 import { FortunePage } from '@/pages/dashboard/FortunePage';
+import { PendingLikesPage } from '@/pages/dashboard/PendingLikesPage';
+import { MatchesPage } from '@/pages/dashboard/MatchesPage';
 
 export function AppRouter() {
   return (
@@ -45,6 +47,8 @@ export function AppRouter() {
               <Route path='users/:keycloakId' element={<UserProfilePage />} />
               <Route path='cupidon' element={<CupidonPage />} />
               <Route path='fortune' element={<FortunePage />} />
+              <Route path='likes' element={<PendingLikesPage />} />
+              <Route path='matches' element={<MatchesPage />} />
             </Route>
           </Route>
         </Route>

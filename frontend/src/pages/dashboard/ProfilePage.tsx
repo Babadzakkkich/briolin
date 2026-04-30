@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { profileApi, useProfileStore, AvatarUpload } from '@/entities/profile';
-import type { ProfileResponse } from '@/entities/profile';
+import type { ProfileResponse, ProfileQuestions } from '@/entities/profile';
 import {
   BasicInfoSection,
   genderToDisplay,
   displayToGender,
 } from '@/features/profile/ui/BasicInfoSection';
 import { DetailedInfoSection } from '@/features/profile/ui/DetailedInfoSection';
+import { QuestionsSection, validateQuestions } from '@/features/profile/ui/QuestionsSection';
 import { Loader } from '@/shared/uikit/Loader';
 import { toast } from '@/shared/toast/toast';
 
@@ -26,11 +27,20 @@ const detailedSchema = z.object({
 });
 
 type BasicErrors = Partial<Record<keyof z.infer<typeof basicSchema>, string>>;
-type DetailedErrors = Partial<Record<keyof z.infer<typeof detailedSchema>, string>>;
+type DetailedErrors = Partial<Record<keyof z.infer<typeof detailedSchema> | 'red_flags', string>>;
+type QuestionsErrors = Partial<Record<'question_1' | 'question_2' | 'question_3' | 'question_4' | 'question_5', string>>;
 
 const maxBirthDate = new Date();
 maxBirthDate.setFullYear(maxBirthDate.getFullYear() - 18);
 const maxBirthDateStr = maxBirthDate.toISOString().split('T')[0];
+
+const emptyQuestions: Omit<ProfileQuestions, 'created_at' | 'updated_at'> = {
+  question_1: '',
+  question_2: '',
+  question_3: '',
+  question_4: '',
+  question_5: '',
+};
 
 export function ProfilePage() {
   const { setProfile } = useProfileStore();
@@ -51,8 +61,15 @@ export function ProfilePage() {
   const [education, setEducation] = useState('');
   const [hobbies, setHobbies] = useState('');
   const [partnerPreferences, setPartnerPreferences] = useState('');
+  const [redFlags, setRedFlags] = useState<string[]>([]);
   const [savingDetailed, setSavingDetailed] = useState(false);
   const [detailedErrors, setDetailedErrors] = useState<DetailedErrors>({});
+
+  const [editingQuestions, setEditingQuestions] = useState(false);
+  const [questions, setQuestions] = useState<Omit<ProfileQuestions, 'created_at' | 'updated_at'>>(emptyQuestions);
+  const [savedQuestions, setSavedQuestions] = useState<Omit<ProfileQuestions, 'created_at' | 'updated_at'>>(emptyQuestions);
+  const [savingQuestions, setSavingQuestions] = useState(false);
+  const [questionsErrors, setQuestionsErrors] = useState<QuestionsErrors>({});
 
   function initBasicFields(p: ProfileResponse) {
     setFirstName(p.basic.first_name);
@@ -67,6 +84,7 @@ export function ProfilePage() {
     setEducation(p.detailed?.education ?? '');
     setHobbies(p.detailed?.hobbies ?? '');
     setPartnerPreferences(p.detailed?.partner_preferences ?? '');
+    setRedFlags(p.detailed?.red_flags ?? []);
   }
 
   useEffect(() => {
@@ -80,6 +98,23 @@ export function ProfilePage() {
       })
       .catch(() => toast.error('Не удалось загрузить профиль'))
       .finally(() => setLoading(false));
+
+    profileApi
+      .getMyQuestions()
+      .then((res) => {
+        const q = {
+          question_1: res.data.question_1,
+          question_2: res.data.question_2,
+          question_3: res.data.question_3,
+          question_4: res.data.question_4,
+          question_5: res.data.question_5,
+        };
+        setQuestions(q);
+        setSavedQuestions(q);
+      })
+      .catch(() => {
+        // 404 means no questions yet — start with empty
+      });
   }, []);
 
   function cancelBasic() {
@@ -175,6 +210,7 @@ export function ProfilePage() {
           education,
           hobbies,
           partner_preferences: partnerPreferences,
+          red_flags: redFlags.length > 0 ? redFlags : null,
         })
       : profileApi.updateMe({
           detailed: {
@@ -182,6 +218,7 @@ export function ProfilePage() {
             education,
             hobbies,
             partner_preferences: partnerPreferences,
+            red_flags: redFlags.length > 0 ? redFlags : null,
           },
         });
 
@@ -198,6 +235,7 @@ export function ProfilePage() {
                   education,
                   hobbies,
                   partner_preferences: partnerPreferences,
+                  red_flags: redFlags.length > 0 ? redFlags : null,
                 },
               }
             : prev,
@@ -206,6 +244,31 @@ export function ProfilePage() {
       })
       .catch(() => toast.error('Ошибка при сохранении'))
       .finally(() => setSavingDetailed(false));
+  }
+
+  function cancelQuestions() {
+    setQuestions(savedQuestions);
+    setQuestionsErrors({});
+    setEditingQuestions(false);
+  }
+
+  function saveQuestions() {
+    const errors = validateQuestions(questions);
+    if (Object.keys(errors).length > 0) {
+      setQuestionsErrors(errors);
+      return;
+    }
+    setQuestionsErrors({});
+    setSavingQuestions(true);
+    profileApi
+      .createOrUpdateQuestions(questions)
+      .then(() => {
+        toast.success('Вопросы сохранены');
+        setSavedQuestions(questions);
+        setEditingQuestions(false);
+      })
+      .catch(() => toast.error('Ошибка при сохранении вопросов'))
+      .finally(() => setSavingQuestions(false));
   }
 
   if (loading) return <Loader center label='Загружаем профиль...' />;
@@ -220,11 +283,30 @@ export function ProfilePage() {
 
   const { basic, detailed } = profile;
 
+  function handleAvatarUploaded(url: string, thumbnailUrl: string) {
+    setProfileData((prev) =>
+      prev
+        ? {
+            ...prev,
+            basic: {
+              ...prev.basic,
+              avatar_url: url || null,
+              thumbnail_url: thumbnailUrl || null,
+            },
+          }
+        : prev,
+    );
+  }
+
   return (
     <div className='flex-1 overflow-y-auto px-8 py-10'>
       <div className='mx-auto max-w-3xl'>
         <div className='mb-8 flex items-center gap-5'>
-          <AvatarUpload name={`${basic.first_name} ${basic.last_name}`} />
+          <AvatarUpload
+            src={basic.avatar_url ?? null}
+            name={`${basic.first_name} ${basic.last_name}`}
+            onUploaded={handleAvatarUploaded}
+          />
           <div>
             <h1 className='font-onest text-primary text-3xl font-medium'>
               {basic.first_name} {basic.last_name}
@@ -276,6 +358,7 @@ export function ProfilePage() {
             education={education}
             hobbies={hobbies}
             partnerPreferences={partnerPreferences}
+            redFlags={redFlags}
             onEdit={() => setEditingDetailed(true)}
             onSave={saveDetailed}
             onCancel={cancelDetailed}
@@ -294,6 +377,24 @@ export function ProfilePage() {
             onPartnerPreferencesChange={(v) => {
               setPartnerPreferences(v);
               setDetailedErrors((p) => ({ ...p, partner_preferences: undefined }));
+            }}
+            onRedFlagsChange={(v) => {
+              setRedFlags(v);
+              setDetailedErrors((p) => ({ ...p, red_flags: undefined }));
+            }}
+          />
+
+          <QuestionsSection
+            questions={questions}
+            editing={editingQuestions}
+            saving={savingQuestions}
+            errors={questionsErrors}
+            onEdit={() => setEditingQuestions(true)}
+            onSave={saveQuestions}
+            onCancel={cancelQuestions}
+            onChange={(key, value) => {
+              setQuestions((prev) => ({ ...prev, [key]: value }));
+              setQuestionsErrors((prev) => ({ ...prev, [key]: undefined }));
             }}
           />
         </div>

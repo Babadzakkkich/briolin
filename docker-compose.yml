@@ -58,7 +58,7 @@ services:
         condition: service_healthy
     networks:
       - briolin-network
-  
+
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
     container_name: briolin-minio
@@ -77,12 +77,6 @@ services:
       - minio-data:/data
     networks:
       - briolin-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-      start_period: 10s
     restart: unless-stopped
 
   redis:
@@ -246,7 +240,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  
+
   search-postgres:
     image: postgres:17-alpine
     container_name: search-postgres
@@ -261,7 +255,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  
+
   media-postgres:
     image: postgres:17-alpine
     container_name: media-postgres
@@ -409,7 +403,7 @@ services:
     networks:
       - briolin-network
     restart: unless-stopped
-  
+
   media-service:
     build:
       context: .
@@ -421,8 +415,6 @@ services:
       - media-service/.env
     depends_on:
       media-postgres:
-        condition: service_healthy
-      minio:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
