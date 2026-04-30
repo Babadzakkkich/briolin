@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { LogoIcon } from '@/shared/icons/Logo';
 import { useAuthStore } from '@/entities/session';
 import { profileApi, useProfileStore } from '@/entities/profile';
+import { AuthImage } from '@/shared/uikit/AuthImage';
 import {
   Briefcase,
   Dice5,
@@ -50,6 +51,7 @@ export function SidebarItem({
 function UserCard() {
   const firstName = useProfileStore((p) => p.firstName);
   const lastName = useProfileStore((p) => p.lastName);
+  const thumbnailUrl = useProfileStore((p) => p.thumbnailUrl);
   const setProfile = useProfileStore((p) => p.setProfile);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const { logout } = useAuth();
@@ -58,7 +60,7 @@ function UserCard() {
     if (isAuthenticated && !firstName) {
       profileApi
         .getMe()
-        .then((res) => setProfile(res.data.basic))
+        .then((res) => setProfile({ ...res.data.basic, thumbnail_url: res.data.basic.thumbnail_url }))
         .catch(() => {});
     }
   }, [isAuthenticated, firstName, setProfile]);
@@ -76,8 +78,23 @@ function UserCard() {
 
   return (
     <div className='flex items-center gap-2'>
-      <div className='bg-accent/15 text-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold'>
-        {initials}
+      <div className='h-9 w-9 shrink-0 overflow-hidden rounded-full'>
+        {thumbnailUrl ? (
+          <AuthImage
+            src={thumbnailUrl}
+            alt={firstName ?? ''}
+            className='h-full w-full object-cover'
+            fallback={
+              <div className='bg-accent/15 text-accent flex h-full w-full items-center justify-center text-xs font-semibold'>
+                {initials}
+              </div>
+            }
+          />
+        ) : (
+          <div className='bg-accent/15 text-accent flex h-full w-full items-center justify-center text-xs font-semibold'>
+            {initials}
+          </div>
+        )}
       </div>
       <div className='min-w-0 flex-1'>
         {firstName ? (

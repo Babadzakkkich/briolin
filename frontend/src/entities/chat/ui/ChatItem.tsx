@@ -1,4 +1,5 @@
 import { ChatAvatar } from './ChatAvatar';
+import { getChatDisplayName, getChatAvatarUrl } from '../model/helpers';
 import type { Chat } from '../model/types';
 
 function formatTime(dateStr: string) {
@@ -12,10 +13,13 @@ function formatTime(dateStr: string) {
 interface ChatItemProps {
   chat: Chat;
   isSelected: boolean;
+  keycloakId: string | null;
   onClick: () => void;
 }
 
-export function ChatItem({ chat, isSelected, onClick }: ChatItemProps) {
+export function ChatItem({ chat, isSelected, keycloakId, onClick }: ChatItemProps) {
+  const displayName = getChatDisplayName(chat, keycloakId);
+  const avatarUrl = getChatAvatarUrl(chat, keycloakId);
   const lastText = chat.last_message?.content;
   const lastTime = chat.last_message?.created_at;
 
@@ -27,18 +31,22 @@ export function ChatItem({ chat, isSelected, onClick }: ChatItemProps) {
         isSelected ? 'bg-accent/10' : 'hover:bg-surface',
       ].join(' ')}
     >
-      <ChatAvatar name={chat.name} />
+      <ChatAvatar name={displayName} src={avatarUrl} />
       <div className='min-w-0 flex-1'>
         <div className='flex items-center justify-between gap-2'>
-          <span className={`truncate text-[14px] font-medium ${isSelected ? 'text-accent' : 'text-primary'}`}>
-            {chat.name ?? 'Чат'}
+          <span
+            className={`truncate text-[14px] font-medium ${isSelected ? 'text-accent' : 'text-primary'}`}
+          >
+            {displayName}
           </span>
           {lastTime && (
             <span className='text-muted shrink-0 text-[11px]'>{formatTime(lastTime)}</span>
           )}
         </div>
         <div className='mt-0.5 flex items-center justify-between gap-2'>
-          <span className='text-secondary truncate text-[12px]'>{lastText ?? 'Нет сообщений'}</span>
+          <span className='text-secondary truncate text-[12px]'>
+            {lastText ?? 'Нет сообщений'}
+          </span>
           {chat.unread_count > 0 && (
             <span className='bg-accent shrink-0 rounded-full px-1.5 py-0.5 text-[10px] leading-none font-semibold text-white'>
               {chat.unread_count > 99 ? '99+' : chat.unread_count}

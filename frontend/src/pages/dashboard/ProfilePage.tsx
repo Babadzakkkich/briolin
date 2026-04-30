@@ -43,7 +43,7 @@ const emptyQuestions: Omit<ProfileQuestions, 'created_at' | 'updated_at'> = {
 };
 
 export function ProfilePage() {
-  const { setProfile } = useProfileStore();
+  const { setProfile, setThumbnailUrl } = useProfileStore();
   const [profile, setProfileData] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -92,7 +92,7 @@ export function ProfilePage() {
       .getMe()
       .then((res) => {
         setProfileData(res.data);
-        setProfile(res.data.basic);
+        setProfile({ ...res.data.basic, thumbnail_url: res.data.basic.thumbnail_url });
         initBasicFields(res.data);
         initDetailedFields(res.data);
       })
@@ -296,6 +296,7 @@ export function ProfilePage() {
           }
         : prev,
     );
+    setThumbnailUrl(thumbnailUrl || null);
   }
 
   return (

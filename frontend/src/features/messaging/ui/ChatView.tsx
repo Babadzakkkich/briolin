@@ -1,6 +1,6 @@
 import { MessageCircle, Send } from 'lucide-react';
 import { MessageBubble } from '@/entities/message';
-import { ChatAvatar } from '@/entities/chat';
+import { ChatAvatar, getChatDisplayName, getChatAvatarUrl } from '@/entities/chat';
 import { Button } from '@/shared/uikit/Button';
 import { Loader } from '@/shared/uikit/Loader';
 import type { Message } from '@/entities/message';
@@ -35,12 +35,15 @@ export function ChatView({
   messagesEndRef,
   inputRef,
 }: ChatViewProps) {
+  const displayName = getChatDisplayName(chat, keycloakId);
+  const avatarUrl = getChatAvatarUrl(chat, keycloakId);
+
   return (
     <div className='flex flex-1 flex-col overflow-hidden'>
       <div className='border-border flex shrink-0 items-center gap-3 border-b bg-white px-6 py-4'>
-        <ChatAvatar name={chat.name} size='lg' />
+        <ChatAvatar name={displayName} src={avatarUrl} size='lg' />
         <div className='min-w-0 flex-1'>
-          <p className='text-primary truncate text-[15px] font-semibold'>{chat.name ?? 'Чат'}</p>
+          <p className='text-primary truncate text-[15px] font-semibold'>{displayName}</p>
           {typingNames.length > 0 ? (
             <span className='text-accent flex items-center gap-1.5 text-[12px]'>
               <span className='flex gap-0.5'>
@@ -63,6 +66,7 @@ export function ChatView({
           )}
         </div>
       </div>
+
       <div className='flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-5'>
         {isLoading ? (
           <Loader center />
@@ -82,6 +86,7 @@ export function ChatView({
         )}
         <div ref={messagesEndRef} />
       </div>
+
       <div className='border-border shrink-0 border-t bg-white px-6 py-4'>
         <div className='flex items-center gap-2'>
           <input

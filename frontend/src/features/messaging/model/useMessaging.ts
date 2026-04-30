@@ -77,7 +77,10 @@ export function useMessaging(initialChatId: string | null) {
       if (msg.type === 'message' && msg.message) {
         const incoming = msg.message;
         if (incoming.chat_id === selectedChatId) {
-          setMessages((prev) => [...prev, incoming]);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === incoming.id)) return prev;
+            return [...prev, incoming];
+          });
           if (incoming.sender_keycloak_id !== keycloakId) {
             messageApi.markRead(incoming.chat_id, [incoming.id]).catch(() => {});
           }
@@ -89,6 +92,7 @@ export function useMessaging(initialChatId: string | null) {
                 ? {
                     ...c,
                     last_message: incoming,
+                    updated_at: incoming.created_at,
                     unread_count:
                       c.id === selectedChatId || incoming.sender_keycloak_id === keycloakId
                         ? 0
@@ -96,7 +100,11 @@ export function useMessaging(initialChatId: string | null) {
                   }
                 : c,
             )
-            .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+            .sort((a, b) => {
+              const aTime = a.last_message?.created_at ?? a.updated_at;
+              const bTime = b.last_message?.created_at ?? b.updated_at;
+              return new Date(bTime).getTime() - new Date(aTime).getTime();
+            }),
         );
       }
 
@@ -183,9 +191,22 @@ export function useMessaging(initialChatId: string | null) {
     sendTyping(selectedChatId, false);
     try {
       const msg = await messageApi.send(selectedChatId, content);
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
       setChats((prev) =>
-        prev.map((c) => (c.id === selectedChatId ? { ...c, last_message: msg } : c)),
+        prev
+          .map((c) =>
+            c.id === selectedChatId
+              ? { ...c, last_message: msg, updated_at: msg.created_at }
+              : c,
+          )
+          .sort((a, b) => {
+            const aTime = a.last_message?.created_at ?? a.updated_at;
+            const bTime = b.last_message?.created_at ?? b.updated_at;
+            return new Date(bTime).getTime() - new Date(aTime).getTime();
+          }),
       );
     } catch {
       toast.error('Не удалось отправить сообщение');

@@ -1,5 +1,6 @@
 import { Search, Users } from 'lucide-react';
-import { ChatItem } from '@/entities/chat';
+import { ChatItem, getChatDisplayName } from '@/entities/chat';
+import { useAuthStore } from '@/entities/session';
 import type { Chat } from '@/entities/chat';
 
 interface ChatListProps {
@@ -19,8 +20,10 @@ export function ChatList({
   onSearch,
   onSelect,
 }: ChatListProps) {
+  const keycloakId = useAuthStore((s) => s.keycloakId);
+
   const filtered = chats.filter((c) =>
-    (c.name ?? '').toLowerCase().includes(search.toLowerCase()),
+    getChatDisplayName(c, keycloakId).toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -60,6 +63,7 @@ export function ChatList({
               key={chat.id}
               chat={chat}
               isSelected={chat.id === selectedChatId}
+              keycloakId={keycloakId}
               onClick={() => onSelect(chat.id)}
             />
           ))

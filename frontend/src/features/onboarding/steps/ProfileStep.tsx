@@ -3,6 +3,7 @@ import { Button } from '@/shared/uikit/Button';
 import { Input } from '@/shared/uikit/Input';
 import { RadioCardGroup } from '@/shared/uikit/RadioCardGroup';
 import { Text } from '@/shared/uikit/Text';
+import { useState } from 'react';
 import type { StepProps } from '@/features/onboarding/model/types';
 import { toast } from '@/shared/toast/toast';
 import { profileApi } from '@/entities/profile';
@@ -53,6 +54,8 @@ export function ProfileStep({ onNext }: StepProps) {
     },
   });
 
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
   const [firstName, lastName] = watch(['firstName', 'lastName']);
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || undefined;
 
@@ -84,7 +87,11 @@ export function ProfileStep({ onNext }: StepProps) {
       </div>
 
       <div className='flex w-full gap-4'>
-        <AvatarUpload name={fullName} />
+        <AvatarUpload
+          src={avatarUrl}
+          name={fullName}
+          onUploaded={(url) => setAvatarUrl(url || null)}
+        />
         <div className='flex flex-col justify-between py-4'>
           <Text variant='p' as='p'>
             Загрузите фото
