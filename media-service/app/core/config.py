@@ -66,8 +66,7 @@ class MediaServiceConfig(BaseSettings):
         "image/webp",
         "image/gif"
     ]
-    max_width: int = 2000
-    max_height: int = 2000
+    avatar_size: int = 1024
     thumbnail_size: int = 200
     
     max_avatars_per_user: int = 10

@@ -53,6 +53,7 @@ class ChatResponse(BaseModel):
     updated_at: datetime
     last_message: Optional[Dict[str, Any]] = None
     unread_count: int = 0
+    match_id: Optional[int] = None
 
 class ChatListResponse(BaseModel):
     chats: List[ChatResponse]

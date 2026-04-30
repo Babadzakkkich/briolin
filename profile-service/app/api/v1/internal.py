@@ -4,7 +4,8 @@ from typing import Dict, Any, List, Optional
 from app.services.profile_service import ProfileService
 from app.dependencies import get_profile_service
 from app.core.logger import logger
-from app.schemas.internal import ProfileDeleteData
+from app.core.exceptions import ProfileNotFoundException
+from app.schemas.internal import SearchByEmbeddingRequest, SearchByEmbeddingResponse
 
 router = APIRouter(prefix="/internal", tags=["Internal"])
 
@@ -22,21 +23,20 @@ async def get_profiles_count(
         logger.error(f"Failed to get profiles count: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/profiles/batch")
 async def get_profiles_batch(
-    request: Dict[str, List[int]] = Body(..., example={"profile_ids": [1, 2, 3]}),
+    request: Dict[str, List[str]] = Body(..., example={"keycloak_ids": ["uuid-1", "uuid-2"]}),
     service: ProfileService = Depends(get_profile_service)
 ):
     """
-    Внутренний эндпоинт для получения нескольких профилей по ID
+    Внутренний эндпоинт для получения нескольких профилей по Keycloak ID
     """
     try:
-        profile_ids = request.get("profile_ids", [])
-        if not profile_ids:
+        keycloak_ids = request.get("keycloak_ids", [])
+        if not keycloak_ids:
             return {"profiles": []}
         
-        profiles = await service.get_profiles_batch(profile_ids)
+        profiles = await service.get_profiles_batch_by_keycloak_ids(keycloak_ids)
         return {"profiles": profiles}
     except Exception as e:
         logger.error(f"Failed to get profiles batch: {e}")
@@ -128,6 +128,8 @@ async def get_internal_basic_profile(
             "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
             "city": profile.city,
             "online": profile.online,
+            "avatar_url": profile.avatar_url,
+            "thumbnail_url": profile.thumbnail_url,
             "created_at": profile.created_at.isoformat() if profile.created_at else None,
             "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
             "last_login_at": profile.last_login_at.isoformat() if profile.last_login_at else None
@@ -156,4 +158,131 @@ async def delete_internal_profile(
         raise
     except Exception as e:
         logger.error(f"Failed to delete internal profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/profiles/{keycloak_id}/questions")
+async def get_internal_questions(
+    keycloak_id: str,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """Внутренний эндпоинт для получения вопросов профиля"""
+    questions = await service.get_questions(keycloak_id)
+    if not questions:
+        return {"questions": None}
+    return {
+        "questions": {
+            "question_1": questions.question_1,
+            "question_2": questions.question_2,
+            "question_3": questions.question_3,
+            "question_4": questions.question_4,
+            "question_5": questions.question_5,
+        }
+    }
+
+
+@router.get("/profiles/{keycloak_id}/has-questions")
+async def check_internal_questions(
+    keycloak_id: str,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Внутренний эндпоинт для проверки наличия вопросов.
+    Используется matching-service перед лайком.
+    """
+    has_questions = await service.has_questions(keycloak_id)
+    return {
+        "has_questions": has_questions
+    }
+
+@router.get("/profiles/{keycloak_id}/embedding")
+async def get_profile_embedding(
+    keycloak_id: str,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Get embedding vector for a user profile.
+    Used by matching-service for semantic search.
+    """
+    try:
+        embedding = await service.get_embedding(keycloak_id)
+        if embedding is None:
+            return {"embedding": []}
+        return {"embedding": embedding}
+    except ProfileNotFoundException:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    except Exception as e:
+        logger.error(f"Failed to get embedding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/profiles/{keycloak_id}/sentiment-embedding")
+async def get_profile_sentiment_embedding(
+    keycloak_id: str,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Get sentiment embedding vector for a user profile.
+    Used by matching-service for tonal re-ranking.
+    """
+    try:
+        sentiment_embedding = await service.get_sentiment_embedding(keycloak_id)
+        if sentiment_embedding is None:
+            return {"sentiment_embedding": []}
+        return {"sentiment_embedding": sentiment_embedding}
+    except ProfileNotFoundException:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    except Exception as e:
+        logger.error(f"Failed to get sentiment embedding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/profiles/search_by_embedding", response_model=SearchByEmbeddingResponse)
+async def search_profiles_by_embedding(
+    request: SearchByEmbeddingRequest,
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Search profiles by embedding similarity.
+    Used by matching-service for targeted (premium) recommendations.
+    
+    Returns profiles sorted by cosine similarity (closest first),
+    with similarity scores (0-1) where 1 = most similar.
+    """
+    try:
+        profiles = await service.search_profiles_by_embedding(
+            embedding=request.embedding,
+            filters=request.filters,
+            exclude_ids=request.exclude_ids,
+            limit=request.limit,
+            offset=request.offset
+        )
+        return SearchByEmbeddingResponse(profiles=profiles)
+    except Exception as e:
+        logger.error(f"Failed to search by embedding: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/profiles/update_embedding")
+async def update_profile_embedding(
+    keycloak_id: str = Body(..., embed=True),
+    service: ProfileService = Depends(get_profile_service)
+):
+    """
+    Manually trigger embedding update for a profile.
+    Useful for backfilling existing profiles.
+    """
+    try:
+        from app.services.embedding_updater import get_embedding_updater
+        updater = get_embedding_updater()
+        
+        # Get basic profile
+        basic = await service._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        success = await updater.update_embedding_for_profile(basic.id)
+        if success:
+            return {"message": f"Embedding updated for user {keycloak_id}"}
+        else:
+            return {"message": f"No embedding generated for user {keycloak_id} (no detailed profile?)"}
+    except Exception as e:
+        logger.error(f"Failed to update embedding: {e}")
         raise HTTPException(status_code=500, detail=str(e))

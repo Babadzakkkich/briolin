@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import date, datetime
 from sqlalchemy import select, func
@@ -5,12 +6,13 @@ from typing import Dict, Any, Optional, Tuple, List
 
 import sqlalchemy
 
-from app.database.models import BasicProfile, DetailedProfile
+from app.database.models import BasicProfile, DetailedProfile, ProfileQuestions
 from app.database.session import async_session_factory
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.profile import (
     BasicProfileCreate, BasicProfileResponse, DetailedProfileCreate, DetailedProfileResponse, FullProfileResponse, FullProfileUpdate
 )
+from app.schemas.questions import ProfileQuestionsCreate, ProfileQuestionsResponse, ProfileQuestionsUpdate
 from app.services.keycloak_client import KeycloakClient
 
 from app.services.event_service import get_event_service
@@ -24,6 +26,8 @@ from app.core.exceptions import (
 )
 from app.core.logger import logger
 from shared.saga.models import SagaInstance, SagaStatus
+
+from app.services.embedding_updater import get_embedding_updater
 
 
 def _filter_dependencies(deps: List[Optional[str]]) -> Optional[List[str]]:
@@ -141,7 +145,8 @@ class ProfileService:
             about_me=detailed_data.about_me,
             education=detailed_data.education,
             hobbies=detailed_data.hobbies,
-            partner_preferences=detailed_data.partner_preferences
+            partner_preferences=detailed_data.partner_preferences,
+            red_flags=detailed_data.red_flags
         )
         
         self.db.add(new_detailed)
@@ -149,6 +154,9 @@ class ProfileService:
         await self.db.refresh(new_detailed)
         
         logger.info(f"Detailed profile created: {new_detailed.id} for user {keycloak_id}")
+        
+        # АСИНХРОННАЯ генерация эмбеддинга (запускаем в фоне, не блокируя ответ)
+        asyncio.create_task(self._generate_embedding_background(basic_profile.id, keycloak_id))
         
         # Публикуем событие об обновлении профиля (добавлен детальный)
         try:
@@ -159,8 +167,21 @@ class ProfileService:
         except Exception as e:
             logger.error(f"Failed to publish profile updated event: {e}")
         
-        # Возвращаем полный профиль
+        # Возвращаем полный профиль (без ожидания генерации эмбеддинга)
         return await self.get_full_profile_by_keycloak_id(keycloak_id)
+
+
+    async def _generate_embedding_background(self, basic_profile_id: int, keycloak_id: str) -> None:
+        """
+        Фоновая задача для генерации эмбеддинга.
+        Запускается асинхронно и не блокирует основной ответ.
+        """
+        try:
+            updater = get_embedding_updater()
+            await updater.update_embedding_for_profile(basic_profile_id)
+            logger.info(f"Embedding generated for user {keycloak_id}")
+        except Exception as e:
+            logger.error(f"Failed to generate embedding for {keycloak_id}: {e}")
     
     # ========== ОБНОВЛЕНИЕ ПРОФИЛЯ ==========
     
@@ -371,7 +392,6 @@ class ProfileService:
         return result.scalar_one_or_none()
 
     async def get_full_profile_by_keycloak_id(self, keycloak_id: str) -> FullProfileResponse:
-        """Получение полного профиля по keycloak_id"""
         stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
         result = await self.db.execute(stmt)
         basic = result.scalar_one_or_none()
@@ -383,7 +403,6 @@ class ProfileService:
         result = await self.db.execute(stmt)
         detailed = result.scalar_one_or_none()
         
-        # Преобразуем BasicProfile в BasicProfileResponse
         basic_response = BasicProfileResponse(
             id=basic.id,
             keycloak_id=basic.keycloak_id,
@@ -400,7 +419,6 @@ class ProfileService:
             last_login_at=basic.last_login_at
         )
         
-        # Преобразуем DetailedProfile в DetailedProfileResponse если есть
         detailed_response = None
         if detailed:
             detailed_response = DetailedProfileResponse(
@@ -408,12 +426,29 @@ class ProfileService:
                 about_me=detailed.about_me,
                 education=detailed.education,
                 hobbies=detailed.hobbies,
-                partner_preferences=detailed.partner_preferences
+                partner_preferences=detailed.partner_preferences,
+                red_flags=detailed.red_flags
+            )
+        
+        # ДОБАВИТЬ получение вопросов
+        questions = await self._get_questions_by_profile_id(basic.id)
+        questions_response = None
+        if questions:
+            from app.schemas.questions import ProfileQuestionsResponse
+            questions_response = ProfileQuestionsResponse(
+                question_1=questions.question_1,
+                question_2=questions.question_2,
+                question_3=questions.question_3,
+                question_4=questions.question_4,
+                question_5=questions.question_5,
+                created_at=questions.created_at,
+                updated_at=questions.updated_at
             )
         
         return FullProfileResponse(
             basic=basic_response,
-            detailed=detailed_response
+            detailed=detailed_response,
+            questions=questions_response
         )
 
     async def delete_profiles_by_keycloak_id(self, keycloak_id: str) -> bool:
@@ -527,36 +562,132 @@ class ProfileService:
             logger.error(f"Failed to get user online status: {e}")
             return None
     
+    
+    async def set_questions(
+        self,
+        keycloak_id: str,
+        questions_data: ProfileQuestionsCreate,
+        current_user: dict
+    ) -> FullProfileResponse:
+        """Установка или обновление вопросов профиля"""
+        if current_user["keycloak_id"] != keycloak_id:
+            raise PermissionDeniedException("Cannot set questions for another user")
+        
+        basic_profile = await self._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic_profile:
+            raise ProfileNotFoundException("Basic profile not found. Create basic profile first.")
+        
+        existing = await self._get_questions_by_profile_id(basic_profile.id)
+        
+        if existing:
+            for field in ['question_1', 'question_2', 'question_3', 'question_4', 'question_5']:
+                setattr(existing, field, getattr(questions_data, field))
+        else:
+            new_questions = ProfileQuestions(
+                basic_profile_id=basic_profile.id,
+                **questions_data.model_dump()
+            )
+            self.db.add(new_questions)
+        
+        await self.db.commit()
+        logger.info(f"Questions set for user {keycloak_id}")
+        
+        return await self.get_full_profile_by_keycloak_id(keycloak_id)
+    
+    async def update_questions(
+        self,
+        keycloak_id: str,
+        questions_data: ProfileQuestionsUpdate,
+        current_user: dict
+    ) -> FullProfileResponse:
+        """Частичное обновление вопросов профиля"""
+        if current_user["keycloak_id"] != keycloak_id:
+            raise PermissionDeniedException("Cannot update questions for another user")
+        
+        basic_profile = await self._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic_profile:
+            raise ProfileNotFoundException("Basic profile not found")
+        
+        existing = await self._get_questions_by_profile_id(basic_profile.id)
+        if not existing:
+            raise ProfileNotFoundException("Questions not found. Use POST to create them first.")
+        
+        update_data = questions_data.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(existing, field, value)
+        
+        await self.db.commit()
+        logger.info(f"Questions updated for user {keycloak_id}")
+        
+        return await self.get_full_profile_by_keycloak_id(keycloak_id)
+    
+    async def get_questions(self, keycloak_id: str) -> Optional[ProfileQuestionsResponse]:
+        """Получение вопросов пользователя"""
+        basic = await self._get_basic_profile_by_keycloak_id(keycloak_id)
+        if not basic:
+            return None
+        questions = await self._get_questions_by_profile_id(basic.id)
+        if not questions:
+            return None
+        
+        from app.schemas.questions import ProfileQuestionsResponse
+        return ProfileQuestionsResponse(
+            question_1=questions.question_1,
+            question_2=questions.question_2,
+            question_3=questions.question_3,
+            question_4=questions.question_4,
+            question_5=questions.question_5,
+            created_at=questions.created_at,
+            updated_at=questions.updated_at
+        )
+    
+    async def has_questions(self, keycloak_id: str) -> bool:
+        """Проверка, заполнены ли вопросы"""
+        questions = await self.get_questions(keycloak_id)
+        if not questions:
+            return False
+        questions_dict = {
+            "question_1": questions.question_1,
+            "question_2": questions.question_2,
+            "question_3": questions.question_3,
+            "question_4": questions.question_4,
+            "question_5": questions.question_5,
+        }
+        return all(v and v.strip() for v in questions_dict.values())
+    
+    async def _get_questions_by_profile_id(self, basic_profile_id: int) -> Optional[ProfileQuestions]:
+        """Внутренний метод получения вопросов по ID профиля"""
+        stmt = select(ProfileQuestions).where(
+            ProfileQuestions.basic_profile_id == basic_profile_id
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+    
 # ========== МЕТОДЫ ДЛЯ SEARCH-SERVICE ==========
 
-    async def get_profiles_batch(self, profile_ids: List[int]) -> List[Dict[str, Any]]:
+    async def get_profiles_batch_by_keycloak_ids(self, keycloak_ids: List[str]) -> List[Dict[str, Any]]:
         """
-        Получение нескольких профилей по их ID
-        Используется search-service для batch-запроса
+        Получение нескольких профилей по Keycloak ID
         """
-        if not profile_ids:
+        if not keycloak_ids:
             return []
         
         try:
-            # Получаем базовые профили
-            stmt = select(BasicProfile).where(BasicProfile.id.in_(profile_ids))
+            stmt = select(BasicProfile).where(BasicProfile.keycloak_id.in_(keycloak_ids))
             result = await self.db.execute(stmt)
             basic_profiles = result.scalars().all()
             
             if not basic_profiles:
                 return []
             
-            # Получаем ID для запроса детальных профилей
             basic_ids = [p.id for p in basic_profiles]
             
-            # Получаем детальные профили
             detailed_stmt = select(DetailedProfile).where(
                 DetailedProfile.basic_profile_id.in_(basic_ids)
             )
             detailed_result = await self.db.execute(detailed_stmt)
             detailed_profiles = {dp.basic_profile_id: dp for dp in detailed_result.scalars().all()}
             
-            # Формируем ответ
             result_profiles = []
             for profile in basic_profiles:
                 profile_data = {
@@ -584,7 +715,8 @@ class ProfileService:
                         "about_me": detailed.about_me,
                         "education": detailed.education,
                         "hobbies": detailed.hobbies,
-                        "partner_preferences": detailed.partner_preferences
+                        "partner_preferences": detailed.partner_preferences,
+                        "red_flags": detailed.red_flags  # NEW
                     }
                 else:
                     profile_data["detailed"] = None
@@ -594,7 +726,7 @@ class ProfileService:
             return result_profiles
             
         except Exception as e:
-            logger.error(f"Failed to get profiles batch: {e}")
+            logger.error(f"Failed to get profiles batch by keycloak_ids: {e}")
             raise DatabaseException(f"Failed to get profiles batch: {str(e)}")
 
 
@@ -763,7 +895,8 @@ class ProfileService:
                         "about_me": detailed.about_me,
                         "education": detailed.education,
                         "hobbies": detailed.hobbies,
-                        "partner_preferences": detailed.partner_preferences
+                        "partner_preferences": detailed.partner_preferences,
+                        "red_flags": detailed.red_flags
                     }
                 else:
                     profile_data["detailed"] = None
@@ -781,3 +914,194 @@ class ProfileService:
         except Exception as e:
             logger.error(f"Failed to search profiles: {e}")
             raise DatabaseException(f"Failed to search profiles: {str(e)}")
+        
+    # ========== МЕТОДЫ ЭМБЕДДИНГА ==========
+    
+    async def get_embedding(self, keycloak_id: str) -> Optional[List[float]]:
+        """
+        Get embedding vector for a user.
+        Returns None if profile doesn't exist or embedding is not generated.
+        """
+        async with async_session_factory() as session:
+            stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
+            result = await session.execute(stmt)
+            profile = result.scalar_one_or_none()
+            
+            if not profile:
+                return None
+            
+            # Проверяем, есть ли эмбеддинг (учитывая, что это может быть numpy array)
+            if profile.embedding is None or (hasattr(profile.embedding, '__len__') and len(profile.embedding) == 0):
+                logger.warning(f"No embedding for user {keycloak_id}")
+                return None
+            
+            # Конвертируем numpy array в list если нужно
+            if hasattr(profile.embedding, 'tolist'):
+                return profile.embedding.tolist()
+            return profile.embedding
+    
+    async def get_sentiment_embedding(self, keycloak_id: str) -> Optional[List[float]]:
+        """
+        Get sentiment embedding vector for a user.
+        """
+        async with async_session_factory() as session:
+            stmt = select(BasicProfile).where(BasicProfile.keycloak_id == keycloak_id)
+            result = await session.execute(stmt)
+            profile = result.scalar_one_or_none()
+            
+            if not profile:
+                return None
+            
+            if profile.sentiment_embedding is None:
+                return None
+            
+            if hasattr(profile.sentiment_embedding, 'tolist'):
+                return profile.sentiment_embedding.tolist()
+            return profile.sentiment_embedding
+    
+    async def search_profiles_by_embedding(
+        self,
+        embedding: List[float],
+        filters: Dict[str, Any],
+        exclude_ids: List[str],
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Search profiles by embedding similarity using pgvector.
+        
+        Args:
+            embedding: Query embedding vector (384 dimensions)
+            filters: Filter criteria (gender, age range, city, education, hobbies, online_only)
+            exclude_ids: List of keycloak_ids to exclude
+            limit: Maximum number of results
+            offset: Pagination offset
+        
+        Returns:
+            List of profiles with similarity scores
+        """
+        try:
+            async with async_session_factory() as session:
+                # Build base query
+                query = select(
+                    BasicProfile,
+                    DetailedProfile,
+                    # Cosine distance (lower = more similar)
+                    BasicProfile.embedding.cosine_distance(embedding).label("distance")
+                ).outerjoin(
+                    DetailedProfile,
+                    BasicProfile.id == DetailedProfile.basic_profile_id
+                ).where(
+                    BasicProfile.embedding != None  # Only profiles with embeddings
+                )
+                
+                # Exclude specific users
+                if exclude_ids:
+                    query = query.where(BasicProfile.keycloak_id.notin_(exclude_ids))
+                
+                # Gender filter
+                if filters.get("gender"):
+                    query = query.where(BasicProfile.gender == filters["gender"])
+                
+                # City filter (partial match)
+                if filters.get("city"):
+                    query = query.where(BasicProfile.city.ilike(f"%{filters['city']}%"))
+                
+                # Age filter (calculate from date_of_birth)
+                today = datetime.utcnow().date()
+                if filters.get("min_age") is not None:
+                    max_birth_date = date(
+                        today.year - filters["min_age"],
+                        today.month,
+                        today.day
+                    )
+                    query = query.where(BasicProfile.date_of_birth <= max_birth_date)
+                
+                if filters.get("max_age") is not None:
+                    min_birth_date = date(
+                        today.year - filters["max_age"] - 1,
+                        today.month,
+                        today.day
+                    )
+                    query = query.where(BasicProfile.date_of_birth >= min_birth_date)
+                
+                # Education filter (on detailed profile)
+                if filters.get("education"):
+                    query = query.where(DetailedProfile.education.ilike(f"%{filters['education']}%"))
+                
+                # Hobbies keywords filter (any match)
+                if filters.get("hobbies_keywords"):
+                    hobby_conditions = []
+                    for keyword in filters["hobbies_keywords"]:
+                        if keyword and keyword.strip():
+                            hobby_conditions.append(
+                                DetailedProfile.hobbies.ilike(f"%{keyword.strip()}%")
+                            )
+                    if hobby_conditions:
+                        from sqlalchemy import or_
+                        query = query.where(or_(*hobby_conditions))
+                
+                # Online only filter
+                if filters.get("online_only", False):
+                    query = query.where(BasicProfile.online == True)
+                
+                # Order by similarity (closest first)
+                query = query.order_by("distance")
+                
+                # Apply pagination
+                query = query.offset(offset).limit(limit)
+                
+                # Execute query
+                result = await session.execute(query)
+                rows = result.all()
+                
+                # Format results
+                profiles = []
+                for row in rows:
+                    basic = row[0]
+                    detailed = row[1]
+                    distance = row[2]
+                    
+                    # Convert distance to similarity (1 - distance, clamp to [0,1])
+                    similarity = max(0.0, min(1.0, 1.0 - distance))
+                    
+                    # Calculate age
+                    age = self._calculate_age(basic.date_of_birth)
+                    
+                    profile_data = {
+                        "keycloak_id": basic.keycloak_id,
+                        "first_name": basic.first_name,
+                        "last_name": basic.last_name,
+                        "age": age,
+                        "city": basic.city,
+                        "avatar_url": basic.avatar_url,
+                        "thumbnail_url": basic.thumbnail_url,
+                        "similarity": round(similarity, 4),
+                        "online": basic.online,
+                    }
+                    
+                    # Add detailed info if available
+                    if detailed:
+                        profile_data["education"] = detailed.education
+                        profile_data["hobbies"] = detailed.hobbies
+                        profile_data["about_me"] = detailed.about_me
+                        profile_data["partner_preferences"] = detailed.partner_preferences
+                        profile_data["red_flags"] = detailed.red_flags
+                    
+                    profiles.append(profile_data)
+                
+                logger.info(f"Search by embedding returned {len(profiles)} profiles")
+                return profiles
+                
+        except Exception as e:
+            logger.error(f"Failed to search profiles by embedding: {e}", exc_info=True)
+            raise DatabaseException(f"Failed to search profiles: {str(e)}")
+    
+    @staticmethod
+    def _calculate_age(birth_date: date) -> int:
+        """Calculate age from birth date"""
+        today = datetime.utcnow().date()
+        age = today.year - birth_date.year - (
+            (today.month, today.day) < (birth_date.month, birth_date.day)
+        )
+        return max(0, age)

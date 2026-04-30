@@ -171,12 +171,14 @@ services:
       retries: 5
 
   profile-postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: profile-postgres
     env_file:
       - profile-service/.env
     ports:
       - "5436:5432"
+    volumes:
+      - ./infrastructure/postgres/pgvector-init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - briolin-network
     healthcheck:
@@ -241,17 +243,19 @@ services:
       timeout: 5s
       retries: 5
 
-  search-postgres:
-    image: postgres:17-alpine
-    container_name: search-postgres
+  matching-postgres:
+    image: pgvector/pgvector:pg17
+    container_name: matching-postgres
     env_file:
-      - search-service/.env
+      - matching-service/.env
     ports:
       - "5439:5432"
+    volumes:
+      - ./infrastructure/postgres/pgvector-init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - briolin-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U search_user -d search_db"]
+      test: ["CMD-SHELL", "pg_isready -U matching_user -d matching_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -336,6 +340,7 @@ services:
         condition: service_started
     volumes:
       - ./shared:/app/shared:ro
+      - model-cache:/root/.cache
     networks:
       - briolin-network
     restart: unless-stopped
@@ -386,18 +391,24 @@ services:
       - briolin-network
     restart: unless-stopped
 
-  search-service:
+  matching-service:
     build:
       context: .
-      dockerfile: search-service/Dockerfile
-    container_name: search-service
+      dockerfile: matching-service/Dockerfile
+    container_name: matching-service
     ports:
       - "8006:8006"
     env_file:
-      - search-service/.env
+      - matching-service/.env
     depends_on:
+      matching-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      profile-service:
+        condition: service_started
     volumes:
       - ./shared:/app/shared:ro
     networks:
@@ -444,9 +455,9 @@ services:
         condition: service_started
       chat-service:
         condition: service_started
-      search-service:
-        condition: service_started
       media-service:
+        condition: service_started
+      matching-service:
         condition: service_started
       redis:
         condition: service_healthy
@@ -480,6 +491,7 @@ volumes:
   rabbitmq-data:
   minio-data:
     driver: local
+  model-cache:
 
 networks:
   briolin-network:

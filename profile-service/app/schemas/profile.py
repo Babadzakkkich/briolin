@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field, ConfigDict, validator
-from typing import Optional
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List
 from datetime import datetime, date
 from shared.schemas.shared import Gender
+from .questions import ProfileQuestionsResponse
 
 
 class BasicProfileCreate(BaseModel):
@@ -43,6 +44,11 @@ class DetailedProfileCreate(BaseModel):
     education: str = Field(..., min_length=1, max_length=500)
     hobbies: str = Field(..., min_length=1, max_length=1000)
     partner_preferences: str = Field(..., min_length=10, max_length=2000)
+    red_flags: Optional[List[str]] = Field(
+        None, 
+        max_length=20,
+        description="Список вещей, которые пользователь НЕ приемлет в партнёре"
+    )
 
 
 class DetailedProfileResponse(BaseModel):
@@ -53,6 +59,7 @@ class DetailedProfileResponse(BaseModel):
     education: str
     hobbies: str
     partner_preferences: str
+    red_flags: Optional[List[str]] = None
 
 
 class DetailedProfileUpdate(BaseModel):
@@ -60,6 +67,7 @@ class DetailedProfileUpdate(BaseModel):
     education: Optional[str] = Field(None, min_length=1, max_length=500)
     hobbies: Optional[str] = Field(None, min_length=1, max_length=1000)
     partner_preferences: Optional[str] = Field(None, min_length=10, max_length=2000)
+    red_flags: Optional[List[str]] = Field(None, max_length=20)
 
 
 class FullProfileResponse(BaseModel):
@@ -67,6 +75,7 @@ class FullProfileResponse(BaseModel):
     
     basic: BasicProfileResponse
     detailed: Optional[DetailedProfileResponse] = None
+    questions: Optional[ProfileQuestionsResponse] = None
 
 
 class FullProfileCreate(BaseModel):

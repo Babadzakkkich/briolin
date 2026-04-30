@@ -22,4 +22,4 @@ def get_logger(name: str):
     return logger
 
 
-logger = get_logger("briolin.search")
+logger = get_logger("briolin.matching")

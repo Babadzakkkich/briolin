@@ -68,22 +68,20 @@ class ChatUpdate(BaseModel):
     status: Optional[ChatStatus] = None
 
 class ChatResponse(BaseModel):
-    """Ответ с информацией о чате с персонализированным названием"""
     model_config = ConfigDict(from_attributes=True)
     
     id: uuid.UUID
     type: ChatType
     status: ChatStatus
-    # Для direct чатов: имя и аватарка собеседника
-    # Для group чатов: заданные создателем
-    name: Optional[str] = Field(None, description="Название чата (персонализировано для каждого пользователя в direct)")
+    name: Optional[str] = None
     description: Optional[str] = None
-    avatar_url: Optional[str] = Field(None, description="URL аватарки чата (персонализирован для direct)")
+    avatar_url: Optional[str] = None
     participants: List[ParticipantBase]
     created_at: datetime
     updated_at: datetime
-    last_message: Optional[Dict[str, Any]] = Field(None, description="Последнее сообщение в чате")
-    unread_count: int = Field(0, description="Количество непрочитанных сообщений")
+    last_message: Optional[Dict[str, Any]] = None
+    unread_count: int = 0
+    match_id: Optional[int] = None
 
 class ChatListResponse(BaseModel):
     """Список чатов с пагинацией"""

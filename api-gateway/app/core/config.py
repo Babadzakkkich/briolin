@@ -39,8 +39,8 @@ class ServicesConfig(BaseSettings):
     testing: str
     chat: str
     chat_ws: str
-    search: str
     media: str
+    matching: str
 
 
 class CacheConfig(BaseSettings):
