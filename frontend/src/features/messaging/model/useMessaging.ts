@@ -20,12 +20,15 @@ export function useMessaging(initialChatId: string | null) {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [typingMap, setTypingMap] = useState<Record<string, string[]>>({});
+  const [isOtherUserOnline, setIsOtherUserOnline] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const typingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const typingActive = useRef(false);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const subscribedChatsRef = useRef<Set<string>>(new Set());
+  const chatsRef = useRef<Chat[]>(chats);
 
   useEffect(() => {
     chatApi
@@ -34,6 +37,8 @@ export function useMessaging(initialChatId: string | null) {
       .catch(() => toast.error('Не удалось загрузить чаты'))
       .finally(() => setIsLoadingChats(false));
   }, []);
+
+  chatsRef.current = chats;
 
   useEffect(() => {
     if (!selectedChatId) return;
@@ -71,6 +76,27 @@ export function useMessaging(initialChatId: string | null) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Poll online status for the other participant in the selected direct chat
+  useEffect(() => {
+    setIsOtherUserOnline(false);
+    if (!selectedChatId) return;
+    const chat = chatsRef.current.find((c) => c.id === selectedChatId);
+    if (chat?.type !== 'DIRECT') return;
+    const other = chat.participants.find((p) => p.keycloak_id !== keycloakId);
+    if (!other) return;
+
+    const otherId = other.keycloak_id;
+    const check = () => {
+      chatApi
+        .getOnlineStatus(otherId)
+        .then((d) => setIsOtherUserOnline(d.online))
+        .catch(() => setIsOtherUserOnline(false));
+    };
+    check();
+    const timer = setInterval(check, 30_000);
+    return () => clearInterval(timer);
+  }, [selectedChatId, keycloakId]);
 
   const handleWsMessage = useCallback(
     (msg: WsMessage) => {
@@ -111,15 +137,21 @@ export function useMessaging(initialChatId: string | null) {
       if (msg.type === 'typing' && msg.chat_id && msg.sender_id && msg.sender_id !== keycloakId) {
         const chatId = msg.chat_id;
         const userId = msg.sender_id;
-        const name = msg.display_name ?? userId;
+        // Backend nests display_name and is_typing inside msg.message for typing events
+        const typingPayload = msg.message as unknown as
+          | { display_name?: string; is_typing?: boolean }
+          | undefined;
+        const name = typingPayload?.display_name ?? msg.display_name ?? userId;
+        const isTyping = typingPayload?.is_typing ?? msg.is_typing ?? false;
+
         setTypingMap((prev) => {
           const current = prev[chatId] ?? [];
-          if (msg.is_typing) {
+          if (isTyping) {
             return { ...prev, [chatId]: [...current.filter((n) => n !== name), name] };
           }
           return { ...prev, [chatId]: current.filter((n) => n !== name) };
         });
-        if (msg.is_typing) {
+        if (isTyping) {
           if (typingTimers.current[userId]) clearTimeout(typingTimers.current[userId]);
           typingTimers.current[userId] = setTimeout(() => {
             setTypingMap((prev) => ({
@@ -130,11 +162,11 @@ export function useMessaging(initialChatId: string | null) {
         }
       }
 
-      if (msg.type === 'message_update' && msg.message) {
+      if (msg.type === 'message_updated' && msg.message) {
         setMessages((prev) => prev.map((m) => (m.id === msg.message!.id ? msg.message! : m)));
       }
 
-      if (msg.type === 'message_delete' && msg.message_id) {
+      if (msg.type === 'message_deleted' && msg.message_id) {
         setMessages((prev) => prev.filter((m) => m.id !== msg.message_id));
       }
 
@@ -161,11 +193,23 @@ export function useMessaging(initialChatId: string | null) {
 
   const { subscribe, unsubscribe, sendTyping } = useChatSocket({ onMessage: handleWsMessage });
 
+  // Subscribe to all loaded chats so WS events are received for all, not just the selected one
   useEffect(() => {
-    if (!selectedChatId) return;
-    subscribe(selectedChatId);
-    return () => unsubscribe(selectedChatId);
-  }, [selectedChatId, subscribe, unsubscribe]);
+    const toSubscribe = chats.filter((c) => !subscribedChatsRef.current.has(c.id));
+    toSubscribe.forEach((c) => {
+      subscribedChatsRef.current.add(c.id);
+      subscribe(c.id);
+    });
+  }, [chats, subscribe]);
+
+  // Unsubscribe all on unmount
+  useEffect(() => {
+    const ref = subscribedChatsRef;
+    return () => {
+      ref.current.forEach((id) => unsubscribe(id));
+      ref.current.clear();
+    };
+  }, [unsubscribe]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
@@ -243,6 +287,7 @@ export function useMessaging(initialChatId: string | null) {
     keycloakId,
     messagesEndRef,
     inputRef,
+    isOtherUserOnline,
     handleInputChange,
     handleSend,
     handleKeyDown,

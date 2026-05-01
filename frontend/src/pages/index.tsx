@@ -91,15 +91,6 @@ export function IndexPage() {
         ))}
       </section>
 
-      <div className='mt-6 flex items-center justify-between py-10'>
-        <Text variant='h3' className='text-primary'>
-          Готовы начать?
-        </Text>
-        <Link to='/registration'>
-          <Button size='lg'>Зарегистрироваться</Button>
-        </Link>
-      </div>
-
       <div className='py-6 text-center'>
         <Text variant='p-sm'>© 2026 Бриолин</Text>
       </div>

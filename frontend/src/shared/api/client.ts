@@ -19,6 +19,12 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+export async function refreshAccessToken(): Promise<string> {
+  const { data } = await refreshClient.post<{ access_token: string }>('/auth/refresh');
+  useAuthStore.getState().setAccessToken(data.access_token);
+  return data.access_token;
+}
+
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (token: string) => void;

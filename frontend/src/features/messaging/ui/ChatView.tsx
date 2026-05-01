@@ -14,6 +14,7 @@ interface ChatViewProps {
   isSending: boolean;
   typingNames: string[];
   keycloakId: string | null;
+  online?: boolean;
   onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   onSend: () => void;
@@ -32,6 +33,7 @@ export function ChatView({
   onInputChange,
   onKeyDown,
   onSend,
+  online,
   messagesEndRef,
   inputRef,
 }: ChatViewProps) {
@@ -41,7 +43,7 @@ export function ChatView({
   return (
     <div className='flex flex-1 flex-col overflow-hidden'>
       <div className='border-border flex shrink-0 items-center gap-3 border-b bg-white px-6 py-4'>
-        <ChatAvatar name={displayName} src={avatarUrl} size='lg' />
+        <ChatAvatar name={displayName} src={avatarUrl} size='lg' online={online} />
         <div className='min-w-0 flex-1'>
           <p className='text-primary truncate text-[15px] font-semibold'>{displayName}</p>
           {typingNames.length > 0 ? (
@@ -59,6 +61,8 @@ export function ChatView({
                 ? `${typingNames[0]} печатает`
                 : 'Несколько человек печатают'}
             </span>
+          ) : online ? (
+            <p className='text-[12px] text-green-500'>В сети</p>
           ) : (
             <p className='text-secondary text-[12px]'>
               {chat.type === 'GROUP' ? `${chat.participants.length} участников` : 'Личный чат'}

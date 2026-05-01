@@ -40,6 +40,7 @@ export function MessagesPage() {
     keycloakId,
     messagesEndRef,
     inputRef,
+    isOtherUserOnline,
     handleInputChange,
     handleSend,
     handleKeyDown,
@@ -65,6 +66,7 @@ export function MessagesPage() {
           isSending={isSending}
           typingNames={typingNames}
           keycloakId={keycloakId}
+          online={isOtherUserOnline}
           onInputChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onSend={handleSend}

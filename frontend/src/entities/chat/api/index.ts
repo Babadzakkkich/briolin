@@ -9,4 +9,9 @@ export const chatApi = {
     apiClient
       .post<Chat>('/chats/', { type: 'direct', participant_ids: [participantKeycloakId] })
       .then((r) => r.data),
+
+  getOnlineStatus: (keycloakId: string) =>
+    apiClient
+      .get<{ online: boolean }>(`/chats/online/users/${keycloakId}`)
+      .then((r) => r.data),
 };

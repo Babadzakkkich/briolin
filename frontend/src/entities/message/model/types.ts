@@ -1,5 +1,5 @@
 export type MessageType = 'text' | 'image' | 'file' | 'audio' | 'video';
-export type MessageStatus = 'SENT' | 'DELIVERED' | 'FAILED';
+export type MessageStatus = 'sent' | 'delivered' | 'failed';
 
 export interface MessageReadStatus {
   keycloak_id: string;
@@ -39,8 +39,8 @@ export type WsEventType =
   | 'error'
   | 'connection'
   | 'connection_established'
-  | 'message_update'
-  | 'message_delete'
+  | 'message_updated'
+  | 'message_deleted'
   | 'user_online'
   | 'user_offline'
   | 'pong';
@@ -58,4 +58,5 @@ export interface WsMessage {
   connection_id?: string;
   user_id?: string;
   error?: string;
+  deleted_by?: string;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/entities/session';
+import { refreshAccessToken } from '@/shared/api/client';
 import type { WsMessage } from '@/entities/message';
 
 const API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -22,6 +23,9 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
   const ws = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
+
+  // Re-run the effect when the access token changes so we reconnect with a fresh token
+  const accessToken = useAuthStore((s) => s.accessToken);
 
   const subscribedChats = useRef<Set<string>>(new Set());
 
@@ -54,7 +58,7 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
   );
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !accessToken) return;
 
     let active = true;
     let retryTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -62,8 +66,11 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
     let currentSocket: WebSocket | null = null;
 
     function connect() {
+      if (!active) return;
+
+      // Always read the latest token when connecting
       const token = useAuthStore.getState().accessToken;
-      if (!token || !active) return;
+      if (!token) return;
 
       const socket = new WebSocket(`${WS_URL}?token=${token}`);
       currentSocket = socket;
@@ -96,11 +103,28 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
         socket.close();
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         clearInterval(ping);
         if (ws.current === socket) ws.current = null;
         currentSocket = null;
-        if (active) {
+
+        if (!active) return;
+
+        if (event.code === 1008) {
+          // Auth error: refresh the token then reconnect immediately
+          refreshAccessToken()
+            .then(() => {
+              if (active) {
+                retryDelay = 1000;
+                retryTimeout = setTimeout(connect, 200);
+              }
+            })
+            .catch(() => {
+              // Refresh token also expired — log out
+              useAuthStore.getState().clear();
+              window.location.href = '/login';
+            });
+        } else {
           retryTimeout = setTimeout(connect, retryDelay);
           retryDelay = Math.min(retryDelay * 2, 30_000);
         }
@@ -125,7 +149,7 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
         if (ws.current === s) ws.current = null;
       }
     };
-  }, [enabled]);
+  }, [enabled, accessToken]);
 
   return { subscribe, unsubscribe, sendTyping };
 }
