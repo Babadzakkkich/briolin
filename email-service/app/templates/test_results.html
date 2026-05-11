@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test Results</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #2196F3; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; }
+        .score { background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center; margin: 20px 0; }
+        .score-number { font-size: 36px; font-weight: bold; color: #2196F3; }
+        .footer { background: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Your Test Results</h1>
+        </div>
+        <div class="content">
+            <p>Hello <strong>{{ name }}</strong>,</p>
+            <p>You have completed the test: <strong>"{{ test_name }}"</strong></p>
+            
+            <div class="score">
+                <div class="score-number">{{ score }} / {{ total }}</div>
+                <div>Score: {{ percentage }}%</div>
+            </div>
+            
+            <p>You can view detailed results in your profile.</p>
+            <p>Keep practicing to improve your score!</p>
+            <p>Best regards,<br>Briolin Team</p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2026 Briolin. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

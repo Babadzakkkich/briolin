@@ -193,6 +193,8 @@ class KeycloakClient:
             if 'email' in user_data:
                 kc_data['email'] = user_data['email']
                 kc_data['emailVerified'] = False
+            if 'emailVerified' in user_data:
+                kc_data['emailVerified'] = user_data['emailVerified']
             if 'username' in user_data:
                 kc_data['username'] = user_data['username']
             if 'firstName' in user_data:
@@ -345,4 +347,33 @@ class KeycloakClient:
             if "404" in str(e) and "User not found" in str(e):
                 return None
             logger.error(f"Failed to get user by username {username}: {e}")
+            return None
+    
+    def reset_user_password(self, user_id: str, new_password: str, temporary: bool = False) -> bool:
+        """
+        Сброс пароля пользователя через Admin API.
+        
+        Args:
+            user_id: ID пользователя в Keycloak
+            new_password: Новый пароль
+            temporary: True — пользователь должен сменить пароль при следующем входе
+        """
+        try:
+            self.admin.set_user_password(user_id, new_password, temporary)
+            logger.info(f"Password reset for user {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to reset password for {user_id}: {e}")
+            return False
+
+
+    def get_user_id_by_email(self, email: str) -> Optional[str]:
+        """Получить ID пользователя по email"""
+        try:
+            users = self.admin.get_users({"email": email})
+            if users:
+                return users[0].get("id")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get user by email {email}: {e}")
             return None

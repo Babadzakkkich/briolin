@@ -30,6 +30,8 @@ class HTTPClient:
         
         if path.startswith("/api/v1/auth"):
             return self.auth_service_url
+        elif path.startswith("/api/v1/auth/verify"):  
+            return self.auth_service_url
         elif path.startswith("/api/v1/users"):
             return self.user_service_url
         elif path.startswith("/api/v1/profiles"):
@@ -67,6 +69,8 @@ class HTTPClient:
         service_url = self._get_service_url(path)
         
         target_url = urljoin(service_url.rstrip("/") + "/", path.lstrip("/"))
+        
+        logger.info(f"Proxying {request.method} {path} -> {target_url}")
         
         headers = {}
         for header_name, header_value in request.headers.items():
@@ -146,8 +150,6 @@ class HTTPClient:
                     logger.error("Stream already consumed, cannot proxy request")
                     raise ServiceUnavailableException("Stream already consumed")
                 raise
-        
-        logger.info(f"Proxying {request.method} {path} -> {target_url}")
         
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:

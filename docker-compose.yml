@@ -431,6 +431,24 @@ services:
       - briolin-network
     restart: unless-stopped
 
+  email-service:
+    build:
+      context: .
+      dockerfile: email-service/Dockerfile
+    container_name: email-service
+    ports:
+      - "8007:8007"
+    env_file:
+      - email-service/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - briolin-network
+    restart: unless-stopped
+
   api-gateway:
     build:
       context: .
