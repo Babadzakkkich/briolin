@@ -67,6 +67,24 @@ async def get_online_users(
         headers=dict(response.headers)
     )
 
+@router.get(
+    "/{chat_id}/match-answers",
+    summary="Ответы матча в чате",
+    description="Получение ответов на вопросы друг друга для чата, созданного из матча."
+)
+async def get_chat_match_answers(
+    chat_id: uuid.UUID,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Ответы на вопросы в чате"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
 
 @router.post(
     "/",

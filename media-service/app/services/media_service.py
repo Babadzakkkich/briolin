@@ -1,4 +1,3 @@
-# app/services/media_service.py
 import uuid
 from typing import Optional, Tuple, List
 from datetime import datetime
@@ -12,9 +11,6 @@ from app.database.models import Avatar
 from app.core.config import settings
 from app.core.logger import logger
 from app.core.exceptions import (
-    FileTooLargeException,
-    UnsupportedMediaTypeException,
-    ImageProcessingException,
     FileNotFoundException,
     MaxAvatarsExceededException
 )
@@ -72,6 +68,76 @@ class MediaService:
                 avatar_id=next_avatar.id,
                 is_current=True
             )
+        
+    async def _get_current_avatar(self, keycloak_id: str) -> Optional[Avatar]:
+        """Получает текущую аватарку пользователя"""
+        stmt = select(Avatar).where(
+            and_(
+                Avatar.keycloak_id == keycloak_id,
+                Avatar.is_current == True,
+                Avatar.is_deleted == False
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_my_avatar(
+        self,
+        keycloak_id: str
+    ) -> Tuple[bytes, str]:
+        """
+        Получение текущей аватарки пользователя
+        
+        Args:
+            keycloak_id: ID пользователя в Keycloak
+        
+        Returns:
+            Tuple[bytes, str]: (данные файла, content_type)
+        """
+        try:
+            avatar = await self._get_current_avatar(keycloak_id)
+            
+            if not avatar:
+                raise FileNotFoundException("current")
+            
+            object_name = f"avatars/{keycloak_id}/{avatar.id}/original.webp"
+            file_data, content_type = await self.minio_client.get_file(object_name)
+            return file_data, content_type
+            
+        except FileNotFoundException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get current avatar: {e}")
+            raise
+
+    async def get_my_avatar_thumbnail(
+        self,
+        keycloak_id: str
+    ) -> Tuple[bytes, str]:
+        """
+        Получение текущего thumbnail пользователя
+        
+        Args:
+            keycloak_id: ID пользователя в Keycloak
+        
+        Returns:
+            Tuple[bytes, str]: (данные файла, content_type)
+        """
+        try:
+            avatar = await self._get_current_avatar(keycloak_id)
+            
+            if not avatar:
+                raise FileNotFoundException("current")
+            
+            object_name = f"avatars/{keycloak_id}/{avatar.id}/thumbnail.webp"
+            file_data, content_type = await self.minio_client.get_file(object_name)
+            return file_data, content_type
+            
+        except FileNotFoundException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get current thumbnail: {e}")
+            raise
     
     async def upload_avatar(
         self,
@@ -321,6 +387,38 @@ class MediaService:
         except Exception as e:
             await self.db.rollback()
             logger.error(f"Failed to delete avatar: {e}", exc_info=True)
+            raise
+    
+    async def delete_my_avatar(
+        self,
+        keycloak_id: str
+    ) -> AvatarDeleteResponse:
+        """
+        Удаление текущей аватарки пользователя (soft delete)
+        
+        Args:
+            keycloak_id: ID пользователя в Keycloak
+        
+        Returns:
+            AvatarDeleteResponse: Результат удаления
+        """
+        try:
+            # Находим текущую аватарку
+            avatar = await self._get_current_avatar(keycloak_id)
+            
+            if not avatar:
+                raise FileNotFoundException("current")
+            
+            # Используем существующий метод удаления
+            return await self.delete_avatar(
+                keycloak_id=keycloak_id,
+                avatar_id=avatar.id
+            )
+            
+        except FileNotFoundException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to delete current avatar: {e}", exc_info=True)
             raise
     
     async def get_user_avatars(

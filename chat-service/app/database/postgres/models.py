@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Integer, String, Boolean, DateTime, Enum, ForeignKey, Text, Index, UniqueConstraint
+from sqlalchemy import BigInteger, Integer, String, Boolean, DateTime, Enum, ForeignKey, Text, Index, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -40,6 +40,7 @@ class Chat(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     direct_chat_partner_mapping: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    match_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
     
     participants: Mapped[List["ChatParticipant"]] = relationship(
         "ChatParticipant",

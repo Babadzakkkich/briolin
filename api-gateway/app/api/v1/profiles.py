@@ -6,6 +6,9 @@ from app.schemas.profile import (
     DetailedProfileCreate,
     FullProfileUpdate,
     FullProfileResponse,
+    ProfileQuestionsCreate,
+    ProfileQuestionsResponse,
+    ProfileQuestionsUpdate,
     SagaStatusResponse,
     AsyncOperationResponse
 )
@@ -64,12 +67,88 @@ async def create_detailed_profile(
         headers=dict(response.headers)
     )
 
+@router.post(
+    "/me/questions",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FullProfileResponse,
+    summary="Создать вопросы профиля",
+    description="Создание или полное обновление 5 вопросов для знакомства."
+)
+async def set_my_questions(
+    questions_data: ProfileQuestionsCreate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Создание или обновление вопросов профиля"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
 @router.get("/me", response_model=FullProfileResponse)
 async def get_my_profile(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Получение своего полного профиля"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+@router.get(
+    "/me/questions",
+    response_model=ProfileQuestionsResponse,
+    summary="Мои вопросы",
+    description="Получение своих вопросов для знакомства."
+)
+async def get_my_questions(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Получение своих вопросов"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.get(
+    "/me/questions/status",
+    summary="Статус вопросов",
+    description="Проверка, заполнены ли все вопросы профиля."
+)
+async def get_my_questions_status(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Проверка статуса вопросов"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+
+@router.get(
+    "/{keycloak_id}/questions",
+    response_model=ProfileQuestionsResponse,
+    summary="Вопросы пользователя",
+    description="Получение вопросов другого пользователя (перед лайком)."
+)
+async def get_user_questions(
+    keycloak_id: str,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Получение вопросов пользователя"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -88,6 +167,25 @@ async def update_my_profile(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """АСИНХРОННОЕ обновление своего полного профиля"""
+    response = await http_client.proxy_request(request)
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=dict(response.headers)
+    )
+
+@router.patch(
+    "/me/questions",
+    response_model=FullProfileResponse,
+    summary="Обновить вопросы профиля",
+    description="Частичное обновление вопросов профиля."
+)
+async def update_my_questions(
+    questions_data: ProfileQuestionsUpdate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Частичное обновление вопросов"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
