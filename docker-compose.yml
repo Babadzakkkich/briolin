@@ -165,7 +165,7 @@ services:
       retries: 5
 
   profile-postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg16
     container_name: profile-postgres
     env_file:
       - profile-service/.env
@@ -238,7 +238,7 @@ services:
       retries: 5
     
   matching-postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg16
     container_name: matching-postgres
     env_file:
       - matching-service/.env
@@ -437,7 +437,7 @@ services:
       dockerfile: email-service/Dockerfile
     container_name: email-service
     ports:
-      - "8007:8007"
+      - "8008:8008"
     env_file:
       - email-service/.env
     depends_on:

@@ -14,8 +14,8 @@ class SmtpConfig(BaseSettings):
     
     host: str = "smtp.gmail.com"
     port: int = 587
-    user: str = ""  # Значение по умолчанию
-    password: str = ""  # Значение по умолчанию
+    user: str = ""  
+    password: str = ""  
     from_email: Optional[str] = None
     use_tls: bool = True
 

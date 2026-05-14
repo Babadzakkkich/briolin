@@ -6,7 +6,6 @@ from app.dependencies import get_auth_service, get_current_user
 from app.core.exceptions import ValidationException, DatabaseException
 from app.schemas.verify import VerifyCodeRequest, PasswordResetRequest, PasswordResetConfirmRequest
 
-# Измените префикс с "/auth/verify" на "/auth"
 router = APIRouter(prefix="/auth")
 
 

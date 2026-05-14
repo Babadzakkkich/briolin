@@ -32,6 +32,7 @@ class ServicesConfig(BaseSettings):
         env_nested_delimiter="__",
         env_prefix="SERVICES__",
         case_sensitive=False,
+        extra="ignore",  # ← ДОБАВИТЬ ЭТУ СТРОКУ
     )
     auth: str
     user: str
@@ -39,8 +40,8 @@ class ServicesConfig(BaseSettings):
     testing: str
     chat: str
     chat_ws: str
-    media: str
-    matching: str
+    media: Optional[str] = None  # ← Сделать необязательным
+    matching: Optional[str] = None  # ← Сделать необязательным
 
 
 class CacheConfig(BaseSettings):
