@@ -246,6 +246,10 @@ class AuthService:
             await self.db.commit()
             raise DatabaseException(f"Failed to create user profile: {str(e)}")
         
+        code = self.verification_service.generate_code()
+        await self.verification_service.save_verification_code(user_register.email, code)
+        await self.send_verification_code_email(user_register.email, code)
+        logger.info(f"Verification code sent to {user_register.email}: {code}")
         return UserResponse(
             id=new_user.id,
             keycloak_id=keycloak_id,
