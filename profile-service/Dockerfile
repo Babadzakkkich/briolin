@@ -15,7 +15,7 @@ RUN mkdir -p /root/.cache/huggingface /root/.cache/sentence_transformers
 COPY shared/ /app/shared/
 
 COPY ./profile-service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=100 --retries=5 -r requirements.txt
 
 COPY ./profile-service/app/ /app/app/
 

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>New Login Alert</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #FF9800; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; }
+        .alert { background: #fff3e0; border-left: 4px solid #FF9800; padding: 10px; margin: 10px 0; }
+        .footer { background: #f4f4f4; padding: 10px; text-align: center; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>New Login Detected</h1>
+        </div>
+        <div class="content">
+            <p>Hello <strong>{{ name }}</strong>,</p>
+            <div class="alert">
+                <p>A new login was detected to your account at <strong>{{ timestamp }}</strong>.</p>
+            </div>
+            <p>If this was you, you can ignore this email.</p>
+            <p><strong>If this wasn't you, please contact support immediately to secure your account.</strong></p>
+            <p>Best regards,<br>Briolin Team</p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2026 Briolin. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -15,7 +15,7 @@ COPY shared/ /app/shared/
 
 # Копируем requirements и устанавливаем зависимости
 COPY ./auth-service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=100 --retries=5 -r requirements.txt
 
 # Копируем код auth-service
 COPY ./auth-service/app/ /app/app/
