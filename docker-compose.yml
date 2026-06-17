@@ -147,6 +147,8 @@ services:
       - auth-service/.env
     ports:
       - "5434:5432"
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
     networks:
       - briolin-network
     healthcheck:
@@ -162,6 +164,8 @@ services:
       - user-service/.env
     ports:
       - "5435:5432"
+    volumes:
+      - user-postgres-data:/var/lib/postgresql/data
     networks:
       - briolin-network
     healthcheck:
@@ -178,6 +182,7 @@ services:
     ports:
       - "5436:5432"
     volumes:
+      - profile-postgres-data:/var/lib/postgresql/data
       - ./infrastructure/postgres/pgvector-init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - briolin-network
@@ -194,6 +199,8 @@ services:
       - testing-service/.env
     ports:
       - "5437:5432"
+    volumes:
+      - testing-postgres-data:/var/lib/postgresql/data
     networks:
       - briolin-network
     healthcheck:
@@ -222,6 +229,8 @@ services:
       - chat-service/.env
     ports:
       - "5438:5432"
+    volumes:
+      - chat-postgres-data:/var/lib/postgresql/data
     networks:
       - briolin-network
     healthcheck:
@@ -251,6 +260,7 @@ services:
     ports:
       - "5439:5432"
     volumes:
+      - matching-postgres-data:/var/lib/postgresql/data
       - ./infrastructure/postgres/pgvector-init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - briolin-network
@@ -267,6 +277,8 @@ services:
       - media-service/.env
     ports:
       - "5440:5432"
+    volumes:
+      - media-postgres-data:/var/lib/postgresql/data
     networks:
       - briolin-network
     healthcheck:
@@ -510,6 +522,13 @@ volumes:
   minio-data:
     driver: local
   model-cache:
+  auth-postgres-data:
+  user-postgres-data:
+  profile-postgres-data:
+  testing-postgres-data:
+  chat-postgres-data:
+  matching-postgres-data:
+  media-postgres-data:
 
 networks:
   briolin-network:

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Button } from '@/shared/uikit/Button';
+import { Loader } from '@/shared/uikit/Loader';
 import { Text } from '@/shared/uikit/Text';
 import { testSessionApi, type Question } from '@/entities/test-session';
 import { useAuthStore } from '@/entities/session';
@@ -79,18 +80,10 @@ export function TestStep({ onNext }: StepProps<unknown>) {
     }
   }
 
-  if (loading) {
+  if (loading || questions.length === 0) {
     return (
       <div className={CARD_CLASS}>
-        <Text variant='p' as='p'>Загрузка теста...</Text>
-      </div>
-    );
-  }
-
-  if (questions.length === 0) {
-    return (
-      <div className={CARD_CLASS}>
-        <Text variant='p' as='p'>Вопросы не найдены</Text>
+        <Loader size='lg' label='Загрузка теста...' />
       </div>
     );
   }

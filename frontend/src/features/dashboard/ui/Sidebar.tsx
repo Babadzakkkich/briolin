@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { LogoIcon } from '@/shared/icons/Logo';
 import { useAuthStore } from '@/entities/session';
 import { profileApi, useProfileStore } from '@/entities/profile';
@@ -10,10 +10,12 @@ import {
   Heart,
   LogOut,
   MessageCircle,
+  MoreHorizontal,
   SlidersHorizontal,
   Target,
   User,
   Users,
+  X,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -116,9 +118,113 @@ function UserCard() {
   );
 }
 
+const MAIN_NAV = [
+  { to: '/dashboard/profile', icon: User, label: 'Профиль' },
+  { to: '/dashboard/messages', icon: MessageCircle, label: 'Сообщения' },
+  { to: '/dashboard/search/classic', icon: SlidersHorizontal, label: 'Поиск' },
+  { to: '/dashboard/likes', icon: Heart, label: 'Лайки' },
+] as const;
+
+const MORE_NAV = [
+  { to: '/dashboard/matches', icon: Users, label: 'Матчи' },
+  { to: '/dashboard/search/targeted', icon: Target, label: 'Таргетированный поиск' },
+  { to: '/dashboard/cupidon', icon: Zap, label: 'Купидон' },
+  { to: '/dashboard/services', icon: Briefcase, label: 'Услуги' },
+  { to: '/dashboard/fortune', icon: Dice5, label: 'Фортуна' },
+] as const;
+
+export function BottomNav() {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+
+  const isMoreActive = MORE_NAV.some((item) => location.pathname === item.to);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={[
+          'fixed inset-0 z-40 bg-black/30 transition-opacity duration-300 md:hidden',
+          open ? 'opacity-100' : 'pointer-events-none opacity-0',
+        ].join(' ')}
+        onClick={() => setOpen(false)}
+      />
+
+      {/* Slide-up sheet */}
+      <div
+        className={[
+          'fixed right-0 left-0 z-50 rounded-t-2xl bg-white shadow-xl transition-transform duration-300 ease-in-out md:hidden',
+          'bottom-[60px]',
+          open ? 'translate-y-0' : 'translate-y-full',
+        ].join(' ')}
+      >
+        <div className='flex items-center justify-between border-b border-border px-5 py-4'>
+          <span className='font-onest text-primary text-[15px] font-medium'>Ещё</span>
+          <button
+            onClick={() => setOpen(false)}
+            className='text-secondary hover:bg-muted/10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg transition-colors'
+          >
+            <X size={16} strokeWidth={2.2} />
+          </button>
+        </div>
+        <div className='flex flex-col gap-0.5 px-3 py-3'>
+          {MORE_NAV.map(({ to, icon: Icon, label }) => (
+            <NavLink key={to} to={to} onClick={() => setOpen(false)}>
+              {({ isActive }) => (
+                <div
+                  className={[
+                    'flex items-center gap-3 rounded-xl px-4 py-3 transition-colors',
+                    isActive
+                      ? 'text-accent bg-accent/10'
+                      : 'text-secondary hover:bg-muted/10',
+                  ].join(' ')}
+                >
+                  <Icon size={20} strokeWidth={2.2} />
+                  <span className='text-[14px]'>{label}</span>
+                </div>
+              )}
+            </NavLink>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom nav bar */}
+      <nav className='border-border fixed right-0 bottom-0 left-0 z-50 flex border-t bg-white md:hidden'>
+        {MAIN_NAV.map(({ to, icon: Icon, label }) => (
+          <NavLink key={to} to={to} className='flex-1' onClick={() => setOpen(false)}>
+            {({ isActive }) => (
+              <div
+                className={[
+                  'flex flex-col items-center gap-1 py-3',
+                  isActive ? 'text-accent' : 'text-secondary',
+                ].join(' ')}
+              >
+                <Icon size={22} className='stroke-[2.2px]' />
+                <span className='text-[10px] leading-none'>{label}</span>
+              </div>
+            )}
+          </NavLink>
+        ))}
+
+        <button className='flex-1 cursor-pointer' onClick={() => setOpen((v) => !v)}>
+          <div
+            className={[
+              'flex flex-col items-center gap-1 py-3',
+              isMoreActive || open ? 'text-accent' : 'text-secondary',
+            ].join(' ')}
+          >
+            <MoreHorizontal size={22} className='stroke-[2.2px]' />
+            <span className='text-[10px] leading-none'>Ещё</span>
+          </div>
+        </button>
+      </nav>
+    </>
+  );
+}
+
 export function Sidebar() {
   return (
-    <nav className='border-border flex h-screen w-70 shrink-0 flex-col gap-10 border-r bg-white pt-10 pb-4'>
+    <nav className='border-border hidden h-screen w-70 shrink-0 flex-col gap-10 border-r bg-white pt-10 pb-4 md:flex'>
       <Link to='/'>
         <div className='flex items-center justify-center gap-2'>
           <LogoIcon />

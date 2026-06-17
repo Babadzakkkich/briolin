@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
 import { useMessaging } from '@/features/messaging/model/useMessaging';
@@ -24,6 +25,10 @@ export function MessagesPage() {
   const location = useLocation();
   const initialChatId = (location.state as { chatId?: string } | null)?.chatId ?? null;
 
+  const [mobilePanel, setMobilePanel] = useState<'list' | 'chat'>(
+    initialChatId ? 'chat' : 'list',
+  );
+
   const {
     chats,
     selectedChatId,
@@ -46,36 +51,63 @@ export function MessagesPage() {
     handleKeyDown,
   } = useMessaging(initialChatId);
 
-  return (
-    <div className='flex flex-1 overflow-hidden'>
-      <ChatList
-        chats={chats}
-        selectedChatId={selectedChatId}
-        search={search}
-        isLoading={isLoadingChats}
-        onSearch={setSearch}
-        onSelect={setSelectedChatId}
-      />
+  const handleSelect = (id: string) => {
+    setSelectedChatId(id);
+    setMobilePanel('chat');
+  };
 
-      {selectedChat ? (
-        <ChatView
-          chat={selectedChat}
-          messages={messages}
-          isLoading={isLoadingMessages}
-          input={input}
-          isSending={isSending}
-          typingNames={typingNames}
-          keycloakId={keycloakId}
-          online={isOtherUserOnline}
-          onInputChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onSend={handleSend}
-          messagesEndRef={messagesEndRef}
-          inputRef={inputRef}
+  const handleBack = () => {
+    setMobilePanel('list');
+  };
+
+  return (
+    <div className='relative flex flex-1 overflow-hidden'>
+      {/* List panel — on mobile: full-screen base layer; on desktop: fixed sidebar */}
+      <div
+        className={[
+          'absolute inset-0 z-10 flex flex-col bg-white',
+          'md:relative md:inset-auto md:z-auto md:w-72 md:shrink-0',
+        ].join(' ')}
+      >
+        <ChatList
+          chats={chats}
+          selectedChatId={selectedChatId}
+          search={search}
+          isLoading={isLoadingChats}
+          onSearch={setSearch}
+          onSelect={handleSelect}
         />
-      ) : (
-        <SelectChatPlaceholder />
-      )}
+      </div>
+
+      {/* Chat panel — slides over the list on mobile; flex-1 on desktop */}
+      <div
+        className={[
+          'absolute inset-0 z-20 flex flex-col bg-white transition-transform duration-300 ease-in-out',
+          mobilePanel === 'list' ? 'translate-x-full' : 'translate-x-0',
+          'md:relative md:inset-auto md:z-auto md:flex-1 md:translate-x-0',
+        ].join(' ')}
+      >
+        {selectedChat ? (
+          <ChatView
+            chat={selectedChat}
+            messages={messages}
+            isLoading={isLoadingMessages}
+            input={input}
+            isSending={isSending}
+            typingNames={typingNames}
+            keycloakId={keycloakId}
+            online={isOtherUserOnline}
+            onInputChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onSend={handleSend}
+            messagesEndRef={messagesEndRef}
+            inputRef={inputRef}
+            onBack={handleBack}
+          />
+        ) : (
+          <SelectChatPlaceholder />
+        )}
+      </div>
     </div>
   );
 }

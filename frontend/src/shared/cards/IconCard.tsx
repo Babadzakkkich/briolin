@@ -1,8 +1,8 @@
-import { Mail } from 'lucide-react';
+import { Mail, Lock } from 'lucide-react';
 import type { ComponentPropsWithoutRef } from 'react';
 
 type Size = '24' | '36' | '48';
-type Icon = 'mail';
+type Icon = 'mail' | 'lock';
 
 interface Props extends ComponentPropsWithoutRef<'div'> {
     size?: Size;
@@ -26,7 +26,11 @@ export function IconCard({ size = '48', icon, className, ...rest }: Props) {
     const iconSize = ICON_SIZE[size];
 
     const iconElement =
-        icon === 'mail' ? <Mail size={iconSize} strokeWidth={1.5} className='text-accent' /> : null;
+        icon === 'mail' ? (
+            <Mail size={iconSize} strokeWidth={1.5} className='text-accent' />
+        ) : icon === 'lock' ? (
+            <Lock size={iconSize} strokeWidth={1.5} className='text-accent' />
+        ) : null;
 
     return (
         <div

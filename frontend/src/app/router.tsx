@@ -7,6 +7,7 @@ import { AuthGuard } from '@/features/auth/AuthGuard';
 import { TestGuard } from '@/features/auth/TestGuard';
 import { RegistrationPage } from '@/pages/auth/RegistrationPage';
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
+import { CheckEmailPage } from '@/pages/auth/CheckEmailPage';
 import { OnboardingPage } from '@/pages/onboarding/OnboardingPage';
 import { DashboardHomePage } from '@/pages/dashboard/DashboardHomePage';
 import { ProfilePage } from '@/pages/dashboard/ProfilePage';
@@ -28,6 +29,7 @@ export function AppRouter() {
           <Route path='/login' element={<LoginPage />} />
           <Route path='/registration' element={<RegistrationPage />} />
           <Route path='/forgot-password' element={<ForgotPasswordPage />} />
+          <Route path='/check-email' element={<CheckEmailPage />} />
           <Route path='/' element={<IndexPage />} />
 
           <Route element={<AuthGuard />}>

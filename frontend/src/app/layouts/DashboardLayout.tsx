@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom';
-import { Sidebar } from '@/features/dashboard/ui/Sidebar';
+import { BottomNav, Sidebar } from '@/features/dashboard/ui/Sidebar';
 import { ToastContainer } from '@/shared/toast/ToastContainer';
 
 export function DashboardLayout() {
@@ -7,10 +7,11 @@ export function DashboardLayout() {
     <>
       <div className='bg-surface flex h-screen overflow-hidden'>
         <Sidebar />
-        <div className='flex flex-1 flex-col overflow-hidden'>
+        <div className='flex flex-1 flex-col overflow-hidden pb-16 md:pb-0'>
           <Outlet />
         </div>
       </div>
+      <BottomNav />
       <ToastContainer />
     </>
   );

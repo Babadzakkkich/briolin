@@ -1,4 +1,4 @@
-import { MessageCircle, Send } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Send } from 'lucide-react';
 import { MessageBubble } from '@/entities/message';
 import { ChatAvatar, getChatDisplayName, getChatAvatarUrl } from '@/entities/chat';
 import { Button } from '@/shared/uikit/Button';
@@ -20,6 +20,7 @@ interface ChatViewProps {
   onSend: () => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLInputElement | null>;
+  onBack?: () => void;
 }
 
 export function ChatView({
@@ -36,13 +37,22 @@ export function ChatView({
   online,
   messagesEndRef,
   inputRef,
+  onBack,
 }: ChatViewProps) {
   const displayName = getChatDisplayName(chat, keycloakId);
   const avatarUrl = getChatAvatarUrl(chat, keycloakId);
 
   return (
     <div className='flex flex-1 flex-col overflow-hidden'>
-      <div className='border-border flex shrink-0 items-center gap-3 border-b bg-white px-6 py-4'>
+      <div className='border-border flex shrink-0 items-center gap-3 border-b bg-white px-4 py-4 md:px-6'>
+        {onBack && (
+          <button
+            onClick={onBack}
+            className='text-secondary hover:text-primary hover:bg-muted/10 -ml-1 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors md:hidden'
+          >
+            <ArrowLeft size={20} strokeWidth={2.2} />
+          </button>
+        )}
         <ChatAvatar name={displayName} src={avatarUrl} size='lg' online={online} />
         <div className='min-w-0 flex-1'>
           <p className='text-primary truncate text-[15px] font-semibold'>{displayName}</p>

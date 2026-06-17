@@ -27,7 +27,7 @@ export function ChatList({
   );
 
   return (
-    <div className='border-border flex w-72 shrink-0 flex-col border-r bg-white'>
+    <div className='border-border flex h-full w-full flex-col border-r bg-white'>
       <div className='border-border border-b px-4 pt-5 pb-4'>
         <h2 className='font-onest text-primary mb-3 text-lg font-medium'>Сообщения</h2>
         <div className='relative'>

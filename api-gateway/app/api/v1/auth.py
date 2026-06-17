@@ -16,6 +16,7 @@ from pydantic import BaseModel
 import json
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+security = HTTPBearer()
 
 
 
@@ -91,12 +92,11 @@ async def validate_token(
 @router.post("/verify/request")
 async def request_verification_code(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """
     Запросить код верификации на email.
     Требует авторизации.
-    """ 
+    """
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -109,7 +109,6 @@ async def request_verification_code(
 async def verify_email_code(
     confirm_data: VerifyConfirmRequest,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """
     Подтвердить email по коду.

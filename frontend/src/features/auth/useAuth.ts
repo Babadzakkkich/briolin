@@ -3,6 +3,14 @@ import { useAuthStore, sessionApi } from '@/entities/session';
 import { useProfileStore, profileApi } from '@/entities/profile';
 import { testSessionApi } from '@/entities/test-session';
 
+function getJwtPayload(token: string): Record<string, unknown> {
+  try {
+    return JSON.parse(atob(token.split('.')[1]));
+  } catch {
+    return {};
+  }
+}
+
 export function useAuth() {
   const navigate = useNavigate();
   const { setAccessToken, setTestPassed, clear: clearAuth } = useAuthStore();
@@ -11,6 +19,14 @@ export function useAuth() {
   const login = async (username: string, password: string) => {
     const { data } = await sessionApi.login({ username, password });
     setAccessToken(data.access_token);
+
+    const payload = getJwtPayload(data.access_token);
+    if (!payload.email_verified) {
+      const email = payload.email as string | undefined;
+      try { await sessionApi.requestVerification(); } catch { /* код уже выслан */ }
+      navigate('/check-email', { state: { email } });
+      return;
+    }
 
     try {
       const { data: profile } = await profileApi.getMe();
@@ -37,7 +53,10 @@ export function useAuth() {
 
   const register = async (email: string, username: string, password: string) => {
     await sessionApi.register({ email, username, password });
-    navigate('/login');
+    const { data } = await sessionApi.login({ username: email, password });
+    setAccessToken(data.access_token);
+    await sessionApi.requestVerification();
+    navigate('/check-email', { state: { email } });
   };
 
   const logout = async () => {
