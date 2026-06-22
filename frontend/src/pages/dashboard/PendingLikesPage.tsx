@@ -45,7 +45,10 @@ function PendingLikeCard({
   const navigate = useNavigate();
   const [confirmDecline, setConfirmDecline] = useState(false);
   const hobbies = like.from_user_hobbies
-    ? like.from_user_hobbies.split(',').map((h) => h.trim()).filter(Boolean)
+    ? like.from_user_hobbies
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean)
     : [];
 
   return (
@@ -72,7 +75,7 @@ function PendingLikeCard({
             {like.from_user_city}
           </p>
           {like.from_user_about_me && (
-            <p className='text-secondary mt-2 text-[13px] leading-relaxed line-clamp-2'>
+            <p className='text-secondary mt-2 line-clamp-2 text-[13px] leading-relaxed'>
               {like.from_user_about_me}
             </p>
           )}
@@ -86,10 +89,11 @@ function PendingLikeCard({
             </div>
           )}
           {like.from_user_red_flags && like.from_user_red_flags.length > 0 && (
-            <div className='mt-2 flex flex-wrap gap-1'>
+            <div className='mt-2 flex flex-wrap items-center gap-1'>
+              <span className='text-muted text-xs'>Ред-Флаги:</span>
               {like.from_user_red_flags.map((flag, i) => (
                 <span key={i} className='rounded-lg bg-red-50 px-2 py-0.5 text-[11px] text-red-600'>
-                  🚩 {flag}
+                  {flag}
                 </span>
               ))}
             </div>
@@ -98,7 +102,7 @@ function PendingLikeCard({
       </div>
 
       <div className='border-t border-[#F0E9E0] px-5 py-4'>
-        <p className='text-secondary mb-3 text-[12px] font-medium uppercase tracking-wide'>
+        <p className='text-secondary mb-3 text-[12px] font-medium tracking-wide uppercase'>
           Ответы на ваши вопросы
         </p>
         <div className='flex flex-col gap-2'>
