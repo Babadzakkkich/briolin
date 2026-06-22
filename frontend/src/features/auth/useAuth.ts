@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore, sessionApi } from '@/entities/session';
 import { useProfileStore, profileApi } from '@/entities/profile';
 import { testSessionApi } from '@/entities/test-session';
+import { useAccountStore, accountApi } from '@/entities/account';
 
 function getJwtPayload(token: string): Record<string, unknown> {
   try {
@@ -15,6 +16,7 @@ export function useAuth() {
   const navigate = useNavigate();
   const { setAccessToken, setTestPassed, clear: clearAuth } = useAuthStore();
   const { setProfile, clear: clearProfile } = useProfileStore();
+  const { setAccount, clear: clearAccount } = useAccountStore();
 
   const login = async (username: string, password: string) => {
     const { data } = await sessionApi.login({ username, password });
@@ -35,6 +37,11 @@ export function useAuth() {
       navigate('/onboarding', { state: { step: 0 } });
       return;
     }
+
+    accountApi
+      .getMe()
+      .then(({ data }) => setAccount(data))
+      .catch(() => {});
 
     try {
       const { data } = await testSessionApi.getHistory();
@@ -65,6 +72,7 @@ export function useAuth() {
     } finally {
       clearAuth();
       clearProfile();
+      clearAccount();
       navigate('/login');
     }
   };

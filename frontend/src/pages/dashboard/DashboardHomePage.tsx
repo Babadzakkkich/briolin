@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useProfileStore } from '@/entities/profile';
+import { chatApi } from '@/entities/chat';
+import { matchingApi } from '@/entities/matching';
 import {
   Briefcase,
   Dice5,
@@ -40,9 +43,10 @@ function FeatureCard({ to, icon: Icon, title, description, accent }: FeatureCard
         <div>
           <div className='flex items-center justify-between'>
             <span
-              className={['text-[15px] font-semibold', accent ? 'text-white' : 'text-primary'].join(
-                ' ',
-              )}
+              className={[
+                'text-[15px] font-semibold',
+                accent ? 'text-white' : 'text-primary',
+              ].join(' ')}
             >
               {title}
             </span>
@@ -56,7 +60,9 @@ function FeatureCard({ to, icon: Icon, title, description, accent }: FeatureCard
             />
           </div>
           <p
-            className={['mt-1 text-[13px]', accent ? 'text-white/70' : 'text-secondary'].join(' ')}
+            className={['mt-1 text-[13px]', accent ? 'text-white/70' : 'text-secondary'].join(
+              ' ',
+            )}
           >
             {description}
           </p>
@@ -66,17 +72,49 @@ function FeatureCard({ to, icon: Icon, title, description, accent }: FeatureCard
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  loading,
+}: {
+  label: string;
+  value: number;
+  loading: boolean;
+}) {
   return (
-    <div className='rounded-2xl bg-white px-5 py-4'>
-      <p className='text-secondary text-[12px]'>{label}</p>
-      <p className='text-primary mt-0.5 text-2xl font-semibold'>{value}</p>
+    <div className='rounded-2xl bg-white px-4 py-4'>
+      <p className='text-secondary truncate text-[11px]'>{label}</p>
+      {loading ? (
+        <div className='bg-surface mt-1.5 h-7 w-10 animate-pulse rounded-lg' />
+      ) : (
+        <p className='text-primary mt-0.5 text-2xl font-semibold'>{value}</p>
+      )}
     </div>
   );
 }
 
 export function DashboardHomePage() {
   const { firstName, lastName } = useProfileStore();
+  const [stats, setStats] = useState({ unread: 0, matches: 0, likes: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.allSettled([
+      chatApi.getChats({ limit: 50 }),
+      matchingApi.getMatches(),
+      matchingApi.getPendingLikes(),
+    ]).then(([chatsResult, matchesResult, likesResult]) => {
+      setStats({
+        unread:
+          chatsResult.status === 'fulfilled'
+            ? chatsResult.value.chats.reduce((s, c) => s + c.unread_count, 0)
+            : 0,
+        matches: matchesResult.status === 'fulfilled' ? matchesResult.value.data.length : 0,
+        likes: likesResult.status === 'fulfilled' ? likesResult.value.data.length : 0,
+      });
+      setStatsLoading(false);
+    });
+  }, []);
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -87,19 +125,25 @@ export function DashboardHomePage() {
   };
 
   return (
-    <div className='flex-1 overflow-y-auto px-8 py-10'>
+    <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8 md:py-10'>
       <div className='mx-auto max-w-3xl'>
         <div className='mb-8'>
           <p className='text-secondary text-sm'>{greeting()}</p>
-          <h1 className='font-onest text-primary mt-0.5 text-3xl font-medium'>
-            {firstName && lastName ? `${firstName} ${lastName}` : (firstName ?? '—')}
-          </h1>
+          {firstName ? (
+            <h1 className='font-onest text-primary mt-0.5 text-3xl font-medium'>
+              {lastName ? `${firstName} ${lastName}` : firstName}
+            </h1>
+          ) : (
+            <div className='bg-surface mt-2 h-9 w-48 animate-pulse rounded-xl' />
+          )}
         </div>
+
         <div className='mb-6 grid grid-cols-3 gap-3'>
-          <StatCard label='Новых сообщений' value='0' />
-          <StatCard label='Совпадений' value='0' />
-          <StatCard label='Просмотров профиля' value='0' />
+          <StatCard label='Непрочитано' value={stats.unread} loading={statsLoading} />
+          <StatCard label='Матчей' value={stats.matches} loading={statsLoading} />
+          <StatCard label='Новых лайков' value={stats.likes} loading={statsLoading} />
         </div>
+
         <div className='grid grid-cols-2 gap-3'>
           <FeatureCard
             to='/dashboard/cupidon'
@@ -115,7 +159,7 @@ export function DashboardHomePage() {
             description='Общайся с другими'
           />
           <FeatureCard
-            to='/dashboard/search'
+            to='/dashboard/search/classic'
             icon={Search}
             title='Поиск'
             description='Ищи по параметрам'

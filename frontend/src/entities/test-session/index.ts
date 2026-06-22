@@ -8,4 +8,5 @@ export type {
   TestCompleteResponse,
   TestHistoryItem,
   TestHistory,
+  UserTestStatistics,
 } from './model/types';

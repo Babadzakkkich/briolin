@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { chatApi } from '@/entities/chat';
+import { chatApi, getOtherParticipant } from '@/entities/chat';
 import { messageApi } from '@/entities/message';
 import { useAuthStore } from '@/entities/session';
 import { toast } from '@/shared/toast/toast';
@@ -20,7 +20,7 @@ export function useMessaging(initialChatId: string | null) {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [typingMap, setTypingMap] = useState<Record<string, string[]>>({});
-  const [isOtherUserOnline, setIsOtherUserOnline] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -28,7 +28,6 @@ export function useMessaging(initialChatId: string | null) {
   const typingActive = useRef(false);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subscribedChatsRef = useRef<Set<string>>(new Set());
-  const chatsRef = useRef<Chat[]>(chats);
 
   useEffect(() => {
     chatApi
@@ -37,8 +36,6 @@ export function useMessaging(initialChatId: string | null) {
       .catch(() => toast.error('Не удалось загрузить чаты'))
       .finally(() => setIsLoadingChats(false));
   }, []);
-
-  chatsRef.current = chats;
 
   useEffect(() => {
     if (!selectedChatId) return;
@@ -58,7 +55,7 @@ export function useMessaging(initialChatId: string | null) {
           (m) => !m.is_read_by_me && m.sender_keycloak_id !== keycloakId,
         );
         if (unread.length > 0) {
-          messageApi.markRead(selectedChatId, unread.map((m) => m.id)).catch(() => {});
+          messageApi.markReadBulk(selectedChatId, unread.map((m) => m.id)).catch(() => {});
           setChats((prev) =>
             prev.map((c) => (c.id === selectedChatId ? { ...c, unread_count: 0 } : c)),
           );
@@ -77,26 +74,21 @@ export function useMessaging(initialChatId: string | null) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Poll online status for the other participant in the selected direct chat
+  // Один поллинг для всех чатов сразу (а не по одному запросу на открытый чат) —
+  // покрывает и "точку онлайн" в открытом ChatView, и зелёные точки в списке чатов.
+  // WS не шлёт user_online/user_offline клиенту (это внутренние RabbitMQ-события),
+  // так что статус можно получить только через REST.
   useEffect(() => {
-    setIsOtherUserOnline(false);
-    if (!selectedChatId) return;
-    const chat = chatsRef.current.find((c) => c.id === selectedChatId);
-    if (chat?.type !== 'DIRECT') return;
-    const other = chat.participants.find((p) => p.keycloak_id !== keycloakId);
-    if (!other) return;
-
-    const otherId = other.keycloak_id;
     const check = () => {
       chatApi
-        .getOnlineStatus(otherId)
-        .then((d) => setIsOtherUserOnline(d.online))
-        .catch(() => setIsOtherUserOnline(false));
+        .getOnlineUsers()
+        .then((d) => setOnlineUsers(new Set(d.online_users)))
+        .catch(() => {});
     };
     check();
     const timer = setInterval(check, 30_000);
     return () => clearInterval(timer);
-  }, [selectedChatId, keycloakId]);
+  }, []);
 
   const handleWsMessage = useCallback(
     (msg: WsMessage) => {
@@ -268,8 +260,47 @@ export function useMessaging(initialChatId: string | null) {
     }
   };
 
+  const handleDeleteChat = useCallback(
+    async (chatId: string) => {
+      try {
+        await chatApi.deleteChat(chatId);
+        unsubscribe(chatId);
+        subscribedChatsRef.current.delete(chatId);
+        setChats((prev) => prev.filter((c) => c.id !== chatId));
+        setSelectedChatId((prev) => (prev === chatId ? null : prev));
+        toast.success('Чат удалён');
+      } catch {
+        toast.error('Не удалось удалить чат');
+      }
+    },
+    [unsubscribe],
+  );
+
+  // Отметить весь чат прочитанным без открытия — например, по кнопке в списке.
+  // Сообщений мы пока не загрузили, поэтому сначала тянем последнюю страницу,
+  // чтобы получить id непрочитанных, и уже их шлём в /read/bulk.
+  const handleMarkChatRead = useCallback(
+    async (chatId: string) => {
+      try {
+        const data = await messageApi.getMessages(chatId, { limit: 100 });
+        const unread = data.messages.filter(
+          (m) => !m.is_read_by_me && m.sender_keycloak_id !== keycloakId,
+        );
+        if (unread.length > 0) {
+          await messageApi.markReadBulk(chatId, unread.map((m) => m.id));
+        }
+        setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, unread_count: 0 } : c)));
+      } catch {
+        toast.error('Не удалось отметить чат прочитанным');
+      }
+    },
+    [keycloakId],
+  );
+
   const selectedChat = chats.find((c) => c.id === selectedChatId);
   const typingNames = typingMap[selectedChatId ?? ''] ?? [];
+  const otherParticipantId = selectedChat ? getOtherParticipant(selectedChat, keycloakId)?.keycloak_id : undefined;
+  const isOtherUserOnline = otherParticipantId ? onlineUsers.has(otherParticipantId) : false;
 
   return {
     chats,
@@ -288,8 +319,11 @@ export function useMessaging(initialChatId: string | null) {
     messagesEndRef,
     inputRef,
     isOtherUserOnline,
+    onlineUsers,
     handleInputChange,
     handleSend,
     handleKeyDown,
+    handleDeleteChat,
+    handleMarkChatRead,
   };
 }

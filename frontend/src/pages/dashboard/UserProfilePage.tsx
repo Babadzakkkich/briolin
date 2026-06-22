@@ -164,7 +164,7 @@ export function UserProfilePage() {
 
   if (loading) {
     return (
-      <div className='flex-1 overflow-y-auto px-8 py-8'>
+      <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8'>
         <div className='bg-surface mx-auto mb-6 h-5 w-16 max-w-2xl animate-pulse rounded' />
         <Skeleton />
       </div>
@@ -192,7 +192,7 @@ export function UserProfilePage() {
     : [];
 
   return (
-    <div className='flex-1 overflow-y-auto px-8 py-8'>
+    <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8'>
       <div className='mx-auto max-w-2xl'>
         <button
           onClick={() => navigate(-1)}
@@ -203,7 +203,7 @@ export function UserProfilePage() {
         </button>
         <div className='mb-4 rounded-2xl bg-white p-6'>
           <div className='flex items-center gap-5'>
-            <div className='relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl'>
+            <div className='relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl'>
               {profile.avatar_url ? (
                 <AuthImage
                   src={profile.avatar_url}

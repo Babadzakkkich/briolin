@@ -1,14 +1,16 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { Search, AlertCircle, ChevronDown } from 'lucide-react';
 import { searchApi, ProfileCard, SearchSkeleton } from '@/entities/search';
-import type { SearchResponse, ProfilePreview } from '@/entities/search';
+import type { ProfilePreview } from '@/entities/search';
 import { profileApi } from '@/entities/profile';
 import type { QuestionsStatus, ProfileQuestions } from '@/entities/profile';
 import { LikeWithAnswersModal } from '@/features/matching/ui/LikeWithAnswersModal';
 import { ClassicFilterBar } from '@/features/search/ui/ClassicFilterBar';
 import { Button } from '@/shared/uikit/Button';
 import { toast } from '@/shared/toast/toast';
+
+const SESSION_KEY = 'classic-search-state';
 
 function EmptyState({ searched }: { searched: boolean }) {
   return (
@@ -22,34 +24,6 @@ function EmptyState({ searched }: { searched: boolean }) {
       <p className='text-muted text-[13px]'>
         {searched ? 'Попробуйте изменить параметры' : 'Поиск анкет по заданным критериям'}
       </p>
-    </div>
-  );
-}
-
-function Pagination({
-  current,
-  total,
-  onPrev,
-  onNext,
-}: {
-  current: number;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <div className='mt-6 flex items-center justify-between'>
-      <Button variant='secondary' size='sm' onClick={onPrev} disabled={current <= 1}>
-        <ChevronLeft size={16} />
-        Назад
-      </Button>
-      <span className='text-secondary text-[13px]'>
-        Страница {current} из {total}
-      </span>
-      <Button variant='secondary' size='sm' onClick={onNext} disabled={current >= total}>
-        Вперёд
-        <ChevronRight size={16} />
-      </Button>
     </div>
   );
 }
@@ -69,7 +43,7 @@ function QuestionsRequiredBanner({ count }: { count: number }) {
       </div>
       <button
         onClick={() => navigate('/dashboard/profile')}
-        className='shrink-0 rounded-xl bg-amber-100 px-3 py-1.5 text-[13px] font-medium text-amber-800 hover:bg-amber-200 transition-colors'
+        className='shrink-0 rounded-xl bg-amber-100 px-3 py-1.5 text-[13px] font-medium text-amber-800 transition-colors hover:bg-amber-200'
       >
         Перейти
       </button>
@@ -82,6 +56,17 @@ interface LikeTarget {
   questions: ProfileQuestions;
 }
 
+interface SavedState {
+  gender: string | null;
+  minAge: string;
+  maxAge: string;
+  city: string;
+  profiles: ProfilePreview[];
+  totalResults: number;
+  hasMore: boolean;
+  page: number;
+}
+
 export function ClassicSearchPage() {
   const navigate = useNavigate();
   const [gender, setGender] = useState<string | undefined>(undefined);
@@ -90,12 +75,35 @@ export function ClassicSearchPage() {
   const [city, setCity] = useState('');
 
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [result, setResult] = useState<SearchResponse | null>(null);
+  const [profiles, setProfiles] = useState<ProfilePreview[]>([]);
+  const [totalResults, setTotalResults] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(1);
 
   const [questionsStatus, setQuestionsStatus] = useState<QuestionsStatus | null>(null);
   const [likeTarget, setLikeTarget] = useState<LikeTarget | null>(null);
+
+  // Restore state from sessionStorage on mount
+  useEffect(() => {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    try {
+      const s: SavedState = JSON.parse(raw);
+      setGender(s.gender ?? undefined);
+      setMinAge(s.minAge || '');
+      setMaxAge(s.maxAge || '');
+      setCity(s.city || '');
+      if (s.profiles?.length > 0) {
+        setProfiles(s.profiles);
+        setTotalResults(s.totalResults || 0);
+        setHasMore(s.hasMore || false);
+        setPage(s.page || 1);
+        setSearched(true);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     profileApi
@@ -107,9 +115,10 @@ export function ClassicSearchPage() {
   const searchBlocked = questionsStatus !== null && !questionsStatus.can_receive_likes;
 
   const runSearch = useCallback(
-    async (p: number) => {
+    async (p: number, append = false) => {
       if (searchBlocked) return;
-      setLoading(true);
+      if (append) setLoadingMore(true);
+      else setLoading(true);
       try {
         const res = await searchApi.classic({
           gender,
@@ -119,13 +128,36 @@ export function ClassicSearchPage() {
           page: p,
           limit: 12,
         });
-        setResult(res.data);
+        const newProfiles = append
+          ? (prev: ProfilePreview[]) => [...prev, ...res.data.profiles]
+          : res.data.profiles;
+        const nextHasMore = p < res.data.pagination.total_pages;
+
+        setProfiles(newProfiles);
+        setTotalResults(res.data.pagination.total_results);
+        setHasMore(nextHasMore);
         setPage(p);
         setSearched(true);
+
+        // Persist to sessionStorage (only for fresh searches, not load-more)
+        if (!append) {
+          const state: SavedState = {
+            gender: gender ?? null,
+            minAge,
+            maxAge,
+            city,
+            profiles: res.data.profiles,
+            totalResults: res.data.pagination.total_results,
+            hasMore: nextHasMore,
+            page: p,
+          };
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
+        }
       } catch {
         toast.error('Ошибка поиска');
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     },
     [gender, minAge, maxAge, city, searchBlocked],
@@ -140,10 +172,8 @@ export function ClassicSearchPage() {
     }
   }
 
-  const showPagination = result && result.pagination.total_pages > 1 && !loading;
-
   return (
-    <div className='flex-1 overflow-y-auto px-8 py-8'>
+    <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8'>
       <div className='mx-auto max-w-4xl'>
         <div className='mb-6'>
           <h1 className='font-onest text-primary text-2xl font-medium'>Классический поиск</h1>
@@ -173,18 +203,14 @@ export function ClassicSearchPage() {
           <div className='mt-6'>
             {loading ? (
               <SearchSkeleton />
-            ) : result && result.profiles.length > 0 ? (
+            ) : profiles.length > 0 ? (
               <>
                 <p className='text-secondary mb-4 text-[13px]'>
-                  Найдено {result.pagination.total_results}{' '}
-                  {result.pagination.total_results === 1
-                    ? 'анкета'
-                    : result.pagination.total_results < 5
-                      ? 'анкеты'
-                      : 'анкет'}
+                  Найдено {totalResults}{' '}
+                  {totalResults === 1 ? 'анкета' : totalResults < 5 ? 'анкеты' : 'анкет'}
                 </p>
                 <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
-                  {result.profiles.map((p, i) => (
+                  {profiles.map((p, i) => (
                     <ProfileCard
                       key={`${p.keycloak_id}-${i}`}
                       profile={p}
@@ -195,13 +221,19 @@ export function ClassicSearchPage() {
                     />
                   ))}
                 </div>
-                {showPagination && (
-                  <Pagination
-                    current={result.pagination.current_page}
-                    total={result.pagination.total_pages}
-                    onPrev={() => runSearch(page - 1)}
-                    onNext={() => runSearch(page + 1)}
-                  />
+
+                {hasMore && (
+                  <div className='mt-6 flex justify-center'>
+                    <Button
+                      variant='secondary'
+                      onClick={() => runSearch(page + 1, true)}
+                      disabled={loadingMore}
+                      className='gap-2'
+                    >
+                      <ChevronDown size={16} />
+                      {loadingMore ? 'Загружаем...' : 'Загрузить ещё'}
+                    </Button>
+                  </div>
                 )}
               </>
             ) : (

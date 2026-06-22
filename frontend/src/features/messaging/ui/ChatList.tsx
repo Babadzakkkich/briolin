@@ -1,15 +1,20 @@
-import { Search, Users } from 'lucide-react';
-import { ChatItem, getChatDisplayName } from '@/entities/chat';
+import { useState } from 'react';
+import { Search, TextSearch, Users } from 'lucide-react';
+import { ChatItem, getChatDisplayName, getOtherParticipant } from '@/entities/chat';
 import { useAuthStore } from '@/entities/session';
 import type { Chat } from '@/entities/chat';
+import { MessageSearchPanel } from './MessageSearchPanel';
 
 interface ChatListProps {
   chats: Chat[];
   selectedChatId: string | null;
   search: string;
   isLoading: boolean;
+  onlineUsers: Set<string>;
   onSearch: (v: string) => void;
   onSelect: (id: string) => void;
+  onDeleteChat: (chatId: string) => void;
+  onMarkChatRead: (chatId: string) => void;
 }
 
 export function ChatList({
@@ -17,19 +22,44 @@ export function ChatList({
   selectedChatId,
   search,
   isLoading,
+  onlineUsers,
   onSearch,
   onSelect,
+  onDeleteChat,
+  onMarkChatRead,
 }: ChatListProps) {
   const keycloakId = useAuthStore((s) => s.keycloakId);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
 
   const filtered = chats.filter((c) =>
     getChatDisplayName(c, keycloakId).toLowerCase().includes(search.toLowerCase()),
   );
+  const onlineCount = chats.filter((c) => {
+    const other = getOtherParticipant(c, keycloakId);
+    return other && onlineUsers.has(other.keycloak_id);
+  }).length;
 
   return (
     <div className='border-border flex h-full w-full flex-col border-r bg-white'>
       <div className='border-border border-b px-4 pt-5 pb-4'>
-        <h2 className='font-onest text-primary mb-3 text-lg font-medium'>Сообщения</h2>
+        <div className='mb-3 flex items-center justify-between'>
+          <h2 className='font-onest text-primary text-lg font-medium'>Сообщения</h2>
+          <div className='flex items-center gap-2'>
+            {onlineCount > 0 && (
+              <span className='flex items-center gap-1 text-[12px] text-green-600'>
+                <span className='h-1.5 w-1.5 rounded-full bg-green-500' />
+                {onlineCount} онлайн
+              </span>
+            )}
+            <button
+              onClick={() => setShowMessageSearch(true)}
+              title='Поиск по сообщениям'
+              className='text-secondary hover:text-primary hover:bg-muted/15 flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg transition-colors'
+            >
+              <TextSearch size={16} />
+            </button>
+          </div>
+        </div>
         <div className='relative'>
           <Search
             size={14}
@@ -58,17 +88,32 @@ export function ChatList({
             <p className='text-secondary text-[13px]'>Нет активных чатов</p>
           </div>
         ) : (
-          filtered.map((chat) => (
-            <ChatItem
-              key={chat.id}
-              chat={chat}
-              isSelected={chat.id === selectedChatId}
-              keycloakId={keycloakId}
-              onClick={() => onSelect(chat.id)}
-            />
-          ))
+          filtered.map((chat) => {
+            const other = getOtherParticipant(chat, keycloakId);
+            return (
+              <ChatItem
+                key={chat.id}
+                chat={chat}
+                isSelected={chat.id === selectedChatId}
+                keycloakId={keycloakId}
+                online={!!other && onlineUsers.has(other.keycloak_id)}
+                onClick={() => onSelect(chat.id)}
+                onDelete={() => onDeleteChat(chat.id)}
+                onMarkRead={() => onMarkChatRead(chat.id)}
+              />
+            );
+          })
         )}
       </div>
+
+      {showMessageSearch && (
+        <MessageSearchPanel
+          chats={chats}
+          keycloakId={keycloakId}
+          onSelectChat={onSelect}
+          onClose={() => setShowMessageSearch(false)}
+        />
+      )}
     </div>
   );
 }

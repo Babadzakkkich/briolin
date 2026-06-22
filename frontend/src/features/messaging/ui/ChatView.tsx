@@ -1,8 +1,11 @@
-import { ArrowLeft, MessageCircle, Send } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Heart, MessageCircle, Send } from 'lucide-react';
 import { MessageBubble } from '@/entities/message';
-import { ChatAvatar, getChatDisplayName, getChatAvatarUrl } from '@/entities/chat';
+import { ChatAvatar, ChatActionsMenu, getChatDisplayName, getChatAvatarUrl } from '@/entities/chat';
 import { Button } from '@/shared/uikit/Button';
 import { Loader } from '@/shared/uikit/Loader';
+import { ConfirmDialog } from '@/shared/uikit/ConfirmDialog';
+import { MatchAnswersPanel } from './MatchAnswersPanel';
 import type { Message } from '@/entities/message';
 import type { Chat } from '@/entities/chat';
 
@@ -21,6 +24,7 @@ interface ChatViewProps {
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLInputElement | null>;
   onBack?: () => void;
+  onDeleteChat: (chatId: string) => void;
 }
 
 export function ChatView({
@@ -38,9 +42,12 @@ export function ChatView({
   messagesEndRef,
   inputRef,
   onBack,
+  onDeleteChat,
 }: ChatViewProps) {
   const displayName = getChatDisplayName(chat, keycloakId);
   const avatarUrl = getChatAvatarUrl(chat, keycloakId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showMatchAnswers, setShowMatchAnswers] = useState(false);
 
   return (
     <div className='flex flex-1 flex-col overflow-hidden'>
@@ -79,6 +86,17 @@ export function ChatView({
             </p>
           )}
         </div>
+
+        {chat.match_id != null && (
+          <button
+            onClick={() => setShowMatchAnswers(true)}
+            title='Почему вы совпали'
+            className='text-accent hover:bg-accent/10 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors'
+          >
+            <Heart size={18} strokeWidth={2.2} />
+          </button>
+        )}
+        <ChatActionsMenu onDelete={() => setConfirmDelete(true)} />
       </div>
 
       <div className='flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-5'>
@@ -122,6 +140,28 @@ export function ChatView({
           </Button>
         </div>
       </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title='Удалить чат?'
+          description='Чат будет удалён для обоих собеседников без возможности восстановления.'
+          confirmLabel='Удалить'
+          destructive
+          onConfirm={() => {
+            setConfirmDelete(false);
+            onDeleteChat(chat.id);
+          }}
+          onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {showMatchAnswers && (
+        <MatchAnswersPanel
+          chatId={chat.id}
+          partnerName={displayName}
+          onClose={() => setShowMatchAnswers(false)}
+        />
+      )}
     </div>
   );
 }

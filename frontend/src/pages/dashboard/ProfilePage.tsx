@@ -9,6 +9,7 @@ import {
 } from '@/features/profile/ui/BasicInfoSection';
 import { DetailedInfoSection } from '@/features/profile/ui/DetailedInfoSection';
 import { QuestionsSection, validateQuestions } from '@/features/profile/ui/QuestionsSection';
+import { TestResultsSection } from '@/features/profile/ui/TestResultsSection';
 import { Loader } from '@/shared/uikit/Loader';
 import { toast } from '@/shared/toast/toast';
 
@@ -300,7 +301,7 @@ export function ProfilePage() {
   }
 
   return (
-    <div className='flex-1 overflow-y-auto px-8 py-10'>
+    <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8 md:py-10'>
       <div className='mx-auto max-w-3xl'>
         <div className='mb-8 flex items-center gap-5'>
           <AvatarUpload
@@ -397,7 +398,13 @@ export function ProfilePage() {
               setQuestions((prev) => ({ ...prev, [key]: value }));
               setQuestionsErrors((prev) => ({ ...prev, [key]: undefined }));
             }}
+            onSaved={(key, value) => {
+              setQuestions((prev) => ({ ...prev, [key]: value }));
+              setSavedQuestions((prev) => ({ ...prev, [key]: value }));
+            }}
           />
+
+          <TestResultsSection />
         </div>
       </div>
     </div>

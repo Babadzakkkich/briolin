@@ -91,7 +91,7 @@ export function MatchesPage() {
   if (loading) return <Loader center label='Загружаем матчи...' />;
 
   return (
-    <div className='flex-1 overflow-y-auto px-8 py-8'>
+    <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8'>
       <div className='mx-auto max-w-2xl'>
         <div className='mb-6'>
           <h1 className='font-onest text-primary text-2xl font-medium'>Матчи</h1>

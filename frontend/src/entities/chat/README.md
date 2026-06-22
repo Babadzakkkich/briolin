@@ -11,8 +11,9 @@ chat/
 │   ├── types.ts       # Chat, ChatParticipant, ChatListResponse
 │   └── helpers.ts     # Утилиты для работы с чатами
 ├── ui/
-│   ├── ChatAvatar.tsx # Аватар чата (с онлайн-индикатором)
-│   └── ChatItem.tsx   # Строка чата в списке
+│   ├── ChatAvatar.tsx       # Аватар чата (с онлайн-индикатором)
+│   ├── ChatItem.tsx         # Строка чата в списке
+│   └── ChatActionsMenu.tsx  # Мини-меню "..." (удалить чат / отметить прочитанным)
 └── index.ts
 ```
 
@@ -28,8 +29,17 @@ const chats = await chatApi.getChats({ limit: 20 });
 // Создать личный чат с пользователем
 const chat = await chatApi.createDirectChat('keycloak-uuid');
 
-// Проверить онлайн-статус пользователя
-const { online } = await chatApi.getOnlineStatus('keycloak-uuid');
+// Список онлайн-пользователей (id + count) — единственный источник статуса "онлайн"
+const { online_users, count } = await chatApi.getOnlineUsers();
+
+// Поиск по тексту сообщений (по всем чатам или конкретному)
+const { messages, total } = await chatApi.searchMessages({ query: 'привет' });
+
+// Удалить чат — хард-делит для обоих участников direct-чата
+await chatApi.deleteChat(chat.id);
+
+// Ответы на вопросы, если чат создан из мэтча (chat.match_id != null)
+const answers = await chatApi.getMatchAnswers(chat.id);
 ```
 
 ## Тип Chat
@@ -42,11 +52,12 @@ interface Chat {
   participants: ChatParticipant[];
   last_message?: Message;
   unread_count: number;
+  match_id: number | null;
   // ...
 }
 ```
 
 ## Примечания
 
-- Онлайн-статус можно получить через REST, но в реальном времени он приходит через WebSocket (`user_online` / `user_offline` события) — см. `entities/message` и `features/messaging/useChatSocket`.
+- WebSocket **не шлёт** `user_online`/`user_offline` клиенту (это внутренние RabbitMQ-события между сервисами) — статус "онлайн" получаем только через REST `chatApi.getOnlineUsers()`, см. поллинг в `features/messaging/model/useMessaging.ts`.
 - `ChatItem` используется в `features/messaging/ui/ChatList.tsx`.

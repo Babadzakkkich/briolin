@@ -1,4 +1,9 @@
-import type { Chat } from './types';
+import type { Chat, ChatParticipant } from './types';
+
+export function getOtherParticipant(chat: Chat, myKeycloakId: string | null): ChatParticipant | null {
+  if (chat.type !== 'DIRECT') return null;
+  return chat.participants.find((p) => p.keycloak_id !== myKeycloakId) ?? null;
+}
 
 export function getChatDisplayName(chat: Chat, myKeycloakId: string | null): string {
   if (chat.name) return chat.name;

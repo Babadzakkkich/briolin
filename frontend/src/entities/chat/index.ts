@@ -1,7 +1,8 @@
 export { chatApi } from './api';
 export { ChatItem } from './ui/ChatItem';
 export { ChatAvatar } from './ui/ChatAvatar';
-export { getChatDisplayName, getChatAvatarUrl } from './model/helpers';
+export { ChatActionsMenu } from './ui/ChatActionsMenu';
+export { getChatDisplayName, getChatAvatarUrl, getOtherParticipant } from './model/helpers';
 export type {
   Chat,
   ChatType,

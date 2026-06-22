@@ -59,3 +59,10 @@ export interface TestHistory {
 export interface CurrentTestResponse extends TestStartResponse {
   total_answered?: number;
 }
+
+export interface UserTestStatistics {
+  total_tests_taken: number;
+  total_tests_completed: number;
+  average_score: number;
+  last_test_date: string | null;
+}

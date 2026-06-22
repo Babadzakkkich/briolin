@@ -7,6 +7,7 @@ import { useState } from 'react';
 import type { StepProps } from '@/features/onboarding/model/types';
 import { toast } from '@/shared/toast/toast';
 import { profileApi } from '@/entities/profile';
+import { mediaApi } from '@/entities/media';
 import { DatePickerField } from '@/shared/uikit/DatePicker';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -55,6 +56,7 @@ export function ProfileStep({ onNext }: StepProps) {
   });
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarId, setAvatarId] = useState<string | null>(null);
 
   const [firstName, lastName] = watch(['firstName', 'lastName']);
   const fullName = [firstName, lastName].filter(Boolean).join(' ') || undefined;
@@ -67,6 +69,14 @@ export function ProfileStep({ onNext }: StepProps) {
       city: data.city,
       date_of_birth: new Date(data.birthDate),
     });
+
+    // Аватарка загружается в медиа-сервис до создания анкеты (её ещё нет
+    // в profile-service), поэтому событие с URL аватарки никто не подхватывает.
+    // Повторно отправляем "текущую аватарку" теперь, когда анкета уже создана.
+    if (avatarId) {
+      await mediaApi.setCurrentAvatar(avatarId).catch(() => {});
+    }
+
     toast.success('Профиль успешно создан');
     onNext();
   };
@@ -90,7 +100,10 @@ export function ProfileStep({ onNext }: StepProps) {
         <AvatarUpload
           src={avatarUrl}
           name={fullName}
-          onUploaded={(url) => setAvatarUrl(url || null)}
+          onUploaded={(url, _thumbnailUrl, uploadedAvatarId) => {
+            setAvatarUrl(url || null);
+            setAvatarId(uploadedAvatarId ?? null);
+          }}
         />
         <div className='flex flex-col justify-between py-4'>
           <Text variant='p' as='p'>

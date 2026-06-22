@@ -35,4 +35,9 @@ export const mediaApi = {
 
   setCurrentAvatar: (avatarId: string) =>
     apiClient.put<{ message: string }>(`/media/avatar/${avatarId}/set-current`),
+
+  deleteAvatar: (avatarId: string) =>
+    apiClient.delete<{ deleted: boolean; avatar_id: string }>('/media/avatar', {
+      params: { avatar_id: avatarId },
+    }),
 };

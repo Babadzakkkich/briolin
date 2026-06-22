@@ -24,6 +24,11 @@ export const messageApi = {
   markRead: (chatId: string, messageIds: string[]) =>
     apiClient.post(`/chats/${chatId}/read`, { message_ids: messageIds }).then((r) => r.data),
 
+  // Для пакетной отметки (например, все непрочитанные при открытии чата) —
+  // отдельный bulk-эндпоинт на backend для больших партий id.
+  markReadBulk: (chatId: string, messageIds: string[]) =>
+    apiClient.post(`/chats/${chatId}/read/bulk`, { message_ids: messageIds }).then((r) => r.data),
+
   edit: (messageId: string, content: string) =>
     apiClient.put<Message>(`/chats/messages/${messageId}`, { content }).then((r) => r.data),
 

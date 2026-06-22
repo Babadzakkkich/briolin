@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Camera, Loader2, Trash2 } from 'lucide-react';
+import { Camera, Images, Loader2, Trash2 } from 'lucide-react';
 import { mediaApi } from '@/entities/media';
 import { AuthImage } from '@/shared/uikit/AuthImage';
 import { toast } from '@/shared/toast/toast';
+import { AvatarHistoryModal } from './AvatarHistoryModal';
 function getInitials(name?: string) {
   if (!name) return '?';
   return name
@@ -16,12 +17,13 @@ function getInitials(name?: string) {
 interface AvatarUploadProps {
   src?: string | null;
   name?: string;
-  onUploaded?: (url: string, thumbnailUrl: string) => void;
+  onUploaded?: (url: string, thumbnailUrl: string, avatarId?: string) => void;
 }
 
 export function AvatarUpload({ src, name, onUploaded }: AvatarUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -31,7 +33,7 @@ export function AvatarUpload({ src, name, onUploaded }: AvatarUploadProps) {
     setUploading(true);
     try {
       const res = await mediaApi.uploadAvatar(file);
-      onUploaded?.(res.data.url, res.data.thumbnail_url);
+      onUploaded?.(res.data.url, res.data.thumbnail_url, res.data.avatar_id);
       toast.success('Аватарка загружена');
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -97,16 +99,33 @@ export function AvatarUpload({ src, name, onUploaded }: AvatarUploadProps) {
             />
           </label>
           {src && (
-            <button
-              onClick={handleDelete}
-              disabled={busy}
-              className='absolute -right-2 -bottom-2 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm border border-[#F0E9E0] hover:bg-red-50 transition-colors'
-              title='Удалить аватарку'
-            >
-              <Trash2 size={11} className='text-red-500' />
-            </button>
+            <>
+              <button
+                onClick={handleDelete}
+                disabled={busy}
+                className='absolute -right-2 -bottom-2 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm border border-[#F0E9E0] hover:bg-red-50 transition-colors'
+                title='Удалить аватарку'
+              >
+                <Trash2 size={11} className='text-red-500' />
+              </button>
+              <button
+                onClick={() => setShowHistory(true)}
+                disabled={busy}
+                className='absolute -top-2 -left-2 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm border border-[#F0E9E0] hover:bg-surface transition-colors'
+                title='Все аватарки'
+              >
+                <Images size={11} className='text-secondary' />
+              </button>
+            </>
           )}
         </>
+      )}
+
+      {showHistory && (
+        <AvatarHistoryModal
+          onClose={() => setShowHistory(false)}
+          onCurrentChanged={(url, thumbnailUrl) => onUploaded?.(url, thumbnailUrl)}
+        />
       )}
     </div>
   );

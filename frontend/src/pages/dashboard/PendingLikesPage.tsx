@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Heart, X, MessageCircle } from 'lucide-react';
+import { MapPin, Heart, X, User } from 'lucide-react';
 import { matchingApi } from '@/entities/matching';
 import type { PendingLike, LikeAnswers } from '@/entities/matching';
 import { profileApi } from '@/entities/profile';
@@ -43,6 +43,7 @@ function PendingLikeCard({
   onDecline: () => void;
 }) {
   const navigate = useNavigate();
+  const [confirmDecline, setConfirmDecline] = useState(false);
   const hobbies = like.from_user_hobbies
     ? like.from_user_hobbies.split(',').map((h) => h.trim()).filter(Boolean)
     : [];
@@ -110,45 +111,60 @@ function PendingLikeCard({
         </div>
       </div>
 
-      <div className='flex gap-2 border-t border-[#F0E9E0] px-5 py-4'>
-        <Button
-          variant='secondary'
-          size='sm'
-          onClick={() =>
-            navigate('/dashboard/users/' + like.from_user_id, {
-              state: {
-                profile: {
-                  keycloak_id: like.from_user_id,
-                  display_name: like.from_user_display_name,
-                  age: like.from_user_age,
-                  city: like.from_user_city,
-                  avatar_url: like.from_user_avatar,
-                  about_me: like.from_user_about_me,
-                  hobbies: like.from_user_hobbies,
-                  partner_preferences: like.from_user_partner_preferences,
-                  red_flags: like.from_user_red_flags,
-                },
-              },
-            })
-          }
-          className='gap-1.5'
-        >
-          <MessageCircle size={13} />
-          Профиль
-        </Button>
-        <Button
-          variant='destructive'
-          size='sm'
-          onClick={onDecline}
-          className='gap-1.5'
-        >
-          <X size={13} />
-          Отклонить
-        </Button>
-        <Button size='sm' onClick={onAccept} className='flex-1 gap-1.5'>
-          <Heart size={13} />
-          Ответный лайк
-        </Button>
+      <div className='border-t border-[#F0E9E0] px-5 py-4'>
+        {confirmDecline ? (
+          <div className='flex items-center gap-2'>
+            <p className='text-secondary flex-1 text-[13px]'>Точно отклонить?</p>
+            <Button variant='destructive' size='sm' onClick={onDecline} className='gap-1.5'>
+              <X size={13} />
+              Да
+            </Button>
+            <Button variant='secondary' size='sm' onClick={() => setConfirmDecline(false)}>
+              Нет
+            </Button>
+          </div>
+        ) : (
+          <div className='flex gap-2'>
+            <Button
+              variant='secondary'
+              size='sm'
+              onClick={() =>
+                navigate('/dashboard/users/' + like.from_user_id, {
+                  state: {
+                    profile: {
+                      keycloak_id: like.from_user_id,
+                      display_name: like.from_user_display_name,
+                      age: like.from_user_age,
+                      city: like.from_user_city,
+                      avatar_url: like.from_user_avatar,
+                      about_me: like.from_user_about_me,
+                      hobbies: like.from_user_hobbies,
+                      partner_preferences: like.from_user_partner_preferences,
+                      red_flags: like.from_user_red_flags,
+                    },
+                  },
+                })
+              }
+              className='gap-1.5'
+            >
+              <User size={13} />
+              Профиль
+            </Button>
+            <Button
+              variant='destructive'
+              size='sm'
+              onClick={() => setConfirmDecline(true)}
+              className='gap-1.5'
+            >
+              <X size={13} />
+              Отклонить
+            </Button>
+            <Button size='sm' onClick={onAccept} className='flex-1 gap-1.5'>
+              <Heart size={13} />
+              Ответный лайк
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -195,7 +211,7 @@ export function PendingLikesPage() {
   if (loading) return <Loader center label='Загружаем входящие лайки...' />;
 
   return (
-    <div className='flex-1 overflow-y-auto px-8 py-8'>
+    <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8'>
       <div className='mx-auto max-w-2xl'>
         <div className='mb-6'>
           <h1 className='font-onest text-primary text-2xl font-medium'>Входящие лайки</h1>

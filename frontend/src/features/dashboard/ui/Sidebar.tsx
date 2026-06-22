@@ -3,7 +3,9 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { LogoIcon } from '@/shared/icons/Logo';
 import { useAuthStore } from '@/entities/session';
 import { profileApi, useProfileStore } from '@/entities/profile';
+import { useAccountStore } from '@/entities/account';
 import { AuthImage } from '@/shared/uikit/AuthImage';
+import { chatApi } from '@/entities/chat';
 import {
   Briefcase,
   Dice5,
@@ -11,6 +13,8 @@ import {
   LogOut,
   MessageCircle,
   MoreHorizontal,
+  Settings,
+  Shield,
   SlidersHorizontal,
   Target,
   User,
@@ -62,7 +66,9 @@ function UserCard() {
     if (isAuthenticated && !firstName) {
       profileApi
         .getMe()
-        .then((res) => setProfile({ ...res.data.basic, thumbnail_url: res.data.basic.thumbnail_url }))
+        .then((res) =>
+          setProfile({ ...res.data.basic, thumbnail_url: res.data.basic.thumbnail_url }),
+        )
         .catch(() => {});
     }
   }, [isAuthenticated, firstName, setProfile]);
@@ -121,23 +127,61 @@ function UserCard() {
 const MAIN_NAV = [
   { to: '/dashboard/profile', icon: User, label: 'Профиль' },
   { to: '/dashboard/messages', icon: MessageCircle, label: 'Сообщения' },
-  { to: '/dashboard/search/classic', icon: SlidersHorizontal, label: 'Поиск' },
   { to: '/dashboard/likes', icon: Heart, label: 'Лайки' },
 ] as const;
 
 const MORE_NAV = [
   { to: '/dashboard/matches', icon: Users, label: 'Матчи' },
+  { to: '/dashboard/search/classic', icon: SlidersHorizontal, label: 'Поиск' },
   { to: '/dashboard/search/targeted', icon: Target, label: 'Таргетированный поиск' },
   { to: '/dashboard/cupidon', icon: Zap, label: 'Купидон' },
   { to: '/dashboard/services', icon: Briefcase, label: 'Услуги' },
   { to: '/dashboard/fortune', icon: Dice5, label: 'Фортуна' },
+  { to: '/dashboard/settings', icon: Settings, label: 'Настройки' },
 ] as const;
 
 export function BottomNav() {
   const [open, setOpen] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
   const location = useLocation();
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const isAdmin = useAccountStore((s) => s.roles.includes('admin'));
 
-  const isMoreActive = MORE_NAV.some((item) => location.pathname === item.to);
+  useEffect(() => {
+    if (!accessToken) return;
+    chatApi
+      .getChats({ limit: 50 })
+      .then((data) => setHasUnread(data.chats.some((c) => c.unread_count > 0)))
+      .catch(() => {});
+  }, [accessToken]);
+
+  const moreNav = isAdmin
+    ? [...MORE_NAV, { to: '/dashboard/admin', icon: Shield, label: 'Админка' }]
+    : MORE_NAV;
+  const isMoreActive = moreNav.some((item) => location.pathname.startsWith(item.to));
+
+  function renderMainItem({ to, icon: Icon, label }: (typeof MAIN_NAV)[number]) {
+    return (
+      <NavLink key={to} to={to} className='flex-1' onClick={() => setOpen(false)}>
+        {({ isActive }) => (
+          <div
+            className={[
+              'flex flex-col items-center gap-1 py-3',
+              isActive ? 'text-accent' : 'text-secondary',
+            ].join(' ')}
+          >
+            <div className='relative'>
+              <Icon size={22} className='stroke-[2.2px]' />
+              {to === '/dashboard/messages' && hasUnread && (
+                <span className='absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500' />
+              )}
+            </div>
+            <span className='text-[10px] leading-none'>{label}</span>
+          </div>
+        )}
+      </NavLink>
+    );
+  }
 
   return (
     <>
@@ -158,7 +202,7 @@ export function BottomNav() {
           open ? 'translate-y-0' : 'translate-y-full',
         ].join(' ')}
       >
-        <div className='flex items-center justify-between border-b border-border px-5 py-4'>
+        <div className='border-border flex items-center justify-between border-b px-5 py-4'>
           <span className='font-onest text-primary text-[15px] font-medium'>Ещё</span>
           <button
             onClick={() => setOpen(false)}
@@ -168,15 +212,13 @@ export function BottomNav() {
           </button>
         </div>
         <div className='flex flex-col gap-0.5 px-3 py-3'>
-          {MORE_NAV.map(({ to, icon: Icon, label }) => (
+          {moreNav.map(({ to, icon: Icon, label }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)}>
               {({ isActive }) => (
                 <div
                   className={[
                     'flex items-center gap-3 rounded-xl px-4 py-3 transition-colors',
-                    isActive
-                      ? 'text-accent bg-accent/10'
-                      : 'text-secondary hover:bg-muted/10',
+                    isActive ? 'text-accent bg-accent/10' : 'text-secondary hover:bg-muted/10',
                   ].join(' ')}
                 >
                   <Icon size={20} strokeWidth={2.2} />
@@ -190,21 +232,18 @@ export function BottomNav() {
 
       {/* Bottom nav bar */}
       <nav className='border-border fixed right-0 bottom-0 left-0 z-50 flex border-t bg-white md:hidden'>
-        {MAIN_NAV.map(({ to, icon: Icon, label }) => (
-          <NavLink key={to} to={to} className='flex-1' onClick={() => setOpen(false)}>
-            {({ isActive }) => (
-              <div
-                className={[
-                  'flex flex-col items-center gap-1 py-3',
-                  isActive ? 'text-accent' : 'text-secondary',
-                ].join(' ')}
-              >
-                <Icon size={22} className='stroke-[2.2px]' />
-                <span className='text-[10px] leading-none'>{label}</span>
-              </div>
-            )}
-          </NavLink>
-        ))}
+        {MAIN_NAV.slice(0, 2).map(renderMainItem)}
+
+        <NavLink
+          to='/dashboard'
+          end
+          className='flex flex-1 items-center justify-center transition-transform duration-150 active:scale-90'
+          onClick={() => setOpen(false)}
+        >
+          <LogoIcon size={36} />
+        </NavLink>
+
+        {MAIN_NAV.slice(2).map(renderMainItem)}
 
         <button className='flex-1 cursor-pointer' onClick={() => setOpen((v) => !v)}>
           <div
@@ -223,6 +262,8 @@ export function BottomNav() {
 }
 
 export function Sidebar() {
+  const isAdmin = useAccountStore((s) => s.roles.includes('admin'));
+
   return (
     <nav className='border-border hidden h-screen w-70 shrink-0 flex-col gap-10 border-r bg-white pt-10 pb-4 md:flex'>
       <Link to='/'>
@@ -259,6 +300,14 @@ export function Sidebar() {
         <SidebarItem to='/dashboard/fortune' icon={Dice5}>
           Фортуна
         </SidebarItem>
+        <SidebarItem to='/dashboard/settings' icon={Settings}>
+          Настройки
+        </SidebarItem>
+        {isAdmin && (
+          <SidebarItem to='/dashboard/admin' icon={Shield}>
+            Админка
+          </SidebarItem>
+        )}
       </div>
       <div className='border-border mt-auto border-t px-4 pt-4'>
         <UserCard />

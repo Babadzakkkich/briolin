@@ -24,6 +24,7 @@ export interface Chat {
   updated_at: string;
   last_message?: Message;
   unread_count: number;
+  match_id: number | null;
 }
 
 export interface ChatListResponse {

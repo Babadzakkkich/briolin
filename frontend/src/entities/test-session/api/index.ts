@@ -5,10 +5,13 @@ import type {
   AnswerSubmitResponse,
   TestCompleteResponse,
   TestHistory,
+  UserTestStatistics,
 } from '../model/types';
 
 export const testSessionApi = {
   getHistory: () => apiClient.get<TestHistory>('/tests/history'),
+
+  getStatistics: () => apiClient.get<UserTestStatistics>('/tests/statistics'),
 
   start: (signal?: AbortSignal) =>
     apiClient.post<TestStartResponse>('/tests/start', {}, { signal }),

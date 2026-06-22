@@ -46,9 +46,12 @@ export function MessagesPage() {
     messagesEndRef,
     inputRef,
     isOtherUserOnline,
+    onlineUsers,
     handleInputChange,
     handleSend,
     handleKeyDown,
+    handleDeleteChat,
+    handleMarkChatRead,
   } = useMessaging(initialChatId);
 
   const handleSelect = (id: string) => {
@@ -74,8 +77,11 @@ export function MessagesPage() {
           selectedChatId={selectedChatId}
           search={search}
           isLoading={isLoadingChats}
+          onlineUsers={onlineUsers}
           onSearch={setSearch}
           onSelect={handleSelect}
+          onDeleteChat={handleDeleteChat}
+          onMarkChatRead={handleMarkChatRead}
         />
       </div>
 
@@ -103,6 +109,7 @@ export function MessagesPage() {
             messagesEndRef={messagesEndRef}
             inputRef={inputRef}
             onBack={handleBack}
+            onDeleteChat={handleDeleteChat}
           />
         ) : (
           <SelectChatPlaceholder />
