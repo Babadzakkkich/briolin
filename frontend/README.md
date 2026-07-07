@@ -95,6 +95,8 @@ src/
 │   └── search/             # Фильтры поиска
 │
 ├── entities/               # Доменные сущности — модели, API, базовый UI
+│   ├── account/            # Текущий аккаунт, роли, настройки
+│   ├── admin/              # Администрирование пользователей
 │   ├── session/            # Токены, store авторизации
 │   ├── profile/            # Данные профиля, store
 │   ├── chat/               # Чат, участники
@@ -127,7 +129,7 @@ src/
 Логин → POST /auth/login → access_token (память) + refresh_token (cookie)
   → GET /profiles/me
     ├── нет профиля → /onboarding (step: 0 — создание базового профиля)
-    └── профиль есть → GET /test-sessions/history
+    └── профиль есть → GET /tests/history
           ├── не сдан тест → /onboarding (step: 1 — прохождение теста)
           └── тест сдан   → /dashboard
 ```
@@ -170,22 +172,26 @@ Pending Likes → список входящих лайков
 
 | Маршрут | Страница | Файл | Защита |
 |---|---|---|---|
-| `/` | Главная / редирект | `pages/index.tsx` | — |
-| `/login` | Вход | `pages/auth/LoginPage.tsx` | — |
-| `/registration` | Регистрация | `pages/auth/RegistrationPage.tsx` | — |
-| `/forgot-password` | Сброс пароля | `pages/auth/ForgotPasswordPage.tsx` | — |
-| `/onboarding` | Онбординг | `pages/onboarding/OnboardingPage.tsx` | AuthGuard |
-| `/dashboard` | Главная дашборда | `pages/dashboard/DashboardHomePage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/profile` | Профиль | `pages/dashboard/ProfilePage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/messages` | Сообщения | `pages/dashboard/MessagesPage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/services` | Сервисы | `pages/dashboard/ServicesPage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/search/classic` | Классический поиск | `pages/dashboard/ClassicSearchPage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/search/targeted` | Таргетированный поиск | `pages/dashboard/TargetedSearchPage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/users/:keycloakId` | Профиль другого юзера | `pages/dashboard/UserProfilePage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/cupidon` | Рекомендации (Купидон) | `pages/dashboard/CupidonPage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/fortune` | Случайный матч (Фортуна) | `pages/dashboard/FortunePage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/likes` | Входящие лайки | `pages/dashboard/PendingLikesPage.tsx` | AuthGuard + TestGuard |
-| `/dashboard/matches` | Матчи | `pages/dashboard/MatchesPage.tsx` | AuthGuard + TestGuard |
+| `/` | Главная / редирект | [pages/index.tsx](./src/pages/index.tsx) | — |
+| `/login` | Вход | [pages/auth/LoginPage.tsx](./src/pages/auth/LoginPage.tsx) | — |
+| `/registration` | Регистрация | [pages/auth/RegistrationPage.tsx](./src/pages/auth/RegistrationPage.tsx) | — |
+| `/forgot-password` | Сброс пароля | [pages/auth/ForgotPasswordPage.tsx](./src/pages/auth/ForgotPasswordPage.tsx) | — |
+| `/check-email` | Подтверждение email | [pages/auth/CheckEmailPage.tsx](./src/pages/auth/CheckEmailPage.tsx) | — |
+| `/onboarding` | Онбординг | [pages/onboarding/OnboardingPage.tsx](./src/pages/onboarding/OnboardingPage.tsx) | AuthGuard |
+| `/dashboard` | Главная дашборда | [pages/dashboard/DashboardHomePage.tsx](./src/pages/dashboard/DashboardHomePage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/profile` | Профиль | [pages/dashboard/ProfilePage.tsx](./src/pages/dashboard/ProfilePage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/settings` | Настройки аккаунта | [pages/dashboard/SettingsPage.tsx](./src/pages/dashboard/SettingsPage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/messages` | Сообщения | [pages/dashboard/MessagesPage.tsx](./src/pages/dashboard/MessagesPage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/services` | Сервисы | [pages/dashboard/ServicesPage.tsx](./src/pages/dashboard/ServicesPage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/search/classic` | Классический поиск | [pages/dashboard/ClassicSearchPage.tsx](./src/pages/dashboard/ClassicSearchPage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/search/targeted` | Таргетированный поиск | [pages/dashboard/TargetedSearchPage.tsx](./src/pages/dashboard/TargetedSearchPage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/users/:keycloakId` | Профиль другого юзера | [pages/dashboard/UserProfilePage.tsx](./src/pages/dashboard/UserProfilePage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/cupidon` | Рекомендации (Купидон) | [pages/dashboard/CupidonPage.tsx](./src/pages/dashboard/CupidonPage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/fortune` | Случайный матч (Фортуна) | [pages/dashboard/FortunePage.tsx](./src/pages/dashboard/FortunePage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/likes` | Входящие лайки | [pages/dashboard/PendingLikesPage.tsx](./src/pages/dashboard/PendingLikesPage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/matches` | Матчи | [pages/dashboard/MatchesPage.tsx](./src/pages/dashboard/MatchesPage.tsx) | AuthGuard + TestGuard |
+| `/dashboard/admin` | Админка пользователей | [pages/dashboard/admin/AdminUsersPage.tsx](./src/pages/dashboard/admin/AdminUsersPage.tsx) | AuthGuard + TestGuard + RoleGuard(admin) |
+| `/dashboard/admin/users/:keycloakId` | Детали пользователя | [pages/dashboard/admin/AdminUserDetailPage.tsx](./src/pages/dashboard/admin/AdminUserDetailPage.tsx) | AuthGuard + TestGuard + RoleGuard(admin) |
 
 ---
 
@@ -202,8 +208,8 @@ Pending Likes → список входящих лайков
 | `/messages/*` | chat-service | История сообщений |
 | `/ws` | chat-service | WebSocket (сообщения, typing, read receipts) |
 | `/media/*` | media-service | Загрузка аватара и других медиафайлов |
-| `/test-sessions/*` | testing-service | Старт теста, ответы, результаты, история |
-| `/search/*` | search-service | Полнотекстовый поиск по профилям |
+| `/tests/*` | testing-service | Старт теста, ответы, результаты, история |
+| `/matching/search/*` | matching-service | Классический и таргетированный поиск профилей |
 
 **HTTP:** Axios-инстанс `apiClient` автоматически добавляет `Authorization: Bearer <token>` и перехватывает 401 для рефреша.
 

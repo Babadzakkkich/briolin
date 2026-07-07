@@ -60,7 +60,6 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
-    console.log(original);
 
     // Auth-эндпоинты не рефрешим: у них 401 — легитимная ошибка (неверный логин и т.п.)
     const isAuthEndpoint =

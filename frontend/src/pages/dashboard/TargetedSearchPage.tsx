@@ -24,7 +24,7 @@ function QuestionsRequiredBanner({ count }: { count: number }) {
       </div>
       <button
         onClick={() => navigate('/dashboard/profile')}
-        className='shrink-0 rounded-xl bg-amber-100 px-3 py-1.5 text-[13px] font-medium text-amber-800 hover:bg-amber-200 transition-colors'
+        className='shrink-0 cursor-pointer rounded-xl bg-amber-100 px-3 py-1.5 text-[13px] font-medium text-amber-800 transition-colors hover:bg-amber-200'
       >
         Перейти
       </button>
@@ -91,9 +91,7 @@ export function TargetedSearchPage() {
           </p>
         </div>
 
-        {searchBlocked && (
-          <QuestionsRequiredBanner count={questionsStatus?.questions_count ?? 0} />
-        )}
+        {searchBlocked && <QuestionsRequiredBanner count={questionsStatus?.questions_count ?? 0} />}
 
         <TargetedFilterForm loading={loading || searchBlocked} onSubmit={runSearch} />
 
