@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { v4 as uuidv4 } from 'uuid';
 
 export type ToastType = 'success' | 'error' | 'warn' | 'info';
 
@@ -16,11 +15,14 @@ interface ToastStore {
 }
 
 const DURATION = 4000;
+let nextToastId = 0;
+
+const createToastId = () => `toast-${Date.now()}-${nextToastId++}`;
 
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
   add: (type, message) => {
-    const id = uuidv4();
+    const id = createToastId();
     set((s) => ({ toasts: [...s.toasts, { id, type, message }] }));
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
