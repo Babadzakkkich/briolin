@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { v4 as uuidv4 } from 'uuid';
 
 export type ToastType = 'success' | 'error' | 'warn' | 'info';
 
@@ -19,7 +20,7 @@ const DURATION = 4000;
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
   add: (type, message) => {
-    const id = crypto.randomUUID();
+    const id = uuidv4();
     set((s) => ({ toasts: [...s.toasts, { id, type, message }] }));
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));

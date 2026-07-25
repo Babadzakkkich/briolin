@@ -70,9 +70,6 @@ export function ProfileStep({ onNext }: StepProps) {
       date_of_birth: new Date(data.birthDate),
     });
 
-    // Аватарка загружается в медиа-сервис до создания анкеты (её ещё нет
-    // в profile-service), поэтому событие с URL аватарки никто не подхватывает.
-    // Повторно отправляем "текущую аватарку" теперь, когда анкета уже создана.
     if (avatarId) {
       await mediaApi.setCurrentAvatar(avatarId).catch(() => {});
     }
