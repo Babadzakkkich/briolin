@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field
-from typing import Any, Dict, Optional, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
 
 class QuestionAnswers(BaseModel):
     """Ответы на 5 вопросов"""
@@ -51,7 +53,7 @@ class DeclineLikeRequest(BaseModel):
     from_user_id: str = Field(..., description="ID пользователя, чей лайк отклонить")
 
 class MatchAnswersResponse(BaseModel):
-    """Матч с ответами"""
+    """мэтч с ответами"""
     match_id: int
     partner: Dict[str, Any]
     matched_at: datetime

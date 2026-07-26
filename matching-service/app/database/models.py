@@ -1,5 +1,17 @@
-from datetime import datetime, date
-from sqlalchemy import JSON, Column, BigInteger, String, DateTime, Boolean, UniqueConstraint, Index, Integer, Date
+from datetime import date, datetime
+
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -64,7 +76,7 @@ class LikeWithAnswers(Base):
 
 class MatchWithAnswers(Base):
     """
-    Матч с сохранением ответов на вопросы.
+    мэтч с сохранением ответов на вопросы.
     Содержит ответы обоих пользователей и вопросы для контекста.
     """
     __tablename__ = "matches_with_answers"

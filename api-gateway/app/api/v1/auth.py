@@ -16,7 +16,7 @@ from pydantic import BaseModel
 import json
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-security = HTTPBearer(auto_error=False)
+security = HTTPBearer()
 
 
 
@@ -50,10 +50,9 @@ async def login_user(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
-    refresh_data: RefreshRequest,
     request: Request
 ):
-    """Обновление токена"""
+    """Обновление токена (refresh_token читается из httponly cookie)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -64,11 +63,9 @@ async def refresh_token(
 
 @router.post("/logout")
 async def logout_user(
-    logout_data: LogoutRequest,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request
 ):
-    """Выход из системы"""
+    """Выход из системы (refresh_token читается из httponly cookie)"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -95,12 +92,11 @@ async def validate_token(
 @router.post("/verify/request")
 async def request_verification_code(
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """
     Запросить код верификации на email.
     Требует авторизации.
-    """ 
+    """
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -113,7 +109,6 @@ async def request_verification_code(
 async def verify_email_code(
     confirm_data: VerifyConfirmRequest,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """
     Подтвердить email по коду.

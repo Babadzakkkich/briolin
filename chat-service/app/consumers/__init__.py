@@ -1,9 +1,7 @@
-from app.services.rabbitmq import rabbitmq_consumer
-from . import user_consumers
-from . import profile_consumers
-from . import match_consumers
-from . import media_consumers
 from app.core.logger import logger
+from app.services.rabbitmq import rabbitmq_consumer
+
+from . import match_consumers, media_consumers, profile_consumers, user_consumers
 
 
 async def register_consumers():
@@ -14,10 +12,10 @@ async def register_consumers():
 
         # Подписка на события от profile-service
         await profile_consumers.register(rabbitmq_consumer)
-        
-        # Подписка на события от matching-service (матчи)
+
+        # Подписка на события от matching-service (мэтчи)
         await match_consumers.register(rabbitmq_consumer)
-        
+
         # Подписка на события от media-service (аватарки)
         await media_consumers.register(rabbitmq_consumer)
 

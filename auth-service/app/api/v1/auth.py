@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from app.services.auth_service import AuthService
-from app.dependencies import get_auth_service
 from app.core.exceptions import UserAlreadyExistsException, ValidationException
+from app.dependencies import get_auth_service
 from app.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
+from app.services.auth_service import AuthService
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+
+REFRESH_COOKIE = "refresh_token"
+REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -38,34 +41,73 @@ async def register_user(
 
 @router.post("/login", response_model=TokenResponse)
 async def login_user(
-    credentials: UserLogin,
+    request: Request,
+    response: Response,
     service: AuthService = Depends(get_auth_service)
 ):
-    """Аутентификация пользователя"""
-    response = await service.login(credentials.model_dump())
-    return response
+    """Аутентификация пользователя (публичный эндпоинт)"""
+    token_data = await service.login(await request.json())
+    refresh_token = token_data.get("refresh_token")
+
+    response.set_cookie(
+        key=REFRESH_COOKIE,
+        value=refresh_token,
+        httponly=True,
+        samesite="lax",
+        max_age=token_data.get("refresh_expires_in", REFRESH_COOKIE_MAX_AGE),
+    )
+
+    return {
+        "access_token": token_data["access_token"],
+        "token_type": token_data["token_type"],
+        "expires_in": token_data["expires_in"],
+        "refresh_expires_in": token_data.get("refresh_expires_in", REFRESH_COOKIE_MAX_AGE),
+    }
 
 
 @router.post("/refresh")
 async def refresh_token(
     request: Request,
+    response: Response,
     service: AuthService = Depends(get_auth_service)
 ):
-    """Обновление токена"""
-    body = await request.json()
-    response = await service.refresh_token(body)
-    return response
+    """Обновление токена (публичный эндпоинт)"""
+    refresh_token = request.cookies.get(REFRESH_COOKIE)
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token not found")
+
+    token_data = await service.refresh_token({"refresh_token": refresh_token})
+
+    response.set_cookie(
+        key=REFRESH_COOKIE,
+        value=token_data.get("refresh_token"),
+        httponly=True,
+        samesite="lax",
+        max_age=token_data.get("refresh_expires_in", REFRESH_COOKIE_MAX_AGE),
+    )
+
+    return {
+        "access_token": token_data["access_token"],
+        "token_type": token_data["token_type"],
+        "expires_in": token_data["expires_in"],
+        "refresh_expires_in": token_data.get("refresh_expires_in", REFRESH_COOKIE_MAX_AGE),
+    }
 
 
 @router.post("/logout")
 async def logout_user(
     request: Request,
+    response: Response,
     service: AuthService = Depends(get_auth_service)
 ):
     """Выход из системы"""
-    body = await request.json()
-    response = await service.logout(body.get("refresh_token"))
-    return response
+    refresh_token = request.cookies.get(REFRESH_COOKIE)
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active session")
+
+    await service.logout(refresh_token)
+    response.delete_cookie(REFRESH_COOKIE)
+    return {"message": "Successfully logged out"}
 
 
 @router.post("/validate")
@@ -81,6 +123,6 @@ async def validate_token(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Token required"
         )
-    
+
     response = await service.validate_token(token)
     return response

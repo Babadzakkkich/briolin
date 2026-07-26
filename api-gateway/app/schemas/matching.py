@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Any, Dict, Optional, List
 from datetime import datetime
-from shared.schemas.shared import Gender
+from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, ConfigDict, Field
+
+from shared.schemas.shared import Gender
 
 # ========== LIKE/DISLIKE SCHEMAS ==========
 
@@ -27,8 +28,8 @@ class LikeUsageInfo(BaseModel):
 
 class SwipeResponse(BaseModel):
     """Ответ на свайп/лайк/дизлайк"""
-    match: bool = Field(..., description="Произошёл ли взаимный матч")
-    match_id: Optional[int] = Field(None, description="ID матча если match=true")
+    match: bool = Field(..., description="Произошёл ли взаимный мэтч")
+    match_id: Optional[int] = Field(None, description="ID мэтча если match=true")
     chat_id: Optional[str] = Field(None, description="ID чата если match=true")
 
 
@@ -41,19 +42,19 @@ class SwipeStatusResponse(BaseModel):
 # ========== MATCH SCHEMAS ==========
 
 class MatchPartnerInfo(BaseModel):
-    """Информация о партнёре по матчу"""
+    """Информация о партнёре по мэтчу"""
     keycloak_id: str = Field(..., description="Keycloak ID партнёра")
     display_name: str = Field(..., description="Отображаемое имя партнёра")
     avatar_url: Optional[str] = Field(None, description="URL аватарки партнёра")
 
 
 class MatchResponse(BaseModel):
-    """Ответ с информацией о матче"""
+    """Ответ с информацией о мэтче"""
     model_config = ConfigDict(from_attributes=True)
-    
-    match_id: int = Field(..., description="ID матча")
+
+    match_id: int = Field(..., description="ID мэтча")
     partner: MatchPartnerInfo = Field(..., description="Информация о партнёре")
-    matched_at: datetime = Field(..., description="Дата и время создания матча")
+    matched_at: datetime = Field(..., description="Дата и время создания мэтча")
 
 
 # ========== PAGINATION SCHEMAS ==========
@@ -119,9 +120,9 @@ class TargetedRecommendationFilters(BaseModel):
     Все поля опциональны - если не указаны, определяются автоматически.
     """
     city: Optional[str] = Field(
-        None, 
-        min_length=1, 
-        max_length=200, 
+        None,
+        min_length=1,
+        max_length=200,
         description="Город (если не указан - используется город пользователя)"
     )
 
@@ -194,7 +195,7 @@ class DeclineLikeRequest(BaseModel):
     from_user_id: str = Field(..., description="ID пользователя, чей лайк отклонить")
 
 class MatchAnswersResponse(BaseModel):
-    """Матч с ответами"""
+    """мэтч с ответами"""
     match_id: int
     partner: Dict[str, Any]
     matched_at: datetime

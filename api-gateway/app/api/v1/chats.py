@@ -1,26 +1,35 @@
-from typing import Optional, List
-from fastapi import APIRouter, Request, Depends, Response, Query, Body, status, HTTPException
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import uuid
+from typing import List, Optional
 
-from app.services.http_client import http_client
-from app.schemas.chat import (
-    ChatCreate,
-    ChatUpdate,
-    ChatResponse,
-    ChatListResponse,
-    MessageCreate,
-    MessageResponse,
-    MessageListResponse,
-    MessageIdsRequest,
-    BulkMessageIdsRequest,
-    MessageUpdate,
-    SearchMessagesResponse,
-    OnlineUsersResponse,
-    MessageReadStatusResponse,
-    ReadByUserInfo
-)
 from app.core.logger import logger
+from app.schemas.chat import (
+    BulkMessageIdsRequest,
+    ChatCreate,
+    ChatListResponse,
+    ChatResponse,
+    ChatUpdate,
+    MessageCreate,
+    MessageIdsRequest,
+    MessageListResponse,
+    MessageReadStatusResponse,
+    MessageResponse,
+    MessageUpdate,
+    OnlineUsersResponse,
+    ReadByUserInfo,
+    SearchMessagesResponse,
+)
+from app.services.http_client import http_client
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 router = APIRouter(prefix="/chats", tags=["Chats"])
 security = HTTPBearer(auto_error=False)
@@ -69,8 +78,8 @@ async def get_online_users(
 
 @router.get(
     "/{chat_id}/match-answers",
-    summary="Ответы матча в чате",
-    description="Получение ответов на вопросы друг друга для чата, созданного из матча."
+    summary="Ответы мэтча в чате",
+    description="Получение ответов на вопросы друг друга для чата, созданного из мэтча."
 )
 async def get_chat_match_answers(
     chat_id: uuid.UUID,
@@ -93,12 +102,12 @@ async def get_chat_match_answers(
     summary="Создание нового чата",
     description="""
     Создает новый чат между пользователями.
-    
+
     **Личный чат (type=direct):**
     - Требуется ровно один participant_id
     - Название и аватарка генерируются автоматически из профиля собеседника
     - Если чат уже существует, возвращается существующий
-    
+
     **Групповой чат (type=group):**
     - Требуется минимум один participant_id
     - Название, описание и аватарка задаются создателем
@@ -124,7 +133,7 @@ async def create_chat(
     summary="Получение списка чатов",
     description="""
     Возвращает список чатов текущего пользователя с персонализированными названиями.
-    
+
     Для личных чатов название и аватарка будут соответствовать собеседнику.
     """
 )
@@ -171,7 +180,7 @@ async def get_chat(
     summary="Обновление информации о чате",
     description="""
     Обновляет информацию о групповом чате.
-    
+
     **Важно:** Личные чаты (type=direct) нельзя редактировать.
     """
 )
@@ -238,7 +247,7 @@ async def send_message(
     summary="Получение сообщений",
     description="""
     Возвращает список сообщений чата с отображаемыми именами отправителей.
-    
+
     Каждое сообщение содержит информацию о прочтении:
     - read_by: список пользователей, прочитавших сообщение
     - read_count: количество прочитавших
@@ -269,7 +278,7 @@ async def get_messages(
     summary="Отметка сообщений как прочитанных",
     description="""
     Отмечает указанные сообщения как прочитанные для текущего пользователя.
-    
+
     Отправляет WebSocket уведомления другим участникам чата.
     Максимум 100 сообщений за запрос.
     """
@@ -296,7 +305,7 @@ async def mark_messages_as_read(
     summary="Массовая отметка сообщений как прочитанных",
     description="""
     Оптимизированная версия для отметки большого количества сообщений как прочитанных.
-    
+
     Отправляет одно массовое WebSocket уведомление вместо множества отдельных.
     Максимум 500 сообщений за запрос.
     """
@@ -323,7 +332,7 @@ async def mark_messages_as_read_bulk(
     summary="Статус прочтения сообщения",
     description="""
     Возвращает информацию о том, кто прочитал указанное сообщение.
-    
+
     Включает:
     - Список пользователей, прочитавших сообщение
     - Время прочтения для каждого
@@ -371,7 +380,7 @@ async def delete_message(
     summary="Редактирование сообщения",
     description="""
     Редактирование сообщения.
-    
+
     - Только отправитель может редактировать сообщение
     - Редактирование возможно в течение 24 часов после отправки
     - Всем участникам чата отправляется WebSocket уведомление message_updated

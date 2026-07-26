@@ -2,8 +2,8 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
     "types": ["vite/client"],
+    "jsx": "react-jsx",
 
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -23,9 +23,9 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
-    }
+      "@/*": ["src/*"],
+    },
   },
 
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts"],
 }

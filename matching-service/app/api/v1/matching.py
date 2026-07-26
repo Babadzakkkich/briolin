@@ -1,38 +1,41 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
 
-from app.services.matching_service import MatchingService
+from app.core.exceptions import (
+    AlreadySwipedException,
+    LikeLimitExceededException,
+    MatchingServiceException,
+    TargetedSearchLockedException,
+    UserNotFoundException,
+)
 from app.dependencies import get_matching_service, require_admin
-from app.schemas.swipe import (
-    SwipeResponse, SwipeStatusResponse,
-    LikeRequest, DislikeRequest
-)
-from app.schemas.match import MatchResponse
-from app.schemas.search import (
-    ClassicSearchFilters,
-    TargetedSearchFilters,
-    SearchListResponse
-)
-from app.schemas.recommendation import (
-    TargetedRecommendationFilters,
-    RecommendationListResponse
-)
 from app.schemas.like_with_answers import (
     DeclineLikeRequest,
     LikeWithAnswersRequest,
     LikeWithAnswersResponse,
+    MatchAnswersResponse,
     PendingLikeInfo,
     ReverseLikeRequest,
-    MatchAnswersResponse
 )
-from app.schemas.lock import TargetedSearchLockInfo, LikeUsageInfo
-from app.core.exceptions import (
-    LikeLimitExceededException,
-    AlreadySwipedException,
-    UserNotFoundException,
-    TargetedSearchLockedException,
-    MatchingServiceException
+from app.schemas.lock import LikeUsageInfo, TargetedSearchLockInfo
+from app.schemas.match import MatchResponse
+from app.schemas.recommendation import (
+    RecommendationListResponse,
+    TargetedRecommendationFilters,
 )
+from app.schemas.search import (
+    ClassicSearchFilters,
+    SearchListResponse,
+    TargetedSearchFilters,
+)
+from app.schemas.swipe import (
+    DislikeRequest,
+    LikeRequest,
+    SwipeResponse,
+    SwipeStatusResponse,
+)
+from app.services.matching_service import MatchingService
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+
 from shared.auth.dependencies import get_current_user
 from shared.schemas.shared import Gender
 
@@ -47,8 +50,8 @@ router = APIRouter(prefix="/matching", tags=["Matching"])
     status_code=status.HTTP_200_OK,
     summary="⚠️ DEPRECATED: Обычный лайк",
     description="""
-    Устаревший метод лайка. 
-    
+    Устаревший метод лайка.
+
     Если у пользователя есть вопросы - вернет 400 с указанием использовать /like-with-answers.
     Если вопросов нет - работает как раньше.
     """
@@ -90,8 +93,8 @@ async def like_profile(
     summary="Лайк с ответами на вопросы",
     description="""
     Лайк с обязательными ответами на 5 вопросов пользователя.
-    
-    Если пользователь уже лайкнул вас - создается матч и возвращаются ответы обоих.
+
+    Если пользователь уже лайкнул вас - создается мэтч и возвращаются ответы обоих.
     """
 )
 async def like_with_answers(
@@ -190,7 +193,7 @@ async def decline_like(
     summary="Входящие лайки с ответами",
     description="""
     Получение списка входящих лайков с ответами на ваши вопросы.
-    
+
     Возвращает расширенную информацию о профиле отправителя:
     - Базовая информация (имя, возраст, город, аватар)
     - О себе (about_me)
@@ -215,21 +218,21 @@ async def get_pending_likes(
 @router.get(
     "/matches/{match_id}/answers",
     response_model=MatchAnswersResponse,
-    summary="Матч с ответами",
-    description="Получение матча с ответами на вопросы друг друга."
+    summary="мэтч с ответами",
+    description="Получение мэтча с ответами на вопросы друг друга."
 )
 async def get_match_answers(
     match_id: int,
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Получение матча с ответами"""
+    """Получение мэтча с ответами"""
     match = await service.get_match_with_answers(
         match_id=match_id,
         user_id=current_user["keycloak_id"]
     )
     if not match:
-        raise HTTPException(status_code=404, detail="Матч не найден")
+        raise HTTPException(status_code=404, detail="мэтч не найден")
     return match
 
 @router.get("/like-usage", response_model=LikeUsageInfo)
@@ -262,7 +265,7 @@ async def get_matches(
     current_user: dict = Depends(get_current_user),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Возвращает список всех матчей текущего пользователя"""
+    """Возвращает список всех мэтчей текущего пользователя"""
     matches, total = await service.get_matches(current_user["keycloak_id"], page, limit)
     return matches
 
@@ -339,16 +342,16 @@ async def targeted_recommendations(
 ):
     """
     Таргетированные рекомендации на основе эмбеддингов с автоматическими фильтрами.
-    
+
     **Автоматически определяются:**
     - **Пол**: противоположный полу пользователя (для OTHER - все)
     - **Возраст**: ±5 лет от возраста пользователя (автоматически расширяется)
     - **Город**: можно указать вручную, иначе используется город пользователя
-    
+
     **Блокировка:** Дневной лимит просмотров (100), после превышения - блокировка на 12 часов.
     """
     filters = TargetedRecommendationFilters(city=city)
-    
+
     try:
         return await service.get_targeted_recommendations(
             user_id=current_user["keycloak_id"],
