@@ -25,6 +25,7 @@ class GatewayConfig(BaseSettings):
     port: int = 8000
     debug: bool = True
     service_name: str = "api-gateway"
+    cors_origins: list[str]
 
 
 class ServicesConfig(BaseSettings):

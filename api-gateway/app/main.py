@@ -53,7 +53,7 @@ app.add_middleware(AuthMiddleware)
 # добавлялись даже к ответам с ошибками 401/403)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost", "http://127.0.0.1"],
+    allow_origins=settings.gateway.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
