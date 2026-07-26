@@ -27,35 +27,39 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Используется в useChatSocket для явного рефреша токена при WS-ошибке (код 1008).
-export async function refreshAccessToken(): Promise<string> {
-  const { data } = await refreshClient.post<{ access_token: string }>('/auth/refresh');
-  useAuthStore.getState().setAccessToken(data.access_token);
-  return data.access_token;
+// Единый refresh для HTTP и WebSocket. Пока запрос выполняется, все следующие
+// вызовы получают тот же Promise и не используют refresh token повторно.
+let refreshPromise: Promise<string> | null = null;
+
+export function refreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = refreshClient
+      .post<{ access_token: string }>('/auth/refresh')
+      .then(({ data }) => {
+        useAuthStore.getState().setAccessToken(data.access_token);
+        return data.access_token;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
 }
 
-// Флаг "refresh уже идёт" — защита от параллельных рефрешей.
-// Если несколько запросов одновременно получили 401, только один делает /auth/refresh,
-// остальные ждут в очереди и повторяются с новым токеном.
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (err: unknown) => void;
-}> = [];
-
-const processQueue = (error: unknown, token: string | null = null) => {
-  failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token!)));
-  failedQueue = [];
-};
+export function isRefreshTokenRejected(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 401;
+}
 
 // Перехватчик ответа: автоматически рефрешит access token при 401.
 //
 // Алгоритм:
 //   1. Пришёл 401 на защищённый endpoint.
-//   2. Если refresh уже идёт — добавляем запрос в очередь; он повторится, когда refresh завершится.
-//   3. Иначе — помечаем запрос `_retry` (чтобы не зациклиться) и делаем POST /auth/refresh.
-//      - Успех: сохраняем новый токен, сбрасываем очередь, повторяем исходный запрос.
-//      - Ошибка: значит и refresh token истёк — чистим стор и редиректим на /login.
+//   2. Все параллельные запросы ждут единый refreshAccessToken().
+//   3. Помечаем запрос `_retry` (чтобы не зациклиться) и обновляем токен.
+//      - Успех: сохраняем новый токен и повторяем исходный запрос.
+//      - 401 от refresh: refresh token отклонён — чистим стор и редиректим на /login.
+//      - Сетевая или серверная ошибка: сохраняем сессию и возвращаем ошибку вызывающему коду.
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -72,32 +76,18 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (isRefreshing) {
-      // Ставим запрос в очередь; он разрешится после завершения текущего refresh
-      return new Promise<string>((resolve, reject) => {
-        failedQueue.push({ resolve, reject });
-      }).then((token) => {
-        original.headers.Authorization = `Bearer ${token}`;
-        return apiClient(original);
-      });
-    }
-
     original._retry = true;
-    isRefreshing = true;
 
     try {
-      const { data } = await refreshClient.post<{ access_token: string }>('/auth/refresh');
-      useAuthStore.getState().setAccessToken(data.access_token);
-      processQueue(null, data.access_token);
-      original.headers.Authorization = `Bearer ${data.access_token}`;
+      const token = await refreshAccessToken();
+      original.headers.Authorization = `Bearer ${token}`;
       return apiClient(original);
     } catch (err) {
-      processQueue(err, null);
-      useAuthStore.getState().clear();
-      window.location.href = '/login';
+      if (isRefreshTokenRejected(err)) {
+        useAuthStore.getState().clear();
+        window.location.href = '/login';
+      }
       return Promise.reject(err);
-    } finally {
-      isRefreshing = false;
     }
   },
 );

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/entities/session';
-import { refreshAccessToken } from '@/shared/api/client';
+import { isRefreshTokenRejected, refreshAccessToken } from '@/shared/api/client';
 import type { WsMessage } from '@/entities/message';
 
 const API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -119,10 +119,15 @@ export function useChatSocket({ onMessage, enabled = true }: Options) {
                 retryTimeout = setTimeout(connect, 200);
               }
             })
-            .catch(() => {
-              // Refresh token also expired — log out
-              useAuthStore.getState().clear();
-              window.location.href = '/login';
+            .catch((error: unknown) => {
+              if (isRefreshTokenRejected(error)) {
+                useAuthStore.getState().clear();
+                window.location.href = '/login';
+                return;
+              }
+
+              retryTimeout = setTimeout(connect, retryDelay);
+              retryDelay = Math.min(retryDelay * 2, 30_000);
             });
         } else {
           retryTimeout = setTimeout(connect, retryDelay);
