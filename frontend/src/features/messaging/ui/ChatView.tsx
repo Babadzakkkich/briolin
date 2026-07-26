@@ -127,12 +127,12 @@ export function ChatView({
             onChange={onInputChange}
             onKeyDown={onKeyDown}
             placeholder='Напишите сообщение...'
-            disabled={isSending}
-            className='border-border focus:border-accent font-inter text-primary placeholder:text-muted flex-1 rounded-xl border bg-white px-4 py-3 text-[14px] transition-colors outline-none disabled:opacity-50'
+            className='border-border focus:border-accent font-inter text-primary placeholder:text-muted flex-1 rounded-xl border bg-white px-4 py-3 text-[14px] transition-colors outline-none'
           />
           <Button
             size='md'
             onClick={onSend}
+            onMouseDown={(event) => event.preventDefault()}
             disabled={!input.trim() || isSending}
             className='shrink-0 px-4!'
           >

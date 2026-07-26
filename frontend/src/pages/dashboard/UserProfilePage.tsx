@@ -8,6 +8,7 @@ import {
   MessageCircle,
   ArrowLeft,
   Wifi,
+  Flag,
 } from 'lucide-react';
 import { chatApi } from '@/entities/chat';
 import { profileApi } from '@/entities/profile';
@@ -298,7 +299,7 @@ export function UserProfilePage() {
             {profile.red_flags && profile.red_flags.length > 0 && (
               <div className='flex items-start gap-3'>
                 <div className='bg-surface mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl'>
-                  <span className='text-[14px]'>🚩</span>
+                  <Flag size={15} className='text-red-600' />
                 </div>
                 <div>
                   <p className='text-muted text-[11px] font-medium tracking-wide uppercase'>

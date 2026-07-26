@@ -220,6 +220,7 @@ export function useMessaging(initialChatId: string | null) {
   const handleSend = async () => {
     const content = input.trim();
     if (!content || !selectedChatId || isSending) return;
+    inputRef.current?.focus();
     setInput('');
     setIsSending(true);
     if (typingTimeout.current) clearTimeout(typingTimeout.current);
@@ -246,10 +247,9 @@ export function useMessaging(initialChatId: string | null) {
       );
     } catch {
       toast.error('Не удалось отправить сообщение');
-      setInput(content);
+      setInput((current) => current || content);
     } finally {
       setIsSending(false);
-      inputRef.current?.focus();
     }
   };
 
