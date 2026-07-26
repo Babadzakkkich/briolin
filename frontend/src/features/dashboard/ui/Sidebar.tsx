@@ -283,7 +283,7 @@ export function Sidebar() {
           Входящие лайки
         </SidebarItem>
         <SidebarItem to='/dashboard/matches' icon={Users}>
-          мэтчи
+          Мэтчи
         </SidebarItem>
         <SidebarItem to='/dashboard/search/classic' icon={SlidersHorizontal}>
           Классический поиск
