@@ -43,10 +43,9 @@ function FeatureCard({ to, icon: Icon, title, description, accent }: FeatureCard
         <div>
           <div className='flex items-center justify-between'>
             <span
-              className={[
-                'text-[15px] font-semibold',
-                accent ? 'text-white' : 'text-primary',
-              ].join(' ')}
+              className={['text-[15px] font-semibold', accent ? 'text-white' : 'text-primary'].join(
+                ' ',
+              )}
             >
               {title}
             </span>
@@ -60,9 +59,7 @@ function FeatureCard({ to, icon: Icon, title, description, accent }: FeatureCard
             />
           </div>
           <p
-            className={['mt-1 text-[13px]', accent ? 'text-white/70' : 'text-secondary'].join(
-              ' ',
-            )}
+            className={['mt-1 text-[13px]', accent ? 'text-white/70' : 'text-secondary'].join(' ')}
           >
             {description}
           </p>
@@ -72,15 +69,7 @@ function FeatureCard({ to, icon: Icon, title, description, accent }: FeatureCard
   );
 }
 
-function StatCard({
-  label,
-  value,
-  loading,
-}: {
-  label: string;
-  value: number;
-  loading: boolean;
-}) {
+function StatCard({ label, value, loading }: { label: string; value: number; loading: boolean }) {
   return (
     <div className='rounded-2xl bg-white px-4 py-4'>
       <p className='text-secondary truncate text-[11px]'>{label}</p>
@@ -140,7 +129,7 @@ export function DashboardHomePage() {
 
         <div className='mb-6 grid grid-cols-3 gap-3'>
           <StatCard label='Непрочитано' value={stats.unread} loading={statsLoading} />
-          <StatCard label='Матчей' value={stats.matches} loading={statsLoading} />
+          <StatCard label='мэтчей' value={stats.matches} loading={statsLoading} />
           <StatCard label='Новых лайков' value={stats.likes} loading={statsLoading} />
         </div>
 

@@ -1,29 +1,29 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, Response, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Optional, List
+from typing import List, Optional
 
-from app.services.http_client import http_client
 from app.schemas.matching import (
-    LikeRequest,
+    DeclineLikeRequest,
     DislikeRequest,
-    LikeUsageInfo,
-    SwipeResponse,
-    SwipeStatusResponse,
-    MatchResponse,
-    SearchListResponse,
-    RecommendationListResponse,
-    TargetedSearchLockInfo,
-    ResetUserDataResponse,
     LikeLimitErrorResponse,
-    TargetedSearchLockedErrorResponse,
+    LikeRequest,
+    LikeUsageInfo,
     LikeWithAnswersRequest,
     LikeWithAnswersResponse,
-    PendingLikeInfo,
-    ReverseLikeRequest,
     MatchAnswersResponse,
-    DeclineLikeRequest
-    
+    MatchResponse,
+    PendingLikeInfo,
+    RecommendationListResponse,
+    ResetUserDataResponse,
+    ReverseLikeRequest,
+    SearchListResponse,
+    SwipeResponse,
+    SwipeStatusResponse,
+    TargetedSearchLockedErrorResponse,
+    TargetedSearchLockInfo,
 )
+from app.services.http_client import http_client
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 from shared.schemas.shared import Gender
 
 router = APIRouter(prefix="/matching", tags=["Matching"])
@@ -86,7 +86,7 @@ async def dislike_profile(
     response_model=LikeWithAnswersResponse,
     status_code=status.HTTP_200_OK,
     summary="Лайк с ответами на вопросы",
-    description="Лайк с обязательными ответами на 5 вопросов пользователя. Если взаимно — создается матч."
+    description="Лайк с обязательными ответами на 5 вопросов пользователя. Если взаимно — создается мэтч."
 )
 async def like_with_answers(
     request: Request,
@@ -100,7 +100,7 @@ async def like_with_answers(
         status_code=response.status_code,
         headers=dict(response.headers)
     )
-    
+
 
 @router.post(
     "/reverse-like",
@@ -166,15 +166,15 @@ async def get_pending_likes(
 @router.get(
     "/matches/{match_id}/answers",
     response_model=MatchAnswersResponse,
-    summary="Матч с ответами",
-    description="Получение матча с ответами на вопросы друг друга."
+    summary="мэтч с ответами",
+    description="Получение мэтча с ответами на вопросы друг друга."
 )
 async def get_match_answers(
     match_id: int,
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Матч с ответами"""
+    """мэтч с ответами"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -227,7 +227,7 @@ async def get_swipe_status(
 @router.get(
     "/matches",
     response_model=List[MatchResponse],
-    summary="Список матчей"
+    summary="Список мэтчей"
 )
 async def get_matches(
     request: Request,
@@ -235,7 +235,7 @@ async def get_matches(
     limit: int = Query(20, ge=1, le=100, description="Количество записей на странице"),
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Получение списка матчей текущего пользователя"""
+    """Получение списка мэтчей текущего пользователя"""
     response = await http_client.proxy_request(request)
     return Response(
         content=response.content,
@@ -307,12 +307,12 @@ async def targeted_search(
     summary="Таргетированные рекомендации (эмбеддинги)",
     description="""
     Премиум-рекомендации на основе семантической близости с автоматическими фильтрами.
-    
+
     **Автоматически определяются:**
     - **Пол**: противоположный полу пользователя (для OTHER - все)
     - **Возраст**: ±5 лет от возраста пользователя (автоматически расширяется)
     - **Город**: можно указать вручную, иначе используется город пользователя
-    
+
     **Блокировка:** Дневной лимит просмотров, после превышения - временная блокировка.
     """,
     responses={

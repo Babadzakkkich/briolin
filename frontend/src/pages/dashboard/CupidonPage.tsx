@@ -6,12 +6,12 @@ import type { SearchLockInfo, ProfilePreview } from '@/entities/search';
 import { matchingApi } from '@/entities/matching';
 import { profileApi } from '@/entities/profile';
 import type { QuestionsStatus, ProfileQuestions } from '@/entities/profile';
-import { LikeWithAnswersModal } from '@/features/matching/ui/LikeWithAnswersModal';
+import { LikeWithAnswersModal } from '@/widgets/matching/ui/LikeWithAnswersModal';
 import {
   SwipeCard,
   type SwipeCardHandle,
   type SwipeDirection,
-} from '@/features/matching/ui/SwipeCard';
+} from '@/widgets/matching/ui/SwipeCard';
 import { Button } from '@/shared/uikit/Button';
 import { Loader } from '@/shared/uikit/Loader';
 import { toast } from '@/shared/toast/toast';

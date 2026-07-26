@@ -84,17 +84,17 @@ export function MatchesPage() {
     matchingApi
       .getMatches()
       .then((res) => setMatches(res.data))
-      .catch(() => toast.error('Не удалось загрузить матчи'))
+      .catch(() => toast.error('Не удалось загрузить мэтчи'))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <Loader center label='Загружаем матчи...' />;
+  if (loading) return <Loader center label='Загружаем мэтчи...' />;
 
   return (
     <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8'>
       <div className='mx-auto max-w-2xl'>
         <div className='mb-6'>
-          <h1 className='font-onest text-primary text-2xl font-medium'>Матчи</h1>
+          <h1 className='font-onest text-primary text-2xl font-medium'>мэтчи</h1>
           <p className='text-secondary mt-1 text-[14px]'>
             {matches.length > 0
               ? `${matches.length} взаимных симпатий`
@@ -116,7 +116,7 @@ export function MatchesPage() {
             <div className='bg-surface flex h-14 w-14 items-center justify-center rounded-2xl'>
               <Users size={24} className='text-muted' strokeWidth={1.5} />
             </div>
-            <p className='text-primary text-[15px] font-medium'>Матчей пока нет</p>
+            <p className='text-primary text-[15px] font-medium'>мэтчей пока нет</p>
             <p className='text-muted text-center text-[13px]'>
               Заполните профиль и ищите анкеты — взаимные лайки создают мэтч
             </p>

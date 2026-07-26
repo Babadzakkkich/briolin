@@ -131,7 +131,7 @@ const MAIN_NAV = [
 ] as const;
 
 const MORE_NAV = [
-  { to: '/dashboard/matches', icon: Users, label: 'Матчи' },
+  { to: '/dashboard/matches', icon: Users, label: 'мэтчи' },
   { to: '/dashboard/search/classic', icon: SlidersHorizontal, label: 'Поиск' },
   { to: '/dashboard/search/targeted', icon: Target, label: 'Таргетированный поиск' },
   { to: '/dashboard/cupidon', icon: Zap, label: 'Купидон' },
@@ -283,7 +283,7 @@ export function Sidebar() {
           Входящие лайки
         </SidebarItem>
         <SidebarItem to='/dashboard/matches' icon={Users}>
-          Матчи
+          мэтчи
         </SidebarItem>
         <SidebarItem to='/dashboard/search/classic' icon={SlidersHorizontal}>
           Классический поиск

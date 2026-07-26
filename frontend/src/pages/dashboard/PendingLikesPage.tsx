@@ -5,7 +5,7 @@ import { matchingApi } from '@/entities/matching';
 import type { PendingLike, LikeAnswers } from '@/entities/matching';
 import { profileApi } from '@/entities/profile';
 import type { ProfileQuestions } from '@/entities/profile';
-import { LikeWithAnswersModal } from '@/features/matching/ui/LikeWithAnswersModal';
+import { LikeWithAnswersModal } from '@/widgets/matching/ui/LikeWithAnswersModal';
 import { AuthImage } from '@/shared/uikit/AuthImage';
 import { Button } from '@/shared/uikit/Button';
 import { Loader } from '@/shared/uikit/Loader';

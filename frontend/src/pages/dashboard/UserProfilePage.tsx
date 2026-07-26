@@ -12,7 +12,7 @@ import {
 import { chatApi } from '@/entities/chat';
 import { profileApi } from '@/entities/profile';
 import type { ProfileQuestions } from '@/entities/profile';
-import { LikeWithAnswersModal } from '@/features/matching/ui/LikeWithAnswersModal';
+import { LikeWithAnswersModal } from '@/widgets/matching/ui/LikeWithAnswersModal';
 import { AuthImage } from '@/shared/uikit/AuthImage';
 import { Button } from '@/shared/uikit/Button';
 import { toast } from '@/shared/toast/toast';
@@ -188,7 +188,10 @@ export function UserProfilePage() {
   }
 
   const hobbies = profile.hobbies
-    ? profile.hobbies.split(',').map((h) => h.trim()).filter(Boolean)
+    ? profile.hobbies
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean)
     : [];
 
   return (
@@ -235,11 +238,7 @@ export function UserProfilePage() {
           </div>
 
           <div className='mt-5 flex gap-2 border-t border-[#F0E9E0] pt-5'>
-            <Button
-              onClick={handleMessage}
-              disabled={starting}
-              className='flex-1'
-            >
+            <Button onClick={handleMessage} disabled={starting} className='flex-1'>
               <MessageCircle size={15} />
               {starting ? 'Открываем...' : 'Написать'}
             </Button>
@@ -285,7 +284,10 @@ export function UserProfilePage() {
                   </p>
                   <div className='mt-2 flex flex-wrap gap-1.5'>
                     {hobbies.map((h, i) => (
-                      <span key={i} className='bg-surface text-secondary rounded-xl px-3 py-1.5 text-[13px]'>
+                      <span
+                        key={i}
+                        className='bg-surface text-secondary rounded-xl px-3 py-1.5 text-[13px]'
+                      >
                         {h}
                       </span>
                     ))}
@@ -304,7 +306,10 @@ export function UserProfilePage() {
                   </p>
                   <div className='mt-2 flex flex-wrap gap-1.5'>
                     {profile.red_flags.map((flag, i) => (
-                      <span key={i} className='rounded-xl bg-red-50 px-3 py-1.5 text-[13px] text-red-600'>
+                      <span
+                        key={i}
+                        className='rounded-xl bg-red-50 px-3 py-1.5 text-[13px] text-red-600'
+                      >
                         {flag}
                       </span>
                     ))}

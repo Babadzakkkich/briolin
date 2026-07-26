@@ -1,15 +1,16 @@
+from typing import Any, Dict, Optional
+
 import httpx
-from typing import Optional, Dict, Any
 from app.core.logger import logger
 
 
 class MatchingServiceClient:
-    """Клиент для получения данных о матчах из matching-service"""
-    
+    """Клиент для получения данных о мэтчах из matching-service"""
+
     def __init__(self):
         self.base_url = "http://matching-service:8006"
         self.timeout = httpx.Timeout(5.0)
-    
+
     async def _request(self, method: str, path: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """Универсальный метод для запросов к matching-service"""
         url = f"{self.base_url}{path}"
@@ -32,14 +33,14 @@ class MatchingServiceClient:
         except Exception as e:
             logger.error(f"Matching service request error: {e}")
             return None
-    
+
     async def get_match_answers(
-        self, 
-        match_id: int, 
+        self,
+        match_id: int,
         keycloak_id: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Получение ответов на вопросы для матча.
+        Получение ответов на вопросы для мэтча.
         GET /api/v1/matching/internal/matches/{match_id}/answers?user_id=...
         """
         return await self._request(

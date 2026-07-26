@@ -55,7 +55,7 @@ export function LikeWithAnswersModal({
     try {
       const res = await matchingApi.likeWithAnswers(targetUserId, answers);
       if (res.data.status === 'matched' && res.data.match_id) {
-        toast.success('Взаимный мэтч! 🎉');
+        toast.success('Взаимный мэтч!');
         onMatched(res.data.match_id);
       } else {
         toast.success('Лайк отправлен!');
@@ -76,10 +76,10 @@ export function LikeWithAnswersModal({
       <div className='relative w-full max-w-lg rounded-2xl bg-white shadow-xl'>
         <div className='flex items-center justify-between border-b border-[#F0E9E0] p-5'>
           <div>
-            <h2 className='font-onest text-primary text-[17px] font-medium'>
-              Ответьте на вопросы
-            </h2>
-            <p className='text-secondary mt-0.5 text-[13px]'>{targetDisplayName} ждёт ваших ответов</p>
+            <h2 className='font-onest text-primary text-[17px] font-medium'>Ответьте на вопросы</h2>
+            <p className='text-secondary mt-0.5 text-[13px]'>
+              {targetDisplayName} ждёт ваших ответов
+            </p>
           </div>
           <button
             onClick={onClose}

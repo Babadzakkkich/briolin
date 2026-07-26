@@ -5,7 +5,7 @@ import { searchApi, ProfileCard, SearchSkeleton } from '@/entities/search';
 import type { SearchResponse, TargetedSearchRequest, ProfilePreview } from '@/entities/search';
 import { profileApi } from '@/entities/profile';
 import type { QuestionsStatus, ProfileQuestions } from '@/entities/profile';
-import { LikeWithAnswersModal } from '@/features/matching/ui/LikeWithAnswersModal';
+import { LikeWithAnswersModal } from '@/widgets/matching/ui/LikeWithAnswersModal';
 import { TargetedFilterForm } from '@/features/search/ui/TargetedFilterForm';
 import { toast } from '@/shared/toast/toast';
 
