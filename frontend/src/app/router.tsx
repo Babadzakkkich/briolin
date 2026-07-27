@@ -24,6 +24,7 @@ import { PendingLikesPage } from '@/pages/dashboard/PendingLikesPage';
 import { MatchesPage } from '@/pages/dashboard/MatchesPage';
 import { AdminUsersPage } from '@/pages/dashboard/admin/AdminUsersPage';
 import { AdminUserDetailPage } from '@/pages/dashboard/admin/AdminUserDetailPage';
+import { ToastContainer } from '@/shared/toast/ToastContainer';
 
 export function AppRouter() {
   return (
@@ -65,6 +66,7 @@ export function AppRouter() {
           </Route>
         </Route>
       </Routes>
+      <ToastContainer />
     </BrowserRouter>
   );
 }

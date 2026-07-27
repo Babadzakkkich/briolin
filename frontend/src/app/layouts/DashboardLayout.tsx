@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { BottomNav, Sidebar } from '@/features/dashboard/ui/Sidebar';
-import { ToastContainer } from '@/shared/toast/ToastContainer';
 import { ensureAccountLoaded } from '@/entities/account';
 
 export function DashboardLayout() {
@@ -20,7 +19,6 @@ export function DashboardLayout() {
         </div>
       </div>
       <BottomNav />
-      <ToastContainer />
     </>
   );
 }

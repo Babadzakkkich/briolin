@@ -2,6 +2,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { Button } from '@/shared/uikit/Button';
 import { Text } from '@/shared/uikit/Text';
 import { useAuthStore } from '@/entities/session';
+import { toast } from '@/shared/toast/toast';
 
 const STEPS = [
   {
