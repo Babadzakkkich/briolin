@@ -1,12 +1,15 @@
 import { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Search } from 'lucide-react';
 import { searchApi, ProfileCard, SearchSkeleton } from '@/entities/search';
 import type { SearchResponse, TargetedSearchRequest, ProfilePreview } from '@/entities/search';
 import { profileApi } from '@/entities/profile';
 import type { QuestionsStatus, ProfileQuestions } from '@/entities/profile';
 import { LikeWithAnswersModal } from '@/widgets/matching/ui/LikeWithAnswersModal';
 import { TargetedFilterForm } from '@/features/search/ui/TargetedFilterForm';
+import { EmptyState } from '@/shared/uikit/EmptyState';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { InlineError } from '@/shared/uikit/InlineError';
 import { toast } from '@/shared/toast/toast';
 
 function QuestionsRequiredBanner({ count }: { count: number }) {
@@ -42,6 +45,8 @@ export function TargetedSearchPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [result, setResult] = useState<SearchResponse | null>(null);
+  const [searchError, setSearchError] = useState(false);
+  const [lastFilters, setLastFilters] = useState<TargetedSearchRequest | null>(null);
 
   const [questionsStatus, setQuestionsStatus] = useState<QuestionsStatus | null>(null);
   const [likeTarget, setLikeTarget] = useState<LikeTarget | null>(null);
@@ -59,12 +64,15 @@ export function TargetedSearchPage() {
     async (filters: TargetedSearchRequest) => {
       if (searchBlocked) return;
       setLoading(true);
+      setSearchError(false);
+      setLastFilters(filters);
       try {
         const res = await searchApi.targeted(filters);
         setResult(res.data);
         setSearched(true);
       } catch {
-        toast.error('Ошибка поиска');
+        setSearchError(true);
+        setSearched(true);
       } finally {
         setLoading(false);
       }
@@ -97,8 +105,22 @@ export function TargetedSearchPage() {
 
         {(loading || searched) && (
           <div className='mt-6'>
-            {loading ? (
+            {searchError && result && result.profiles.length > 0 && (
+              <InlineError
+                message='Не удалось обновить результаты поиска.'
+                onRetry={lastFilters ? () => runSearch(lastFilters) : undefined}
+                className='mb-4'
+              />
+            )}
+
+            {loading && !result ? (
               <SearchSkeleton />
+            ) : searchError && (!result || result.profiles.length === 0) ? (
+              <ErrorState
+                title='Не удалось выполнить поиск'
+                onRetry={lastFilters ? () => runSearch(lastFilters) : undefined}
+                compact
+              />
             ) : result && result.profiles.length > 0 ? (
               <>
                 <p className='text-secondary mb-4 text-[13px]'>
@@ -109,7 +131,13 @@ export function TargetedSearchPage() {
                       ? 'анкеты'
                       : 'анкет'}
                 </p>
-                <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
+                <div
+                  className={[
+                    'grid grid-cols-1 gap-4 transition-opacity md:grid-cols-2 lg:grid-cols-3',
+                    loading ? 'opacity-60' : '',
+                  ].join(' ')}
+                  aria-busy={loading}
+                >
                   {result.profiles.map((p, i) => (
                     <ProfileCard
                       key={`${p.keycloak_id}-${i}`}
@@ -123,10 +151,11 @@ export function TargetedSearchPage() {
                 </div>
               </>
             ) : (
-              <div className='py-12 text-center'>
-                <p className='text-primary text-[15px] font-medium'>Никого не найдено</p>
-                <p className='text-muted mt-1 text-[13px]'>Попробуйте изменить параметры поиска</p>
-              </div>
+              <EmptyState
+                icon={Search}
+                title='Никого не найдено'
+                description='Попробуйте изменить или сбросить часть фильтров.'
+              />
             )}
           </div>
         )}

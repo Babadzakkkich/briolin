@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Trash2, X } from 'lucide-react';
+import { Images, Trash2, X } from 'lucide-react';
 import { mediaApi } from '@/entities/media';
 import type { AvatarHistoryItem } from '@/entities/media';
 import { AuthImage } from '@/shared/uikit/AuthImage';
-import { Loader } from '@/shared/uikit/Loader';
 import { ConfirmDialog } from '@/shared/uikit/ConfirmDialog';
+import { EmptyState } from '@/shared/uikit/EmptyState';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { InlineError } from '@/shared/uikit/InlineError';
 import { toast } from '@/shared/toast/toast';
 
 interface AvatarHistoryModalProps {
@@ -15,15 +17,17 @@ interface AvatarHistoryModalProps {
 export function AvatarHistoryModal({ onClose, onCurrentChanged }: AvatarHistoryModalProps) {
   const [items, setItems] = useState<AvatarHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
+    setError(false);
     mediaApi
       .getAvatarHistory()
       .then((res) => setItems(res.data))
-      .catch(() => toast.error('Не удалось загрузить аватарки'))
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }
 
@@ -75,12 +79,37 @@ export function AvatarHistoryModal({ onClose, onCurrentChanged }: AvatarHistoryM
         </div>
 
         <div className='max-h-[60vh] overflow-y-auto p-5'>
-          {loading ? (
-            <Loader center />
+          {error && items.length > 0 && (
+            <InlineError
+              message='Не удалось обновить историю аватарок.'
+              onRetry={load}
+              className='mb-4'
+            />
+          )}
+
+          {loading && items.length === 0 ? (
+            <div className='grid animate-pulse grid-cols-3 gap-3' role='status'>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className='bg-surface aspect-square rounded-xl' />
+              ))}
+              <span className='sr-only'>Загружаем аватарки</span>
+            </div>
+          ) : error && items.length === 0 ? (
+            <ErrorState title='Не удалось загрузить аватарки' onRetry={load} compact />
           ) : items.length === 0 ? (
-            <p className='text-secondary text-center text-[13px]'>Пока нет загруженных аватарок</p>
+            <EmptyState
+              icon={Images}
+              title='Пока нет загруженных аватарок'
+              description='Загрузите первую фотографию в профиле.'
+              compact
+            />
           ) : (
-            <div className='grid grid-cols-3 gap-3'>
+            <div
+              className={[
+                'grid grid-cols-3 gap-3 transition-opacity',
+                loading ? 'opacity-60' : '',
+              ].join(' ')}
+            >
               {items.map((item) => (
                 <div key={item.avatar_id} className='relative'>
                   <button

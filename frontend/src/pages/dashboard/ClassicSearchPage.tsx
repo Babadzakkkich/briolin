@@ -8,25 +8,12 @@ import type { QuestionsStatus, ProfileQuestions } from '@/entities/profile';
 import { LikeWithAnswersModal } from '@/widgets/matching/ui/LikeWithAnswersModal';
 import { ClassicFilterBar } from '@/features/search/ui/ClassicFilterBar';
 import { Button } from '@/shared/uikit/Button';
+import { EmptyState as SharedEmptyState } from '@/shared/uikit/EmptyState';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { InlineError } from '@/shared/uikit/InlineError';
 import { toast } from '@/shared/toast/toast';
 
 const SESSION_KEY = 'classic-search-state';
-
-function EmptyState({ searched }: { searched: boolean }) {
-  return (
-    <div className='flex flex-col items-center justify-center gap-3 py-24'>
-      <div className='bg-surface flex h-14 w-14 items-center justify-center rounded-2xl'>
-        <Search size={24} className='text-muted' strokeWidth={1.5} />
-      </div>
-      <p className='text-primary text-[15px] font-medium'>
-        {searched ? 'Никого не найдено' : 'Настройте фильтры и нажмите «Найти»'}
-      </p>
-      <p className='text-muted text-[13px]'>
-        {searched ? 'Попробуйте изменить параметры' : 'Поиск анкет по заданным критериям'}
-      </p>
-    </div>
-  );
-}
 
 function QuestionsRequiredBanner({ count }: { count: number }) {
   const navigate = useNavigate();
@@ -77,6 +64,7 @@ export function ClassicSearchPage() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [profiles, setProfiles] = useState<ProfilePreview[]>([]);
   const [totalResults, setTotalResults] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -119,6 +107,7 @@ export function ClassicSearchPage() {
       if (searchBlocked) return;
       if (append) setLoadingMore(true);
       else setLoading(true);
+      setSearchError(false);
       try {
         const res = await searchApi.classic({
           gender,
@@ -154,7 +143,8 @@ export function ClassicSearchPage() {
           sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
         }
       } catch {
-        toast.error('Ошибка поиска');
+        setSearchError(true);
+        setSearched(true);
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -199,15 +189,31 @@ export function ClassicSearchPage() {
 
         {(loading || searched) && (
           <div className='mt-6'>
-            {loading ? (
+            {searchError && profiles.length > 0 && (
+              <InlineError
+                message='Не удалось обновить результаты поиска.'
+                onRetry={() => runSearch(1)}
+                className='mb-4'
+              />
+            )}
+
+            {loading && profiles.length === 0 ? (
               <SearchSkeleton />
+            ) : searchError && profiles.length === 0 ? (
+              <ErrorState title='Не удалось выполнить поиск' onRetry={() => runSearch(1)} compact />
             ) : profiles.length > 0 ? (
               <>
                 <p className='text-secondary mb-4 text-[13px]'>
                   Найдено {totalResults}{' '}
                   {totalResults === 1 ? 'анкета' : totalResults < 5 ? 'анкеты' : 'анкет'}
                 </p>
-                <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
+                <div
+                  className={[
+                    'grid grid-cols-1 gap-4 transition-opacity md:grid-cols-2 lg:grid-cols-3',
+                    loading ? 'opacity-60' : '',
+                  ].join(' ')}
+                  aria-busy={loading}
+                >
                   {profiles.map((p, i) => (
                     <ProfileCard
                       key={`${p.keycloak_id}-${i}`}
@@ -235,7 +241,15 @@ export function ClassicSearchPage() {
                 )}
               </>
             ) : (
-              <EmptyState searched={searched} />
+              <SharedEmptyState
+                icon={Search}
+                title={searched ? 'Никого не найдено' : 'Настройте параметры поиска'}
+                description={
+                  searched
+                    ? 'Попробуйте изменить или сбросить часть фильтров.'
+                    : 'Выберите подходящие параметры и нажмите «Найти».'
+                }
+              />
             )}
           </div>
         )}

@@ -1,3 +1,3 @@
 export function FortunePage() {
-  return <>Фортуна</>;
+  return <>Скоро</>;
 }

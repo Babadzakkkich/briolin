@@ -13,7 +13,6 @@ import {
   type SwipeDirection,
 } from '@/widgets/matching/ui/SwipeCard';
 import { Button } from '@/shared/uikit/Button';
-import { Loader } from '@/shared/uikit/Loader';
 import { toast } from '@/shared/toast/toast';
 
 const LOW_WATERMARK = 3;
@@ -77,11 +76,22 @@ function DeckLoading({ label, absolute }: { label: string; absolute?: boolean })
   return (
     <div
       className={[
-        'border-border flex items-center justify-center rounded-3xl border bg-white',
+        'border-border overflow-hidden rounded-3xl border bg-white',
         absolute ? 'absolute inset-0' : 'mx-auto aspect-[3/4] w-full max-w-sm',
       ].join(' ')}
+      role='status'
+      aria-label={label}
     >
-      <Loader label={label} />
+      <div className='flex h-full animate-pulse flex-col'>
+        <div className='bg-surface h-[62%] w-full' />
+        <div className='flex flex-1 flex-col gap-3 p-4'>
+          <div className='bg-surface h-5 w-2/3 rounded-lg' />
+          <div className='bg-surface h-3 w-1/2 rounded-lg' />
+          <div className='bg-surface mt-2 h-3 w-full rounded-lg' />
+          <div className='bg-surface h-3 w-5/6 rounded-lg' />
+        </div>
+      </div>
+      <span className='sr-only'>{label}</span>
     </div>
   );
 }

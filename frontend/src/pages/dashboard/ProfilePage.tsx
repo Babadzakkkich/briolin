@@ -10,7 +10,8 @@ import {
 import { DetailedInfoSection } from '@/features/profile/ui/DetailedInfoSection';
 import { QuestionsSection, validateQuestions } from '@/features/profile/ui/QuestionsSection';
 import { TestResultsSection } from '@/features/profile/ui/TestResultsSection';
-import { Loader } from '@/shared/uikit/Loader';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { PageSkeleton } from '@/shared/uikit/PageSkeleton';
 import { toast } from '@/shared/toast/toast';
 
 const basicSchema = z.object({
@@ -29,7 +30,9 @@ const detailedSchema = z.object({
 
 type BasicErrors = Partial<Record<keyof z.infer<typeof basicSchema>, string>>;
 type DetailedErrors = Partial<Record<keyof z.infer<typeof detailedSchema> | 'red_flags', string>>;
-type QuestionsErrors = Partial<Record<'question_1' | 'question_2' | 'question_3' | 'question_4' | 'question_5', string>>;
+type QuestionsErrors = Partial<
+  Record<'question_1' | 'question_2' | 'question_3' | 'question_4' | 'question_5', string>
+>;
 
 const maxBirthDate = new Date();
 maxBirthDate.setFullYear(maxBirthDate.getFullYear() - 18);
@@ -47,6 +50,7 @@ export function ProfilePage() {
   const { setProfile, setThumbnailUrl } = useProfileStore();
   const [profile, setProfileData] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const [editingBasic, setEditingBasic] = useState(false);
   const [firstName, setFirstName] = useState('');
@@ -67,8 +71,10 @@ export function ProfilePage() {
   const [detailedErrors, setDetailedErrors] = useState<DetailedErrors>({});
 
   const [editingQuestions, setEditingQuestions] = useState(false);
-  const [questions, setQuestions] = useState<Omit<ProfileQuestions, 'created_at' | 'updated_at'>>(emptyQuestions);
-  const [savedQuestions, setSavedQuestions] = useState<Omit<ProfileQuestions, 'created_at' | 'updated_at'>>(emptyQuestions);
+  const [questions, setQuestions] =
+    useState<Omit<ProfileQuestions, 'created_at' | 'updated_at'>>(emptyQuestions);
+  const [savedQuestions, setSavedQuestions] =
+    useState<Omit<ProfileQuestions, 'created_at' | 'updated_at'>>(emptyQuestions);
   const [savingQuestions, setSavingQuestions] = useState(false);
   const [questionsErrors, setQuestionsErrors] = useState<QuestionsErrors>({});
 
@@ -88,18 +94,24 @@ export function ProfilePage() {
     setRedFlags(p.detailed?.red_flags ?? []);
   }
 
-  useEffect(() => {
-    profileApi
-      .getMe()
-      .then((res) => {
-        setProfileData(res.data);
-        setProfile({ ...res.data.basic, thumbnail_url: res.data.basic.thumbnail_url });
-        initBasicFields(res.data);
-        initDetailedFields(res.data);
-      })
-      .catch(() => toast.error('Не удалось загрузить профиль'))
-      .finally(() => setLoading(false));
+  async function loadProfile() {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const res = await profileApi.getMe();
+      setProfileData(res.data);
+      setProfile({ ...res.data.basic, thumbnail_url: res.data.basic.thumbnail_url });
+      initBasicFields(res.data);
+      initDetailedFields(res.data);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  useEffect(() => {
+    loadProfile();
     profileApi
       .getMyQuestions()
       .then((res) => {
@@ -272,13 +284,25 @@ export function ProfilePage() {
       .finally(() => setSavingQuestions(false));
   }
 
-  if (loading) return <Loader center label='Загружаем профиль...' />;
+  if (loading && !profile) {
+    return (
+      <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8 md:py-10'>
+        <PageSkeleton variant='profile' label='Загружаем профиль' />
+      </div>
+    );
+  }
 
   if (!profile) {
     return (
-      <div className='flex flex-1 items-center justify-center'>
-        <p className='text-muted text-[14px]'>Профиль не найден</p>
-      </div>
+      <ErrorState
+        title={loadError ? 'Не удалось загрузить профиль' : 'Профиль не найден'}
+        description={
+          loadError
+            ? 'Проверьте соединение и попробуйте ещё раз.'
+            : 'Данные профиля пока недоступны.'
+        }
+        onRetry={loadProfile}
+      />
     );
   }
 

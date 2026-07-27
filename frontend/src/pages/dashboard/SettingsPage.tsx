@@ -10,8 +10,10 @@ import { pollSaga } from '@/shared/api/saga';
 import { SectionHeader } from '@/features/profile/ui/SectionHeader';
 import { Input } from '@/shared/uikit/Input';
 import { Button } from '@/shared/uikit/Button';
-import { Loader } from '@/shared/uikit/Loader';
 import { ConfirmDialog } from '@/shared/uikit/ConfirmDialog';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { InlineError } from '@/shared/uikit/InlineError';
+import { PageSkeleton } from '@/shared/uikit/PageSkeleton';
 import { toast } from '@/shared/toast/toast';
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -37,12 +39,21 @@ function formatDate(dateStr: string) {
 
 export function SettingsPage() {
   const keycloakId = useAuthStore((s) => s.keycloakId);
-  const { username, email, roles, createdAt, loaded, setAccount, clear: clearAccount } = useAccountStore();
+  const {
+    username,
+    email,
+    roles,
+    createdAt,
+    loaded,
+    setAccount,
+    clear: clearAccount,
+  } = useAccountStore();
   const { clear: clearProfile } = useProfileStore();
   const { clear: clearAuth } = useAuthStore();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(!loaded);
+  const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [usernameField, setUsernameField] = useState('');
@@ -52,12 +63,21 @@ export function SettingsPage() {
   const [confirmAction, setConfirmAction] = useState<'profile' | 'account' | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  async function loadAccount() {
+    if (!loaded) setLoading(true);
+    setLoadError(false);
+    try {
+      const { data } = await accountApi.getMe();
+      setAccount(data);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    accountApi
-      .getMe()
-      .then(({ data }) => setAccount(data))
-      .catch(() => toast.error('Не удалось загрузить аккаунт'))
-      .finally(() => setLoading(false));
+    loadAccount();
   }, []);
 
   function startEdit() {
@@ -90,7 +110,9 @@ export function SettingsPage() {
         username: usernameField,
         email: emailField,
       });
-      const status = await pollSaga(() => accountApi.getSagaStatus(data.saga_id).then((r) => r.data));
+      const status = await pollSaga(() =>
+        accountApi.getSagaStatus(data.saga_id).then((r) => r.data),
+      );
       if (status.status === 'completed') {
         const refreshed = await accountApi.getMe();
         setAccount(refreshed.data);
@@ -110,7 +132,9 @@ export function SettingsPage() {
     setDeleting(true);
     try {
       const { data } = await profileApi.deleteProfile();
-      const status = await pollSaga(() => profileApi.getSagaStatus(data.saga_id).then((r) => r.data));
+      const status = await pollSaga(() =>
+        profileApi.getSagaStatus(data.saga_id).then((r) => r.data),
+      );
       if (status.status === 'completed') {
         clearProfile();
         toast.success('Анкета удалена');
@@ -131,7 +155,9 @@ export function SettingsPage() {
     setDeleting(true);
     try {
       const { data } = await accountApi.deleteMe(keycloakId);
-      const status = await pollSaga(() => accountApi.getSagaStatus(data.saga_id).then((r) => r.data));
+      const status = await pollSaga(() =>
+        accountApi.getSagaStatus(data.saga_id).then((r) => r.data),
+      );
       if (status.status === 'completed') {
         clearAuth();
         clearProfile();
@@ -149,12 +175,30 @@ export function SettingsPage() {
     }
   }
 
-  if (loading) return <Loader center label='Загружаем настройки...' />;
+  if (loading && !loaded) {
+    return (
+      <div className='flex-1 overflow-y-auto px-8 py-10'>
+        <PageSkeleton variant='profile' label='Загружаем настройки' />
+      </div>
+    );
+  }
+
+  if (loadError && !loaded) {
+    return <ErrorState title='Не удалось загрузить настройки' onRetry={loadAccount} />;
+  }
 
   return (
     <div className='flex-1 overflow-y-auto px-8 py-10'>
       <div className='mx-auto max-w-3xl'>
         <h1 className='font-onest text-primary mb-8 text-3xl font-medium'>Настройки</h1>
+
+        {loadError && (
+          <InlineError
+            message='Не удалось обновить данные аккаунта.'
+            onRetry={loadAccount}
+            className='mb-4'
+          />
+        )}
 
         <div className='flex flex-col gap-4'>
           <div className='rounded-2xl bg-white p-6'>
@@ -181,7 +225,9 @@ export function SettingsPage() {
                   {createdAt && (
                     <div>
                       <p className='text-muted text-[11px] font-medium'>Дата регистрации</p>
-                      <p className='text-primary mt-0.5 text-[14px] font-medium'>{formatDate(createdAt)}</p>
+                      <p className='text-primary mt-0.5 text-[14px] font-medium'>
+                        {formatDate(createdAt)}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -223,9 +269,7 @@ export function SettingsPage() {
 
           <div className='rounded-2xl border border-red-200 bg-red-50/40 p-6'>
             <h2 className='font-onest text-[18px] font-medium text-red-600'>Опасная зона</h2>
-            <p className='text-secondary mt-1 text-[13px]'>
-              Эти действия нельзя отменить.
-            </p>
+            <p className='text-secondary mt-1 text-[13px]'>Эти действия нельзя отменить.</p>
             <div className='mt-5 flex flex-wrap gap-3'>
               <Button variant='destructive' size='sm' onClick={() => setConfirmAction('profile')}>
                 Удалить анкету

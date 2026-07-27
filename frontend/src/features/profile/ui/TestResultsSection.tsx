@@ -2,17 +2,31 @@ import { useEffect, useState } from 'react';
 import { Award, CalendarClock, ListChecks } from 'lucide-react';
 import { testSessionApi } from '@/entities/test-session';
 import type { TestHistoryItem, UserTestStatistics } from '@/entities/test-session';
-import { Loader } from '@/shared/uikit/Loader';
+import { InlineError } from '@/shared/uikit/InlineError';
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  return new Date(dateStr).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
-function StatBlock({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function StatBlock({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
     <div className='flex items-center gap-3'>
-      <div className='bg-surface flex h-9 w-9 shrink-0 items-center justify-center rounded-xl'>{icon}</div>
+      <div className='bg-surface flex h-9 w-9 shrink-0 items-center justify-center rounded-xl'>
+        {icon}
+      </div>
       <div>
         <p className='text-muted text-[11px] font-medium'>{label}</p>
         <p className='text-primary text-[14px] font-medium'>{value}</p>
@@ -25,23 +39,70 @@ export function TestResultsSection() {
   const [stats, setStats] = useState<UserTestStatistics | null>(null);
   const [history, setHistory] = useState<TestHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  async function loadResults() {
+    setLoading(true);
+    setError(false);
+    try {
+      const [statsRes, historyRes] = await Promise.all([
+        testSessionApi.getStatistics(),
+        testSessionApi.getHistory(),
+      ]);
+      setStats(statsRes.data);
+      setHistory(historyRes.data.history);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    Promise.all([testSessionApi.getStatistics(), testSessionApi.getHistory()])
-      .then(([statsRes, historyRes]) => {
-        setStats(statsRes.data);
-        setHistory(historyRes.data.history);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    loadResults();
   }, []);
 
-  if (loading) return <div className='rounded-2xl bg-white p-6'><Loader /></div>;
+  if (loading && !stats) {
+    return (
+      <div className='animate-pulse rounded-2xl bg-white p-6' role='status'>
+        <div className='bg-surface mb-6 h-5 w-48 rounded-xl' />
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
+          {[0, 1, 2].map((item) => (
+            <div key={item} className='flex items-center gap-3'>
+              <div className='bg-surface h-9 w-9 rounded-xl' />
+              <div className='flex-1 space-y-2'>
+                <div className='bg-surface h-3 w-20 rounded-lg' />
+                <div className='bg-surface h-4 w-24 rounded-lg' />
+              </div>
+            </div>
+          ))}
+        </div>
+        <span className='sr-only'>Загружаем результаты теста</span>
+      </div>
+    );
+  }
+
+  if (error && !stats) {
+    return (
+      <div className='rounded-2xl bg-white p-4 sm:p-6'>
+        <InlineError message='Не удалось загрузить результаты теста.' onRetry={loadResults} />
+      </div>
+    );
+  }
+
   if (!stats) return null;
 
   return (
     <div className='rounded-2xl bg-white p-4 sm:p-6'>
       <h2 className='font-onest text-primary mb-5 text-[18px] font-medium'>Психологический тест</h2>
+
+      {error && (
+        <InlineError
+          message='Не удалось обновить результаты теста.'
+          onRetry={loadResults}
+          className='mb-5'
+        />
+      )}
 
       <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
         <StatBlock

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Button } from '@/shared/uikit/Button';
-import { Loader } from '@/shared/uikit/Loader';
 import { Text } from '@/shared/uikit/Text';
+import { ErrorState } from '@/shared/uikit/ErrorState';
 import { testSessionApi, type Question } from '@/entities/test-session';
 import { useAuthStore } from '@/entities/session';
 import { toast } from '@/shared/toast/toast';
@@ -18,10 +18,14 @@ export function TestStep({ onNext }: StepProps<unknown>) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true);
+    setLoadError(false);
 
     const load = async () => {
       try {
@@ -39,12 +43,12 @@ export function TestStep({ onNext }: StepProps<unknown>) {
             setCurrentIndex(data.total_answered ?? 0);
             setSelectedAnswer(null);
           } catch (resumeErr) {
-            if (!axios.isCancel(resumeErr)) toast.error('Не удалось загрузить тест');
+            if (!axios.isCancel(resumeErr)) setLoadError(true);
           }
           return;
         }
 
-        toast.error('Не удалось загрузить тест');
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
@@ -53,7 +57,7 @@ export function TestStep({ onNext }: StepProps<unknown>) {
     load();
 
     return () => controller.abort();
-  }, []);
+  }, [loadAttempt]);
 
   const current = questions[currentIndex];
   const isLast = questions.length > 0 && currentIndex === questions.length - 1;
@@ -80,10 +84,30 @@ export function TestStep({ onNext }: StepProps<unknown>) {
     }
   }
 
-  if (loading || questions.length === 0) {
+  if (loading && questions.length === 0) {
     return (
       <div className={CARD_CLASS}>
-        <Loader size='lg' label='Загрузка теста...' />
+        <div className='flex w-full animate-pulse flex-col gap-5' role='status'>
+          <div className='bg-surface mx-auto h-6 w-48 rounded-lg' />
+          <div className='bg-surface h-2 w-full rounded-full' />
+          <div className='bg-surface h-4 w-4/5 rounded-lg' />
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className='bg-surface h-11 w-full rounded-xl' />
+          ))}
+          <span className='sr-only'>Загружаем тест</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError && questions.length === 0) {
+    return (
+      <div className='border-border w-120 rounded-lg border bg-white'>
+        <ErrorState
+          title='Не удалось загрузить тест'
+          onRetry={() => setLoadAttempt((attempt) => attempt + 1)}
+          compact
+        />
       </div>
     );
   }
@@ -91,7 +115,9 @@ export function TestStep({ onNext }: StepProps<unknown>) {
   if (!current) {
     return (
       <div className={CARD_CLASS}>
-        <Text variant='p' as='p'>Ошибка загрузки вопроса</Text>
+        <Text variant='p' as='p'>
+          Ошибка загрузки вопроса
+        </Text>
       </div>
     );
   }
@@ -99,7 +125,9 @@ export function TestStep({ onNext }: StepProps<unknown>) {
   return (
     <div className='border-border flex w-120 flex-col gap-6 rounded-lg border bg-white px-8 py-8'>
       <div className='flex flex-col gap-2 text-center'>
-        <Text variant='h2' as='h2'>Тест совместимости</Text>
+        <Text variant='h2' as='h2'>
+          Тест совместимости
+        </Text>
         <Text variant='p-sm' as='p'>
           Вопрос {currentIndex + 1} из {questions.length}
         </Text>
@@ -112,13 +140,11 @@ export function TestStep({ onNext }: StepProps<unknown>) {
         />
       </div>
 
-      <Text variant='p' as='p'>{current.text}</Text>
+      <Text variant='p' as='p'>
+        {current.text}
+      </Text>
 
-      <QuestionOptions
-        question={current}
-        selected={selectedAnswer}
-        onSelect={setSelectedAnswer}
-      />
+      <QuestionOptions question={current} selected={selectedAnswer} onSelect={setSelectedAnswer} />
 
       <Button onClick={handleNext} disabled={selectedAnswer === null || submitting}>
         {isLast ? 'Завершить' : 'Далее'}

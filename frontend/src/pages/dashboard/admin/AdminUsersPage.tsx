@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Search, ShieldCheck } from 'lucide-react';
 import { adminApi } from '@/entities/admin';
 import type { AdminUser } from '@/entities/admin';
 import type { UserRole } from '@/entities/account';
-import { Loader } from '@/shared/uikit/Loader';
 import { Button } from '@/shared/uikit/Button';
+import { EmptyState } from '@/shared/uikit/EmptyState';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { InlineError } from '@/shared/uikit/InlineError';
+import { PageSkeleton } from '@/shared/uikit/PageSkeleton';
 import { toast } from '@/shared/toast/toast';
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -23,24 +26,32 @@ export function AdminUsersPage() {
   const [skip, setSkip] = useState(0);
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
 
-  useEffect(() => {
+  const loadUsers = useCallback(async () => {
     setLoading(true);
+    setError(false);
     const request =
       roleFilter === 'all'
         ? adminApi.listUsers({ skip, limit: LIMIT })
         : adminApi.listByRole(roleFilter, { skip, limit: LIMIT });
 
-    request
-      .then((data) => {
-        setUsers(data.users);
-        setTotal(data.total);
-      })
-      .catch(() => toast.error('Не удалось загрузить пользователей'))
-      .finally(() => setLoading(false));
-  }, [skip, roleFilter]);
+    try {
+      const data = await request;
+      setUsers(data.users);
+      setTotal(data.total);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [roleFilter, skip]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   async function handleSearch(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -60,7 +71,11 @@ export function AdminUsersPage() {
   }
 
   function formatDate(dateStr: string) {
-    return new Date(dateStr).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return new Date(dateStr).toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
   }
 
   return (
@@ -72,9 +87,12 @@ export function AdminUsersPage() {
         </h1>
 
         <div className='mb-5 flex flex-wrap items-center gap-3'>
-          <form onSubmit={handleSearch} className='flex flex-1 min-w-[240px] items-center gap-2'>
+          <form onSubmit={handleSearch} className='flex min-w-[240px] flex-1 items-center gap-2'>
             <div className='relative flex-1'>
-              <Search size={14} className='text-muted pointer-events-none absolute top-1/2 left-3 -translate-y-1/2' />
+              <Search
+                size={14}
+                className='text-muted pointer-events-none absolute top-1/2 left-3 -translate-y-1/2'
+              />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -101,57 +119,85 @@ export function AdminUsersPage() {
           </select>
         </div>
 
-        <div className='overflow-hidden rounded-2xl bg-white'>
-          {loading ? (
-            <Loader center label='Загружаем пользователей...' />
-          ) : users.length === 0 ? (
-            <p className='text-secondary p-8 text-center text-[13px]'>Пользователи не найдены</p>
-          ) : (
-            <table className='w-full text-left text-[13px]'>
-              <thead>
-                <tr className='border-b border-[#F0E9E0] text-[11px] text-muted'>
-                  <th className='px-5 py-3 font-medium'>Username</th>
-                  <th className='px-5 py-3 font-medium'>Email</th>
-                  <th className='px-5 py-3 font-medium'>Роли</th>
-                  <th className='px-5 py-3 font-medium'>Статус</th>
-                  <th className='px-5 py-3 font-medium'>Регистрация</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr
-                    key={u.keycloak_id}
-                    onClick={() => navigate(`/dashboard/admin/users/${u.keycloak_id}`)}
-                    className='hover:bg-surface cursor-pointer border-b border-[#F0E9E0] last:border-0'
-                  >
-                    <td className='text-primary px-5 py-3 font-medium'>{u.username}</td>
-                    <td className='text-secondary px-5 py-3'>{u.email}</td>
-                    <td className='px-5 py-3'>
-                      <div className='flex flex-wrap gap-1'>
-                        {u.roles.map((role) => (
-                          <span key={role} className='bg-accent/10 text-accent rounded-lg px-2 py-0.5 text-[11px]'>
-                            {ROLE_LABELS[role]}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className='px-5 py-3'>
-                      <span
-                        className={[
-                          'rounded-lg px-2 py-0.5 text-[11px] font-medium',
-                          u.is_active ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600',
-                        ].join(' ')}
-                      >
-                        {u.is_active ? 'Активен' : 'Заблокирован'}
-                      </span>
-                    </td>
-                    <td className='text-secondary px-5 py-3'>{formatDate(u.created_at)}</td>
+        {error && users.length > 0 && (
+          <InlineError
+            message='Не удалось обновить список пользователей.'
+            onRetry={loadUsers}
+            className='mb-4'
+          />
+        )}
+
+        {loading && users.length === 0 ? (
+          <PageSkeleton variant='table' count={8} label='Загружаем пользователей' />
+        ) : error && users.length === 0 ? (
+          <div className='rounded-2xl bg-white'>
+            <ErrorState title='Не удалось загрузить пользователей' onRetry={loadUsers} compact />
+          </div>
+        ) : (
+          <div
+            className={[
+              'overflow-hidden rounded-2xl bg-white transition-opacity',
+              loading ? 'opacity-60' : '',
+            ].join(' ')}
+            aria-busy={loading}
+          >
+            {users.length === 0 ? (
+              <EmptyState
+                icon={Search}
+                title='Пользователи не найдены'
+                description='Попробуйте выбрать другую роль или изменить поисковый запрос.'
+                compact
+              />
+            ) : (
+              <table className='w-full text-left text-[13px]'>
+                <thead>
+                  <tr className='text-muted border-b border-[#F0E9E0] text-[11px]'>
+                    <th className='px-5 py-3 font-medium'>Username</th>
+                    <th className='px-5 py-3 font-medium'>Email</th>
+                    <th className='px-5 py-3 font-medium'>Роли</th>
+                    <th className='px-5 py-3 font-medium'>Статус</th>
+                    <th className='px-5 py-3 font-medium'>Регистрация</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr
+                      key={u.keycloak_id}
+                      onClick={() => navigate(`/dashboard/admin/users/${u.keycloak_id}`)}
+                      className='hover:bg-surface cursor-pointer border-b border-[#F0E9E0] last:border-0'
+                    >
+                      <td className='text-primary px-5 py-3 font-medium'>{u.username}</td>
+                      <td className='text-secondary px-5 py-3'>{u.email}</td>
+                      <td className='px-5 py-3'>
+                        <div className='flex flex-wrap gap-1'>
+                          {u.roles.map((role) => (
+                            <span
+                              key={role}
+                              className='bg-accent/10 text-accent rounded-lg px-2 py-0.5 text-[11px]'
+                            >
+                              {ROLE_LABELS[role]}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className='px-5 py-3'>
+                        <span
+                          className={[
+                            'rounded-lg px-2 py-0.5 text-[11px] font-medium',
+                            u.is_active ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600',
+                          ].join(' ')}
+                        >
+                          {u.is_active ? 'Активен' : 'Заблокирован'}
+                        </span>
+                      </td>
+                      <td className='text-secondary px-5 py-3'>{formatDate(u.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
 
         {!loading && total > LIMIT && (
           <div className='mt-4 flex items-center justify-center gap-3'>

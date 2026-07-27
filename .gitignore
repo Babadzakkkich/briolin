@@ -228,3 +228,4 @@ frontend/package-lock.json
 /.claude
 /frontend/.claude
 README.md
+frontend/todo.md

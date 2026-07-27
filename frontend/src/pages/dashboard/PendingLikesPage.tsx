@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Heart, X, User } from 'lucide-react';
 import { matchingApi } from '@/entities/matching';
@@ -8,7 +8,10 @@ import type { ProfileQuestions } from '@/entities/profile';
 import { LikeWithAnswersModal } from '@/widgets/matching/ui/LikeWithAnswersModal';
 import { AuthImage } from '@/shared/uikit/AuthImage';
 import { Button } from '@/shared/uikit/Button';
-import { Loader } from '@/shared/uikit/Loader';
+import { EmptyState } from '@/shared/uikit/EmptyState';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { InlineError } from '@/shared/uikit/InlineError';
+import { PageSkeleton } from '@/shared/uikit/PageSkeleton';
 import { toast } from '@/shared/toast/toast';
 
 const QUESTION_KEYS: (keyof LikeAnswers)[] = [
@@ -183,15 +186,25 @@ export function PendingLikesPage() {
   const navigate = useNavigate();
   const [likes, setLikes] = useState<PendingLike[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [reverseLikeTarget, setReverseLikeTarget] = useState<ReverseLikeTarget | null>(null);
 
-  useEffect(() => {
-    matchingApi
-      .getPendingLikes()
-      .then((res) => setLikes(res.data))
-      .catch(() => toast.error('Не удалось загрузить входящие лайки'))
-      .finally(() => setLoading(false));
+  const loadLikes = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await matchingApi.getPendingLikes();
+      setLikes(res.data);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadLikes();
+  }, [loadLikes]);
 
   async function handleAccept(like: PendingLike) {
     try {
@@ -212,8 +225,6 @@ export function PendingLikesPage() {
     }
   }
 
-  if (loading) return <Loader center label='Загружаем входящие лайки...' />;
-
   return (
     <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8'>
       <div className='mx-auto max-w-2xl'>
@@ -226,16 +237,32 @@ export function PendingLikesPage() {
           </p>
         </div>
 
-        {likes.length === 0 ? (
-          <div className='flex flex-col items-center gap-3 py-20'>
-            <div className='bg-surface flex h-14 w-14 items-center justify-center rounded-2xl'>
-              <Heart size={24} className='text-muted' strokeWidth={1.5} />
-            </div>
-            <p className='text-primary text-[15px] font-medium'>Входящих лайков нет</p>
-            <p className='text-muted text-[13px]'>Появляйтесь в поиске и заполните профиль</p>
-          </div>
+        {error && likes.length > 0 && (
+          <InlineError
+            message='Не удалось обновить входящие лайки.'
+            onRetry={loadLikes}
+            className='mb-4'
+          />
+        )}
+
+        {loading && likes.length === 0 ? (
+          <PageSkeleton count={3} label='Загружаем входящие лайки' />
+        ) : error && likes.length === 0 ? (
+          <ErrorState title='Не удалось загрузить входящие лайки' onRetry={loadLikes} />
+        ) : likes.length === 0 ? (
+          <EmptyState
+            icon={Heart}
+            title='Входящих лайков нет'
+            description='Заполните профиль, чтобы чаще появляться в рекомендациях других пользователей.'
+            actionLabel='Открыть профиль'
+            onAction={() => navigate('/dashboard/profile')}
+          />
         ) : (
-          <div className='flex flex-col gap-4'>
+          <div
+            className={['flex flex-col gap-4 transition-opacity', loading ? 'opacity-60' : ''].join(
+              ' ',
+            )}
+          >
             {likes.map((like) => (
               <PendingLikeCard
                 key={like.from_user_id}

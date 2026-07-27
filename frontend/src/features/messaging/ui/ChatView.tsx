@@ -3,7 +3,6 @@ import { ArrowLeft, Heart, MessageCircle, Send } from 'lucide-react';
 import { MessageBubble } from '@/entities/message';
 import { ChatAvatar, ChatActionsMenu, getChatDisplayName, getChatAvatarUrl } from '@/entities/chat';
 import { Button } from '@/shared/uikit/Button';
-import { Loader } from '@/shared/uikit/Loader';
 import { ConfirmDialog } from '@/shared/uikit/ConfirmDialog';
 import { MatchAnswersPanel } from './MatchAnswersPanel';
 import type { Message } from '@/entities/message';
@@ -101,7 +100,19 @@ export function ChatView({
 
       <div className='flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-5'>
         {isLoading ? (
-          <Loader center />
+          <div className='flex animate-pulse flex-col gap-3' role='status'>
+            {[40, 58, 46, 65, 38].map((width, index) => (
+              <div
+                key={index}
+                className={[
+                  'bg-surface h-12 rounded-2xl',
+                  index % 2 === 0 ? 'self-start' : 'self-end',
+                ].join(' ')}
+                style={{ width: `${width}%` }}
+              />
+            ))}
+            <span className='sr-only'>Загружаем сообщения</span>
+          </div>
         ) : messages.length === 0 ? (
           <div className='flex flex-1 flex-col items-center justify-center gap-2 text-center'>
             <MessageCircle size={24} className='text-muted' strokeWidth={1.8} />

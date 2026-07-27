@@ -6,8 +6,9 @@ import type { AdminUser, AdminProfileResponse } from '@/entities/admin';
 import type { UserRole } from '@/entities/account';
 import { pollSaga } from '@/shared/api/saga';
 import { Button } from '@/shared/uikit/Button';
-import { Loader } from '@/shared/uikit/Loader';
 import { ConfirmDialog } from '@/shared/uikit/ConfirmDialog';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { PageSkeleton } from '@/shared/uikit/PageSkeleton';
 import { toast } from '@/shared/toast/toast';
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
@@ -25,6 +26,7 @@ export function AdminUserDetailPage() {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [profile, setProfile] = useState<AdminProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<UserRole[]>([]);
   const [savingRoles, setSavingRoles] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
@@ -47,15 +49,27 @@ export function AdminUserDetailPage() {
       .catch(() => setProfile(null));
   }
 
-  useEffect(() => {
-    Promise.resolve(loadUser())
-      .catch(() => toast.error('Не удалось загрузить пользователя'))
-      .finally(() => setLoading(false));
+  async function loadPage() {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      await loadUser();
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
     loadProfile();
+  }
+
+  useEffect(() => {
+    loadPage();
   }, [keycloakId]);
 
   function toggleRole(role: UserRole) {
-    setSelectedRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
+    setSelectedRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+    );
   }
 
   async function saveRoles() {
@@ -150,17 +164,27 @@ export function AdminUserDetailPage() {
     }
   }
 
-  if (loading) return <Loader center label='Загружаем пользователя...' />;
-  if (!user) {
+  if (loading && !user) {
     return (
-      <div className='flex flex-1 items-center justify-center'>
-        <p className='text-muted text-[14px]'>Пользователь не найден</p>
+      <div className='flex-1 overflow-y-auto px-8 py-10'>
+        <PageSkeleton variant='profile' label='Загружаем пользователя' />
       </div>
+    );
+  }
+  if (!user) {
+    return loadError ? (
+      <ErrorState title='Не удалось загрузить пользователя' onRetry={loadPage} />
+    ) : (
+      <ErrorState
+        title='Пользователь не найден'
+        description='Возможно, пользователь был удалён или ссылка устарела.'
+      />
     );
   }
 
   const rolesChanged =
-    selectedRoles.length !== user.roles.length || selectedRoles.some((r) => !user.roles.includes(r));
+    selectedRoles.length !== user.roles.length ||
+    selectedRoles.some((r) => !user.roles.includes(r));
 
   return (
     <div className='flex-1 overflow-y-auto px-8 py-10'>
@@ -169,13 +193,14 @@ export function AdminUserDetailPage() {
           onClick={() => navigate('/dashboard/admin')}
           className='text-secondary hover:text-primary mb-6 flex cursor-pointer items-center gap-1.5 text-[13px] transition-colors'
         >
-          <ArrowLeft size={15} />
-          К списку пользователей
+          <ArrowLeft size={15} />К списку пользователей
         </button>
 
         <div className='flex flex-col gap-4'>
           <div className='rounded-2xl bg-white p-6'>
-            <h2 className='font-onest text-primary mb-4 text-[18px] font-medium'>{user.username}</h2>
+            <h2 className='font-onest text-primary mb-4 text-[18px] font-medium'>
+              {user.username}
+            </h2>
             <p className='text-secondary mb-5 text-[13px]'>{user.email}</p>
 
             <div className='mb-5 flex flex-col gap-2'>
@@ -197,7 +222,12 @@ export function AdminUserDetailPage() {
                 ))}
               </div>
               {rolesChanged && (
-                <Button size='sm' onClick={saveRoles} disabled={savingRoles} className='mt-2 self-start'>
+                <Button
+                  size='sm'
+                  onClick={saveRoles}
+                  disabled={savingRoles}
+                  className='mt-2 self-start'
+                >
                   {savingRoles ? 'Сохранение...' : 'Сохранить роли'}
                 </Button>
               )}
@@ -213,7 +243,11 @@ export function AdminUserDetailPage() {
                 {user.is_active ? <Ban size={14} /> : <CheckCircle2 size={14} />}
                 {user.is_active ? 'Заблокировать' : 'Разблокировать'}
               </Button>
-              <Button variant='destructive' size='sm' onClick={() => setConfirmAction('delete-user')}>
+              <Button
+                variant='destructive'
+                size='sm'
+                onClick={() => setConfirmAction('delete-user')}
+              >
                 <Trash2 size={14} />
                 Удалить пользователя
               </Button>
@@ -244,7 +278,11 @@ export function AdminUserDetailPage() {
 
           <div className='rounded-2xl bg-white p-6'>
             <h2 className='font-onest text-primary mb-4 text-[18px] font-medium'>Мэтчинг</h2>
-            <Button variant='destructive' size='sm' onClick={() => setConfirmAction('reset-matching')}>
+            <Button
+              variant='destructive'
+              size='sm'
+              onClick={() => setConfirmAction('reset-matching')}
+            >
               <RotateCcw size={14} />
               Сбросить лайки и мэтчинг
             </Button>

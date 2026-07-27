@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MessageCircle, Heart, Users } from 'lucide-react';
 import { matchingApi } from '@/entities/matching';
@@ -6,7 +6,10 @@ import type { Match } from '@/entities/matching';
 import { chatApi } from '@/entities/chat';
 import { AuthImage } from '@/shared/uikit/AuthImage';
 import { Button } from '@/shared/uikit/Button';
-import { Loader } from '@/shared/uikit/Loader';
+import { EmptyState } from '@/shared/uikit/EmptyState';
+import { ErrorState } from '@/shared/uikit/ErrorState';
+import { InlineError } from '@/shared/uikit/InlineError';
+import { PageSkeleton } from '@/shared/uikit/PageSkeleton';
 import { toast } from '@/shared/toast/toast';
 
 function AvatarFallback({ name }: { name: string }) {
@@ -75,20 +78,29 @@ function MatchCard({ match }: { match: Match }) {
 
 export function MatchesPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const newMatchId = location.state?.newMatchId as number | undefined;
 
-  useEffect(() => {
-    matchingApi
-      .getMatches()
-      .then((res) => setMatches(res.data))
-      .catch(() => toast.error('Не удалось загрузить мэтчи'))
-      .finally(() => setLoading(false));
+  const loadMatches = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await matchingApi.getMatches();
+      setMatches(res.data);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (loading) return <Loader center label='Загружаем мэтчи...' />;
+  useEffect(() => {
+    loadMatches();
+  }, [loadMatches]);
 
   return (
     <div className='flex-1 overflow-y-auto px-4 py-8 md:px-8'>
@@ -102,6 +114,14 @@ export function MatchesPage() {
           </p>
         </div>
 
+        {error && matches.length > 0 && (
+          <InlineError
+            message='Не удалось обновить список мэтчей.'
+            onRetry={loadMatches}
+            className='mb-4'
+          />
+        )}
+
         {newMatchId && (
           <div className='mb-4 flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-4'>
             <Heart size={18} className='shrink-0 text-green-600' />
@@ -111,18 +131,24 @@ export function MatchesPage() {
           </div>
         )}
 
-        {matches.length === 0 ? (
-          <div className='flex flex-col items-center gap-3 py-20'>
-            <div className='bg-surface flex h-14 w-14 items-center justify-center rounded-2xl'>
-              <Users size={24} className='text-muted' strokeWidth={1.5} />
-            </div>
-            <p className='text-primary text-[15px] font-medium'>Мэтчей пока нет</p>
-            <p className='text-muted text-center text-[13px]'>
-              Заполните профиль и ищите анкеты — взаимные лайки создают мэтч
-            </p>
-          </div>
+        {loading && matches.length === 0 ? (
+          <PageSkeleton count={4} label='Загружаем мэтчи' />
+        ) : error && matches.length === 0 ? (
+          <ErrorState title='Не удалось загрузить мэтчи' onRetry={loadMatches} />
+        ) : matches.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title='Мэтчей пока нет'
+            description='Заполните профиль и смотрите рекомендации — взаимные лайки создают мэтч.'
+            actionLabel='Открыть Купидона'
+            onAction={() => navigate('/dashboard/cupidon')}
+          />
         ) : (
-          <div className='flex flex-col gap-3'>
+          <div
+            className={['flex flex-col gap-3 transition-opacity', loading ? 'opacity-60' : ''].join(
+              ' ',
+            )}
+          >
             {matches.map((match) => (
               <MatchCard key={match.match_id} match={match} />
             ))}
