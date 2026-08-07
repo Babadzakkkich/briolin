@@ -3,15 +3,12 @@ import { useAuthStore } from '@/entities/session';
 import { isRefreshTokenRejected, refreshAccessToken } from '@/shared/api/client';
 import type { WsMessage } from '@/entities/message';
 
-const API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
 
 const WS_URL = (() => {
-  try {
-    const { protocol, host } = new URL(API_URL);
-    return `${protocol === 'https:' ? 'wss' : 'ws'}://${host}/ws`;
-  } catch {
-    return 'ws://localhost:8000/ws';
-  }
+  const url = new URL('/ws', new URL(API_URL, window.location.origin));
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
 })();
 
 interface Options {

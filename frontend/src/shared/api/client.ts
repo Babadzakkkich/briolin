@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '@/entities/session/model/store';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
 
 // apiClient — основной инстанс для всех запросов к бэку.
 // withCredentials нужен, чтобы браузер автоматически передавал HTTP-only cookie

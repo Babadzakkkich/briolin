@@ -1,11 +1,29 @@
 services:
+    caddy:
+        image: caddy:2-alpine
+        container_name: briolin-caddy
+        ports:
+            - "80:80"
+        volumes:
+            - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+            - caddy-data:/data
+            - caddy-config:/config
+        depends_on:
+            - frontend
+            - api-gateway
+        networks:
+            - briolin-network
+        restart: unless-stopped
+
     frontend:
         container_name: briolin-frontend
         build:
             context: ./frontend
             dockerfile: Dockerfile.local
-        ports:
-            - "80:5173"
+        expose:
+            - "5173"
+        environment:
+            VITE_API_BASE_URL: /api/v1
         volumes:
             - ./frontend:/app
             - /app/node_modules
@@ -518,6 +536,8 @@ services:
             - init
 
 volumes:
+    caddy-data:
+    caddy-config:
     keycloak-postgres-data:
     keycloak-data:
     redis-data:

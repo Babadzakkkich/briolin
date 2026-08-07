@@ -1,0 +1,8 @@
+:80 {
+    encode zstd gzip
+
+    @backend path /api/* /ws /ws/*
+    reverse_proxy @backend api-gateway:8000
+
+    reverse_proxy frontend:5173
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/entities/session/model/store';
 
-const BASE = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1') as string;
+const BASE = (import.meta.env.VITE_API_BASE_URL ?? '/api/v1') as string;
 
 interface AuthImageProps {
   src: string;
