@@ -1,6 +1,5 @@
-from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
-from typing import Any, Dict, Optional, List
+from typing import Optional
 
 
 class UserRegister(BaseModel):
@@ -15,11 +14,18 @@ class UserLogin(BaseModel):
 
 
 class TokenResponse(BaseModel):
+    """Внутренний ответ auth-service. Наружу браузеру токены не отдаём."""
     access_token: str
     refresh_token: str
     token_type: str
     expires_in: int
     refresh_expires_in: int
+
+
+class SessionResponse(BaseModel):
+    authenticated: bool
+    token_type: str = "Bearer"
+    expires_in: int
 
 
 class RefreshRequest(BaseModel):
@@ -32,7 +38,7 @@ class LogoutRequest(BaseModel):
 
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     keycloak_id: str
     email: EmailStr

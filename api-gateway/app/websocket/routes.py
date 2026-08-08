@@ -3,6 +3,7 @@ from typing import Optional
 import asyncio
 
 from app.core.logger import logger
+from app.core.config import settings
 from app.websocket.proxy import get_websocket_proxy, WebSocketProxy
 from app.services.token_cache import get_token_cache
 from shared.auth.jwt import jwt_manager
@@ -18,16 +19,17 @@ async def websocket_endpoint(
     """
     WebSocket эндпоинт для чатов с поддержкой display_name.
     
-    Принимает Keycloak токен в query параметре ?token= или 
-    в заголовке Authorization (обрабатывается middleware).
+    Принимает Keycloak token из HttpOnly cookie.
+    Query-параметр ?token= оставлен только для обратной совместимости.
     
     Проксирует соединение к chat-service:9000/ws с internal JWT токеном.
     В ответах теперь используется display_name (first_name + last_name) вместо username.
     """
     await websocket.accept()
     
-    # Получаем токен из query или из state (установлен middleware)
-    keycloak_token = token
+    # Получаем токен из query или из HttpOnly cookie.
+    # Query token оставлен для обратной совместимости, но основной режим — cookie.
+    keycloak_token = token or websocket.cookies.get(settings.cookies.access_cookie_name)
     
     # Проверяем, есть ли уже internal токен от middleware
     internal_token = getattr(websocket.state, "internal_token", None)

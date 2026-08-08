@@ -15,11 +15,11 @@ from shared.auth.security import request_security
 from shared.auth.config import settings as shared_settings
 from app.core.exceptions import AuthenticationException
 from app.core.logger import logger
+from app.core.config import settings
 
 # Публичные эндпоинты (не требующие аутентификации)
 PUBLIC_ENDPOINTS = [
-    re.compile(r'^/api/v1/auth/(register|login|refresh|validate)$'),
-    re.compile(r'^/api/v1/auth/verify/(request|confirm)$'),
+    re.compile(r'^/api/v1/auth/(register|login|refresh|logout|validate)$'),
     re.compile(r'^/api/v1/auth/password-reset/(request|confirm)$'), 
     re.compile(r'^/health$'),
     re.compile(r'^/$'),
@@ -70,17 +70,30 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return any(pattern.match(path) for pattern in WS_ENDPOINTS)
     
     async def _extract_existing_token(self, request: Request) -> Tuple[Optional[str], Optional[str]]:
-        """Извлекает существующий токен из заголовков"""
+        """Извлекает существующий внутренний токен из заголовков."""
         existing_token = None
         existing_signature = None
-        
+
         for key, value in request.scope["headers"]:
             if key == b"x-internal-token":
                 existing_token = value.decode()
             elif key == b"x-token-signature":
                 existing_signature = value.decode()
-        
+
         return existing_token, existing_signature
+
+    def _extract_access_token(self, request: Request) -> Optional[str]:
+        """
+        Извлекает Keycloak access token.
+
+        Основной режим — HttpOnly cookie. Authorization оставлен только для
+        обратной совместимости с Postman/старым frontend.
+        """
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            return auth_header.split(" ", 1)[1]
+
+        return request.cookies.get(settings.cookies.access_cookie_name)
     
     async def _get_cached_token(self, keycloak_id: str) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
         """Получает токен из Redis кэша"""
@@ -244,22 +257,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug(f"WebSocket endpoint detected: {path}")
             return await call_next(request)
 
-        # Стандартная HTTP аутентификация
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            logger.warning("Missing or invalid Authorization header")
+        # Стандартная HTTP аутентификация.
+        # В cookie-режиме frontend не видит token и не присылает Authorization.
+        # Gateway сам берёт access token из HttpOnly cookie.
+        token = self._extract_access_token(request)
+        if not token:
+            logger.warning("Missing access token")
             return JSONResponse(
                 status_code=401,
-                content={"detail": "Missing or invalid Authorization header"}
+                content={"detail": "Missing access token"}
             )
 
-        token = auth_header.split(" ")[1]
-        logger.debug(f"Authorization token received: {token[:10]}... (truncated)")
+        logger.debug(f"Access token received: {token[:10]}... (truncated)")
 
         try:
             # 1. Валидируем токен через Keycloak
             token_info = keycloak_client.introspect_token(token)
             keycloak_id = token_info.get("sub")
+            if not keycloak_id:
+                raise AuthenticationException("Invalid token: no subject")
             logger.debug(f"Keycloak ID: {keycloak_id[:8]}...")
 
             # 2. Извлекаем существующий токен из заголовков
@@ -285,7 +301,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 new_headers = []
                 for key, value in request.scope["headers"]:
                     key_lower = key.lower()
-                    if key_lower not in [b"authorization", b"x-internal-token", b"x-token-signature"]:
+                    if key_lower not in [
+                        b"authorization",
+                        b"x-internal-token",
+                        b"x-token-signature",
+                        b"cookie",
+                    ]:
                         new_headers.append((key, value))
                 
                 new_headers.append((b"x-internal-token", internal_token.encode()))

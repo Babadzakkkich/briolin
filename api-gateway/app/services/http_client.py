@@ -73,10 +73,19 @@ class HTTPClient:
         logger.info(f"Proxying {request.method} {path} -> {target_url}")
         
         headers = {}
+        # Браузерные cookies не должны уходить во внутренние сервисы.
+        # Сервисам передаём только internal JWT + signature.
+        excluded_headers = {
+            "host",
+            "content-length",
+            "cookie",
+            "authorization",
+        }
+
         for header_name, header_value in request.headers.items():
             header_name_lower = header_name.lower()
 
-            if header_name_lower not in ['host', 'content-length']:
+            if header_name_lower not in excluded_headers:
                 headers[header_name] = header_value
         
         internal_token = request.headers.get("x-internal-token")
