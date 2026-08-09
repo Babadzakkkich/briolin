@@ -12,7 +12,7 @@ class DatabaseConfig(BaseSettings):
     
     user: str = "media_user"
     password: str = "media_password"
-    host: str = "media-postgres"
+    host: str = "postgres-db"
     port: int = 5432
     name: str = "media_db"
     

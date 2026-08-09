@@ -17,7 +17,7 @@ COPY shared/ ./shared/
 COPY scripts/create_superadmin.py ./
 
 ENV PYTHONPATH=/app
-ENV AUTH__DB__HOST=auth-postgres
+ENV AUTH__DB__HOST=postgres-db
 ENV AUTH__DB__PORT=5432
 ENV AUTH__DB__NAME=auth_db
 ENV AUTH__DB__USER=auth_user
