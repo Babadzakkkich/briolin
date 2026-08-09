@@ -156,6 +156,29 @@ services:
       retries: 10
       start_period: 10s
 
+  pgadmin:
+    image: dpage/pgadmin4:9.17
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      PGPASS_FILE: /pgpass
+      PGADMIN_DISABLE_POSTFIX: "1"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./infrastructure/pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./infrastructure/pgadmin/pgpass:/pgpass:ro
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    networks:
+      - briolin-network
+    restart: unless-stopped
+
   testing-mongo:
     image: mongo:8.0
     container_name: testing-mongo
@@ -411,6 +434,7 @@ services:
 
 volumes:
   postgres-db-data:
+  pgadmin-data:
   keycloak-postgres-data:
   keycloak-data:
   redis-data:
