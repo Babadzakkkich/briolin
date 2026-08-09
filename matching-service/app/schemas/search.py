@@ -1,12 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from shared.schemas.shared import Gender
 from .pagination import PaginationInfo
 
 
 class ClassicSearchFilters(BaseModel):
     """Фильтры для классического поиска"""
-    gender: Optional[Gender] = None
     min_age: Optional[int] = Field(None, ge=18, le=100)
     max_age: Optional[int] = Field(None, ge=18, le=100)
     city: Optional[str] = None

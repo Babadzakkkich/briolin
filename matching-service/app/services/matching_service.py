@@ -795,12 +795,28 @@ class MatchingService:
     ) -> SearchListResponse:
         """
         Классический поиск на основе базовых фильтров.
+        Пол определяется автоматически (противоположный полу пользователя).
         Без приоритета входящих лайков, без блокировок.
         """
         if not await self._check_user_exists(user_id):
             raise UserNotFoundException(f"Пользователь {user_id} не найден")
         
         await self._ensure_has_questions(user_id)
+        
+        # Получаем профиль пользователя для автоматического определения пола
+        user_profile = await profile_client.get_basic_profile(user_id)
+        if not user_profile:
+            raise UserNotFoundException(f"Профиль пользователя {user_id} не найден")
+        
+        user_gender = user_profile.get('gender')
+        
+        # Определяем противоположный пол
+        if user_gender == 'male':
+            target_gender = 'female'
+        elif user_gender == 'female':
+            target_gender = 'male'
+        else:
+            target_gender = None  # На случай отсутствия пола
         
         # Кого я уже свайпнул
         swiped_stmt = select(Swipe.to_user_id).where(Swipe.from_user_id == user_id)
@@ -813,7 +829,7 @@ class MatchingService:
         
         # Запрос к profile-service
         result = await profile_client.search_profiles(
-            gender=filters.gender.value if filters.gender else None,
+            gender=target_gender,
             min_age=filters.min_age,
             max_age=filters.max_age,
             city=filters.city,
@@ -864,12 +880,28 @@ class MatchingService:
     ) -> SearchListResponse:
         """
         Таргетированный поиск с расширенными фильтрами (без эмбеддингов).
+        Пол определяется автоматически (противоположный полу пользователя).
         Без блокировки по просмотрам.
         """
         if not await self._check_user_exists(user_id):
             raise UserNotFoundException(f"Пользователь {user_id} не найден")
         
         await self._ensure_has_questions(user_id)
+        
+        # Получаем профиль пользователя для автоматического определения пола
+        user_profile = await profile_client.get_basic_profile(user_id)
+        if not user_profile:
+            raise UserNotFoundException(f"Профиль пользователя {user_id} не найден")
+        
+        user_gender = user_profile.get('gender')
+        
+        # Определяем противоположный пол
+        if user_gender == 'male':
+            target_gender = 'female'
+        elif user_gender == 'female':
+            target_gender = 'male'
+        else:
+            target_gender = None  # На случай отсутствия пола
         
         # Кого я уже свайпнул
         swiped_stmt = select(Swipe.to_user_id).where(Swipe.from_user_id == user_id)
@@ -882,7 +914,7 @@ class MatchingService:
         
         # Запрос к profile-service с расширенными фильтрами
         result = await profile_client.search_profiles(
-            gender=filters.gender.value if filters.gender else None,
+            gender=target_gender,
             min_age=filters.min_age,
             max_age=filters.max_age,
             city=filters.city,
@@ -938,7 +970,7 @@ class MatchingService:
         Таргетированные рекомендации на основе эмбеддингов с автоматическими фильтрами.
         
         Автоматически определяются:
-        - Пол: противоположный полу пользователя (для OTHER - все)
+        - Пол: противоположный полу пользователя
         - Возраст: ±5 лет от возраста пользователя (расширяется при малом количестве)
         - Город: из фильтров или город пользователя
         
@@ -961,13 +993,13 @@ class MatchingService:
         user_gender = user_profile.get('gender')
         user_city = user_profile.get('city')
         
-        # Определяем пол для поиска
+        # Определяем пол для поиска (противоположный полу пользователя)
         if user_gender == 'male':
             target_gender = 'female'
         elif user_gender == 'female':
             target_gender = 'male'
-        else:  # OTHER
-            target_gender = None  # Все полы
+        else:
+            target_gender = None  # На случай отсутствия пола
         
         # Определяем город
         search_city = filters.city if filters.city else user_city

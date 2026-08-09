@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Any, Dict, Optional, List
 from datetime import datetime
-from shared.schemas.shared import Gender
 
 
 # ========== LIKE/DISLIKE SCHEMAS ==========
@@ -81,7 +80,6 @@ class TargetedSearchLockInfo(BaseModel):
 
 class ClassicSearchFilters(BaseModel):
     """Фильтры для классического поиска"""
-    gender: Optional[Gender] = Field(None, description="Пол для фильтрации")
     min_age: Optional[int] = Field(None, ge=18, le=100, description="Минимальный возраст")
     max_age: Optional[int] = Field(None, ge=18, le=100, description="Максимальный возраст")
     city: Optional[str] = Field(None, min_length=1, max_length=200, description="Город")

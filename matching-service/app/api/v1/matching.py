@@ -34,7 +34,6 @@ from app.core.exceptions import (
     MatchingServiceException
 )
 from shared.auth.dependencies import get_current_user
-from shared.schemas.shared import Gender
 
 router = APIRouter(prefix="/matching", tags=["Matching"])
 
@@ -273,7 +272,6 @@ async def get_matches(
 async def classic_search(
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
-    gender: Optional[Gender] = None,
     min_age: Optional[int] = Query(None, ge=18, le=100, description="Минимальный возраст"),
     max_age: Optional[int] = Query(None, ge=18, le=100, description="Максимальный возраст"),
     city: Optional[str] = None,
@@ -282,7 +280,6 @@ async def classic_search(
 ):
     """Классический поиск на основе базовых фильтров (с пагинацией)"""
     filters = ClassicSearchFilters(
-        gender=gender,
         min_age=min_age,
         max_age=max_age,
         city=city
@@ -299,7 +296,6 @@ async def classic_search(
 async def targeted_search(
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
-    gender: Optional[Gender] = None,
     min_age: Optional[int] = Query(None, ge=18, le=100, description="Минимальный возраст"),
     max_age: Optional[int] = Query(None, ge=18, le=100, description="Максимальный возраст"),
     city: Optional[str] = None,
@@ -311,7 +307,6 @@ async def targeted_search(
 ):
     """Таргетированный поиск с расширенными фильтрами (без эмбеддингов, без блокировки)"""
     filters = TargetedSearchFilters(
-        gender=gender,
         min_age=min_age,
         max_age=max_age,
         city=city,
@@ -341,7 +336,7 @@ async def targeted_recommendations(
     Таргетированные рекомендации на основе эмбеддингов с автоматическими фильтрами.
     
     **Автоматически определяются:**
-    - **Пол**: противоположный полу пользователя (для OTHER - все)
+    - **Пол**: противоположный полу пользователя
     - **Возраст**: ±5 лет от возраста пользователя (автоматически расширяется)
     - **Город**: можно указать вручную, иначе используется город пользователя
     

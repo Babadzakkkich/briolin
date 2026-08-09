@@ -89,12 +89,18 @@ class ProfileSagaHandlers:
                 else:
                     date_of_birth = basic_data["date_of_birth"]
             
+            # Проверяем наличие gender (обязательное поле)
+            if "gender" not in basic_data or not basic_data.get("gender"):
+                error_msg = f"[SAGA {saga_id}] Missing required field 'gender' in basic_data"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
             # Создаем базовый профиль
             new_profile = BasicProfile(
                 keycloak_id=keycloak_id,
                 first_name=basic_data.get("first_name", ""),
                 last_name=basic_data.get("last_name", ""),
-                gender=Gender(basic_data.get("gender", "other")),
+                gender=Gender(basic_data["gender"]),
                 date_of_birth=date_of_birth,
                 city=basic_data.get("city", ""),
                 online=False

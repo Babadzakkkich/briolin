@@ -24,8 +24,6 @@ from app.schemas.matching import (
     DeclineLikeRequest
     
 )
-from shared.schemas.shared import Gender
-
 router = APIRouter(prefix="/matching", tags=["Matching"])
 security = HTTPBearer(auto_error=False)
 
@@ -256,7 +254,6 @@ async def classic_search(
     request: Request,
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
-    gender: Optional[Gender] = None,
     min_age: Optional[int] = Query(None, ge=18, le=100, description="Минимальный возраст"),
     max_age: Optional[int] = Query(None, ge=18, le=100, description="Максимальный возраст"),
     city: Optional[str] = None,
@@ -281,7 +278,6 @@ async def targeted_search(
     request: Request,
     page: int = Query(1, ge=1, description="Номер страницы"),
     limit: int = Query(10, ge=1, le=50, description="Количество записей на странице"),
-    gender: Optional[Gender] = None,
     min_age: Optional[int] = Query(None, ge=18, le=100, description="Минимальный возраст"),
     max_age: Optional[int] = Query(None, ge=18, le=100, description="Максимальный возраст"),
     city: Optional[str] = None,
@@ -305,11 +301,11 @@ async def targeted_search(
     "/recommendations/targeted",
     response_model=RecommendationListResponse,
     summary="Таргетированные рекомендации (эмбеддинги)",
-    description="""
+    description=""" 
     Премиум-рекомендации на основе семантической близости с автоматическими фильтрами.
     
     **Автоматически определяются:**
-    - **Пол**: противоположный полу пользователя (для OTHER - все)
+    - **Пол**: противоположный полу пользователя
     - **Возраст**: ±5 лет от возраста пользователя (автоматически расширяется)
     - **Город**: можно указать вручную, иначе используется город пользователя
     
