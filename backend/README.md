@@ -28,12 +28,12 @@
 ## Общий код (shared)
 
 Папка `shared/` содержит код, который используется всеми сервисами:
-shared/
-  auth/ # JWT менеджер, зависимости для аутентификации
-   events/ # Схемы событий для RabbitMQ
-   rabbitmq/ # Publisher и Consumer для RabbitMQ
-   saga/ # SAGA паттерн для распределённых транзакций
-   schemas/ # Общие Pydantic схемы (UserRole, Gender)
+
+- **auth/** — JWT менеджер, зависимости для аутентификации
+- **events/** — Схемы событий для RabbitMQ
+- **rabbitmq/** — Publisher и Consumer для RabbitMQ
+- **saga/** — SAGA паттерн для распределённых транзакций
+- **schemas/** — Общие Pydantic схемы (UserRole, Gender)
 
 ## Сервисы
 
