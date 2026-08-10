@@ -78,25 +78,29 @@ MinIO Console: http://localhost:9001
 
 ## Структура проекта
 
-briolin/
-├── backend/                    # Все бэкенд-сервисы
-│   ├── api-gateway/            # Точка входа, проксирует запросы
-│   ├── auth-service/           # Аутентификация через Keycloak
-│   ├── user-service/           # Управление пользователями
-│   ├── profile-service/        # Профили и эмбеддинги
-│   ├── matching-service/       # Лайки, матчи, рекомендации
-│   ├── chat-service/           # Чаты и WebSocket
-│   ├── media-service/          # Аватарки (MinIO)
-│   ├── testing-service/        # Психологический тест
-│   ├── email-service/          # Email-уведомления
-│   └── shared/                 # Общий код (JWT, RabbitMQ, события)
-├── frontend/                   # React-приложение
-├── infrastructure/             # Инфраструктура
-│   ├── caddy/                  # Конфиг Caddy
-│   ├── keycloak/               # Realm для Keycloak
-│   └── postgres/               # SQL-скрипты инициализации
-├── scripts/                    # Вспомогательные скрипты
-└── docker-compose.yml          # Оркестрация всех сервисов
+**briolin/** — корневая директория проекта
 
+- **backend/** — все бэкенд-сервисы
+  - **api-gateway/** — точка входа, проксирует запросы
+  - **auth-service/** — аутентификация через Keycloak
+  - **user-service/** — управление пользователями
+  - **profile-service/** — профили и эмбеддинги
+  - **matching-service/** — лайки, матчи, рекомендации
+  - **chat-service/** — чаты и WebSocket
+  - **media-service/** — аватарки (MinIO)
+  - **testing-service/** — психологический тест
+  - **email-service/** — email-уведомления
+  - **shared/** — общий код (JWT, RabbitMQ, события)
+
+- **frontend/** — React-приложение
+
+- **infrastructure/** — инфраструктура
+  - **caddy/** — конфиг Caddy
+  - **keycloak/** — Realm для Keycloak
+  - **postgres/** — SQL-скрипты инициализации
+
+- **scripts/** — вспомогательные скрипты
+
+- **docker-compose.yml** — оркестрация всех сервисов
 
 Проект находится в стадии активной разработки.
