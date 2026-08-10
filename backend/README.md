@@ -39,31 +39,31 @@
 
 ### API Gateway
 Единая точка входа для всех клиентских запросов. Проксирует REST запросы к соответствующим микросервисам, обрабатывает WebSocket соединения для чатов, выполняет аутентификацию и авторизацию через JWT токены.  
-./api-gateway/README.md
+[./api-gateway/README.md](./api-gateway/README.md)
 
 ### Auth Service
 Отвечает за аутентификацию и управление пользователями через Keycloak. Регистрация, логин, обновление токенов, верификация email, восстановление пароля. Хранит связь между Keycloak ID и внутренним ID пользователя.  
-./auth-service/README.md
+[./auth-service/README.md](./auth-service/README.md)
 
 ### User Service
 Хранит информацию о пользователях: username, email, роли, статус активности, флаг прохождения теста. Управляет ролями пользователей.  
-./user-service/README.md
+[./user-service/README.md](./user-service/README.md)
 
 ### Profile Service
 Управляет профилями пользователей: базовая информация (имя, фамилия, город, возраст), детальная информация (о себе, хобби, образование, предпочтения, red flags), вопросы для знакомства. Генерирует эмбеддинги для семантического поиска и рекомендаций.  
-./profile-service/README.md
+[./profile-service/README.md](./profile-service/README.md)
 
 ### Testing Service
 Проводит психологическое тестирование пользователей. Управляет тестовыми сессиями, вопросами, сохраняет ответы, подсчитывает результаты и определяет готовность к знакомству.  
-./testing-service/README.md
+[./testing-service/README.md](./testing-service/README.md)
 
 ### Chat Service
 Обеспечивает обмен сообщениями в реальном времени через WebSocket. Управляет чатами, участниками, сообщениями, статусами прочтения, онлайн-статусами пользователей. Использует PostgreSQL для метаданных и MongoDB для хранения сообщений.  
-./chat-service/README.md
+[./chat-service/README.md](./chat-service/README.md)
 
 ### Matching Service
 Сервис знакомств: лайки, дизлайки, матчи, поиск профилей (классический и таргетированный), рекомендации на основе эмбеддингов. Управляет дневными лимитами лайков и просмотров.  
-./matching-service/README.md
+[./matching-service/README.md](./matching-service/README.md)
 
 ### Media Service
 Загружает и хранит медиафайлы (аватарки) в MinIO. Обрабатывает изображения: ресайз, конвертация в WebP, создание thumbnail. Управляет текущей аватаркой пользователя.  
@@ -71,4 +71,4 @@
 
 ### Email Service
 Отправляет email-уведомления через SMTP. Получает задачи через RabbitMQ, поддерживает шаблоны писем: приветствие, верификация, восстановление пароля, результаты теста.  
-./email-service/README.md
+[./email-service/README.md](./email-service/README.md)
