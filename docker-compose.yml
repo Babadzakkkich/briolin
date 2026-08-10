@@ -179,28 +179,17 @@ services:
       - briolin-network
     restart: unless-stopped
 
-  testing-mongo:
+  mongo-db:
     image: mongo:8.0
-    container_name: testing-mongo
+    container_name: mongo-db
     ports:
       - "27017:27017"
+    volumes:
+      - mongo-db-data:/data/db
     networks:
       - briolin-network
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  chat-mongo:
-    image: mongo:8.0
-    container_name: chat-mongo
-    ports:
-      - "27018:27017"
-    networks:
-      - briolin-network
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/admin --quiet
       interval: 10s
       timeout: 5s
       retries: 5
@@ -286,7 +275,7 @@ services:
     depends_on:
       postgres-db:
         condition: service_healthy
-      testing-mongo:
+      mongo-db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -308,7 +297,7 @@ services:
     depends_on:
       postgres-db:
         condition: service_healthy
-      chat-mongo:
+      mongo-db:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -434,6 +423,7 @@ services:
 
 volumes:
   postgres-db-data:
+  mongo-db-data:
   pgadmin-data:
   keycloak-postgres-data:
   keycloak-data:
