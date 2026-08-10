@@ -44,23 +44,23 @@ API Gateway — это единая точка входа для всех кли
 
 #### Примеры запросов
 
-**Регистрация:**
-POST /api/v1/auth/register
-Content-Type: application/json
-{
-  "email": "user@example.com",
-  "username": "john_doe",
-  "password": "SecurePass123!"
-}
-ответ 
-{
-  "id": 1,
-  "keycloak_id": "550e8400-e29b-41d4-a716-446655440000",
-  "email": "user@example.com",
-  "is_active": true
-}
-
-Логин:
+**Регистрация:**  
+POST /api/v1/auth/register  
+Content-Type: application/json  
+{  
+  "email": "user@example.com",  
+  "username": "john_doe",  
+  "password": "SecurePass123!"  
+}  
+ответ  
+{  
+  "id": 1,  
+  "keycloak_id": "550e8400-e29b-41d4-a716-446655440000",  
+  "email": "user@example.com",  
+  "is_active": true  
+}  
+  
+Логин:  
 POST /api/v1/auth/login
 Content-Type: application/json
 {
