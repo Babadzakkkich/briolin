@@ -24,14 +24,23 @@ API Gateway — это единая точка входа для всех кли
 ### Аутентификация (`/api/v1/auth`)
 
  POST  `/auth/register` Регистрация нового пользователя
+
  POST  `/auth/login` Вход в систему
+
  POST  `/auth/refresh` Обновление access токена
+
  POST  `/auth/logout` Выход из системы
+
  POST  `/auth/validate` Валидация токена
+
  POST  `/auth/verify/request` Запрос кода верификации email
+
  POST  `/auth/verify/confirm` Подтверждение email по коду
+
  POST  `/auth/password-reset/request` Запрос сброса пароля
+
  POST `/auth/password-reset/confirm` Подтверждение сброса пароля
+ 
 
 #### Примеры запросов
 
