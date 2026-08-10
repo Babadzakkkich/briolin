@@ -13,15 +13,17 @@
 
 ## Список сервисов
 
-**api-gateway** 8000 Единая точка входа, проксирует запросы к сервисам, WebSocket ./api-gateway/README.md
-**auth-service** 8001 Регистрация, логин, обновление токенов, верификация email ./auth-service/README.md
-**user-service** 8002 Хранение пользователей, ролей, статусов ./user-service/README.md
-**profile-service** 8003 Профили пользователей, вопросы, генерация эмбеддингов ./profile-service/README.md
-**testing-service** 8004 Психологический тест, сессии, результаты ./testing-service/README.md
-**chat-service** 8005 Чаты, сообщения, WebSocket, онлайн-статусы ./chat-service/README.md
-**matching-service** 8006 Лайки, дизлайки, матчи, поиск, рекомендации ./matching-service/README.md
-**media-service** 8007 Загрузка и хранение аватарок (MinIO) ./media-service/README.md
-**email-service** 8008 Отправка email-уведомлений через RabbitMQ ./email-service/README.md
+| Сервис | Порт | Описание | README |
+|--------|------|----------|--------|
+| **api-gateway** | 8000 | Единая точка входа, проксирует запросы к сервисам, WebSocket | [./api-gateway/README.md](./api-gateway/README.md) |
+| **auth-service** | 8001 | Регистрация, логин, обновление токенов, верификация email | [./auth-service/README.md](./auth-service/README.md) |
+| **user-service** | 8002 | Хранение пользователей, ролей, статусов | [./user-service/README.md](./user-service/README.md) |
+| **profile-service** | 8003 | Профили пользователей, вопросы, генерация эмбеддингов | [./profile-service/README.md](./profile-service/README.md) |
+| **testing-service** | 8004 | Психологический тест, сессии, результаты | [./testing-service/README.md](./testing-service/README.md) |
+| **chat-service** | 8005 | Чаты, сообщения, WebSocket, онлайн-статусы | [./chat-service/README.md](./chat-service/README.md) |
+| **matching-service** | 8006 | Лайки, дизлайки, матчи, поиск, рекомендации | [./matching-service/README.md](./matching-service/README.md) |
+| **media-service** | 8007 | Загрузка и хранение аватарок (MinIO) | [./media-service/README.md](./media-service/README.md) |
+| **email-service** | 8008 | Отправка email-уведомлений через RabbitMQ | [./email-service/README.md](./email-service/README.md) |
 
 ## Общий код (shared)
 
