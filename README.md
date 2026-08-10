@@ -42,19 +42,16 @@
 
 Всё, что нужно для локального запуска — **Docker** и **Docker Compose**.
 
-### 1. Клонируйте репозиторий
-
-```bash
+- Клонируйте репозиторий
 git clone https://github.com/Babadzakkkich/briolin.git
 cd briolin
 
 
-2. Настройте переменные окружения
+- Настройте переменные окружения
 Скопируйте примеры .env.example в .env для каждого сервиса:
-исправте на свои данные
+исправьте на свои данные
 
-3. Запустите всё одной командой
-bash
+- Запустите всё одной командой
 docker-compose up -d --build
 Это поднимет:
 
@@ -78,13 +75,7 @@ Keycloak Admin: http://localhost:8080 (admin/admin)
 
 MinIO Console: http://localhost:9001
 
---4. Создайте супер-администратора
-bash
-docker-compose --profile init run --rm init-superadmin
---
-
 Структура проекта
-text
 briolin/
 ├── backend/                    # Все бэкенд-сервисы
 │   ├── api-gateway/            # Точка входа, проксирует запросы
