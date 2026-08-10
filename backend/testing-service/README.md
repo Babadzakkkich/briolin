@@ -23,14 +23,14 @@
 ## API Endpoints
 
 ### Тесты (`/api/v1/tests`)
- GET  `/tests/current`  Получение текущего активного теста 
- POST  `/tests/start`  Начало нового теста 
- POST  `/tests/{session_id}/answers/{question_id}`  Сохранение ответа 
- POST  `/tests/{session_id}/complete`  Завершение теста и получение результатов 
- GET  `/tests/{session_id}/results`  Получение результатов теста 
- GET  `/tests/history`  История пройденных тестов 
- GET  `/tests/statistics`  Статистика пользователя 
- GET  `/tests/questions/{question_id}`  Получение вопроса по ID (админ) 
+ GET  `/tests/current`  Получение текущего активного теста  
+ POST  `/tests/start`  Начало нового теста  
+ POST  `/tests/{session_id}/answers/{question_id}`  Сохранение ответа  
+ POST  `/tests/{session_id}/complete`  Завершение теста и получение результатов  
+ GET  `/tests/{session_id}/results`  Получение результатов теста  
+ GET  `/tests/history`  История пройденных тестов  
+ GET  `/tests/statistics`  Статистика пользователя  
+ GET  `/tests/questions/{question_id}`  Получение вопроса по ID (админ)  
 
 ### Примеры запросов
 
