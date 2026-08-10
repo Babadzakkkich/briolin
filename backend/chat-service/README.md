@@ -538,9 +538,3 @@ uvicorn app.main:app --host 0.0.0.0 --port 8005 --reload
 # Запуск через Docker
 docker build -t briolin-chat-service .
 docker run -p 8005:8005 briolin-chat-service
-# Запуск в режиме разработки
-uvicorn app.main:app --host 0.0.0.0 --port 8005 --reload
-
-# Запуск через Docker
-docker build -t briolin-chat-service .
-docker run -p 8005:8005 briolin-chat-service
