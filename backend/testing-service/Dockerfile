@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY shared/ /app/shared/
+COPY .shared/ /app/shared/
 
 # Копируем requirements и устанавливаем зависимости
 COPY ./testing-service/requirements.txt .

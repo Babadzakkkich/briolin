@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Создаём директории для кэша моделей
 RUN mkdir -p /root/.cache/huggingface /root/.cache/sentence_transformers
 
-COPY shared/ /app/shared/
+COPY .shared/ /app/shared/
 
 COPY ./matching-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

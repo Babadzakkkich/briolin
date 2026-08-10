@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Добавляем Rust в PATH
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-COPY shared/ /app/shared/
+COPY .shared/ /app/shared/
 
 COPY ./user-service/requirements.txt .
 

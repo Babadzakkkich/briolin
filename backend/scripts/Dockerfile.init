@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY auth-service/app/ ./app/
 
-COPY shared/ ./shared/
+COPY .shared/ ./shared/
 
 COPY scripts/create_superadmin.py ./
 

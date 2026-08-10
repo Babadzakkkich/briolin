@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY shared/ /app/shared/
+COPY .shared/ /app/shared/
 
 COPY ./chat-service/requirements.txt .
 RUN pip install --no-cache-dir --default-timeout=200 --retries=5 -r requirements.txt
