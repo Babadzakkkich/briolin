@@ -402,12 +402,12 @@ file: @avatar.jpg
 - **README.md** — документация сервиса
 Запуск сервиса
 
-# Установка зависимостей
-pip install -r requirements.txt
+# Установка зависимостей  
+pip install -r requirements.txt  
 
-# Запуск в режиме разработки
+# Запуск в режиме разработки  
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Запуск через Docker
-docker build -t briolin-api-gateway .
-docker run -p 8000:8000 briolin-api-gateway
+# Запуск через Docker  
+docker build -t briolin-api-gateway .  
+docker run -p 8000:8000 briolin-api-gateway  
