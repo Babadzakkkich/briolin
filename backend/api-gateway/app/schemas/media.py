@@ -1,4 +1,4 @@
-# api-gateway/app/schemas/media.py
+# backend/api-gateway/app/schemas/media.py
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from datetime import datetime

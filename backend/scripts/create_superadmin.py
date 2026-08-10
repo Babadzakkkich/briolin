@@ -7,16 +7,16 @@
     SUPERADMIN_EMAIL=admin@admin.com \
     SUPERADMIN_USERNAME=superadmin \
     SUPERADMIN_PASSWORD=Superadmin228! \
-    python scripts/create_superadmin.py
+    python backend/scripts/create_superadmin.py
 
     или просто:
-    python scripts/create_superadmin.py  # если env vars уже установлены
+    python backend/scripts/create_superadmin.py  # если env vars уже установлены
 
 Интерактивный режим:
-    python scripts/create_superadmin.py --interactive
+    python backend/scripts/create_superadmin.py --interactive
 
 Тестовый прогон:
-    python scripts/create_superadmin.py --dry-run
+    python backend/scripts/create_superadmin.py --dry-run
 """
 
 import asyncio
@@ -417,19 +417,19 @@ Examples:
   # Auto mode with env vars
   export {ENV_EMAIL}=admin@briolin.com
   export {ENV_PASSWORD}=SuperSecret123!
-  python scripts/create_superadmin.py
+  python backend/scripts/create_superadmin.py
   
   # Auto mode (one-liner)
-  {ENV_EMAIL}=admin@briolin.com {ENV_PASSWORD}=SuperSecret123! python scripts/create_superadmin.py
+  {ENV_EMAIL}=admin@briolin.com {ENV_PASSWORD}=SuperSecret123! python backend/scripts/create_superadmin.py
   
   # Interactive mode
-  python scripts/create_superadmin.py --interactive
+  python backend/scripts/create_superadmin.py --interactive
   
   # Dry run (test configuration)
-  python scripts/create_superadmin.py --dry-run
+  python backend/scripts/create_superadmin.py --dry-run
   
   # Force interactive even with env vars set
-  python scripts/create_superadmin.py --interactive --ignore-env
+  python backend/scripts/create_superadmin.py --interactive --ignore-env
         """
     )
     

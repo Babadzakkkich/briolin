@@ -1,4 +1,4 @@
-# profile-service/app/consumers/media_consumers.py
+# backend/profile-service/app/consumers/media_consumers.py
 from datetime import datetime
 from typing import Dict, Any
 
