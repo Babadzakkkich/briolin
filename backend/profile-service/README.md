@@ -39,7 +39,7 @@
  GET  `/profiles/{keycloak_id}/questions`  Получение вопросов пользователя  
  GET  `/profiles/saga/{saga_id}/status`  Статус SAGA операции  
 
-### Примеры запросов
+### Примеры запросов  
 
 **Создание базового профиля:**
 
