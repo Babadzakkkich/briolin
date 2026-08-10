@@ -25,16 +25,16 @@
 ## API Endpoints
 
 ### Аватарки (`/api/v1/media`)
- POST  `/media/avatar`  Загрузка новой аватарки 
- GET  `/media/my-avatar`  Получение текущей аватарки (изображение) 
- GET  `/media/my-thumbnail`  Получение thumbnail текущей аватарки 
- GET  `/media/avatars`  Список всех аватарок пользователя 
- PUT  `/media/avatar/{id}/set-current`  Установка текущей аватарки 
- GET  `/media/avatar/{keycloak_id}`  Получение аватарки пользователя 
- GET  `/media/avatar/{keycloak_id}/thumbnail`  Получение thumbnail 
- DELETE  `/media/my-avatar`  Удаление текущей аватарки 
- DELETE  `/media/avatar`  Удаление аватарки по ID 
- DELETE  `/media/avatar/{id}/permanent`  Полное удаление (админ) 
+ POST  `/media/avatar`  Загрузка новой аватарки  
+ GET  `/media/my-avatar`  Получение текущей аватарки (изображение)  
+ GET  `/media/my-thumbnail`  Получение thumbnail текущей аватарки  
+ GET  `/media/avatars`  Список всех аватарок пользователя  
+ PUT  `/media/avatar/{id}/set-current`  Установка текущей аватарки  
+ GET  `/media/avatar/{keycloak_id}`  Получение аватарки пользователя  
+ GET  `/media/avatar/{keycloak_id}/thumbnail`  Получение thumbnail  
+ DELETE  `/media/my-avatar`  Удаление текущей аватарки  
+ DELETE  `/media/avatar`  Удаление аватарки по ID  
+ DELETE  `/media/avatar/{id}/permanent`  Полное удаление (админ)  
 
 ### Примеры запросов
 
