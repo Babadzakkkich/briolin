@@ -20,134 +20,149 @@ class QuestionType(str, Enum):
 
 
 class TestStartRequest(BaseModel):
+    """Схема запроса на запуск нового тестирования пользователя."""
     pass
 
 
 class TestStartResponse(BaseModel):
-    session_id: str
-    test_name: str
-    description: str
-    time_limit_minutes: int
-    questions: List[Dict[str, Any]]
-    started_at: datetime
-    expires_at: datetime
-    time_left_seconds: int  # Добавлено
+    """Схема ответа с данными запущенной тестовой сессии и набором вопросов."""
+    session_id: str = Field(..., description='Уникальный идентификатор сессии тестирования')
+    test_name: str = Field(..., description='Название теста')
+    description: str = Field(..., description='Описание запущенного теста')
+    time_limit_minutes: int = Field(..., description='Лимит времени на прохождение теста в минутах')
+    questions: List[Dict[str, Any]] = Field(..., description='Список вопросов')
+    started_at: datetime = Field(..., description='Дата и время начала тестирования')
+    expires_at: datetime = Field(..., description='Дата и время истечения срока действия')
+    time_left_seconds: int = Field(..., description='Оставшееся время прохождения теста в секундах')  # Добавлено
 
 
 class AnswerSubmitRequest(BaseModel):
-    answer: Union[str, int, bool, Dict[str, Any]] = Field(...)
+    """Схема запроса на сохранение ответа пользователя на вопрос теста."""
+    answer: Union[str, int, bool, Dict[str, Any]] = Field(..., description='Ответ пользователя на вопрос теста')
 
 
 class AnswerSubmitResponse(BaseModel):
-    session_id: str
-    question_id: str
-    answer_saved: bool
-    total_answered: int
-    total_questions: int
+    """Схема ответа с результатом сохранения ответа на вопрос теста."""
+    session_id: str = Field(..., description='Уникальный идентификатор сессии тестирования')
+    question_id: str = Field(..., description='Уникальный идентификатор вопроса')
+    answer_saved: bool = Field(..., description='Признак успешного сохранения ответа')
+    total_answered: int = Field(..., description='Количество сохранённых ответов пользователя')
+    total_questions: int = Field(..., description='Общее количество вопросов')
 
 
 class TestCompleteRequest(BaseModel):
+    """Схема запроса на досрочное или штатное завершение текущего теста."""
     pass
 
 
 class TestResultsData(BaseModel):
-    total_score: float
-    max_possible_score: float
-    percentage: float
-    passed: bool
+    """Схема итоговых показателей и результата прохождения теста."""
+    total_score: float = Field(..., description='Количество баллов, набранных за тест')
+    max_possible_score: float = Field(..., description='Максимально возможное количество баллов за тест')
+    percentage: float = Field(..., description='Результат теста в процентах')
+    passed: bool = Field(..., description='Признак успешного прохождения теста')
 
 
 class TestCompleteResponse(BaseModel):
-    session_id: str
-    status: TestStatus
-    completed_at: datetime
-    time_spent_minutes: Optional[float]
-    results: TestResultsData
-    summary: Dict[str, Any]
+    """Схема ответа с итогами завершённой тестовой сессии."""
+    session_id: str = Field(..., description='Уникальный идентификатор сессии тестирования')
+    status: TestStatus = Field(..., description='Статус завершённой тестовой сессии')
+    completed_at: datetime = Field(..., description='Дата и время завершения операции')
+    time_spent_minutes: Optional[float] = Field(..., description='Фактическое время прохождения теста в минутах')
+    results: TestResultsData = Field(..., description='Результаты прохождения теста')
+    summary: Dict[str, Any] = Field(..., description='Сводная информация по результатам теста')
 
 
 class TestResultsResponse(BaseModel):
-    session_id: str
-    status: TestStatus
-    completed_at: datetime
-    results: TestResultsData
+    """Схема ответа с сохранёнными результатами конкретной тестовой сессии."""
+    session_id: str = Field(..., description='Уникальный идентификатор сессии тестирования')
+    status: TestStatus = Field(..., description='Статус тестовой сессии')
+    completed_at: datetime = Field(..., description='Дата и время завершения операции')
+    results: TestResultsData = Field(..., description='Результаты прохождения теста')
 
 
 class TestHistoryItem(BaseModel):
-    session_id: str
-    test_name: str
-    completed_at: datetime
-    total_score: float
-    percentage: float
-    passed: bool
+    """Схема краткой информации об одном завершённом тестировании пользователя."""
+    session_id: str = Field(..., description='Уникальный идентификатор сессии тестирования')
+    test_name: str = Field(..., description='Название теста')
+    completed_at: datetime = Field(..., description='Дата и время завершения операции')
+    total_score: float = Field(..., description='Количество баллов, набранных за тест')
+    percentage: float = Field(..., description='Результат теста в процентах')
+    passed: bool = Field(..., description='Признак успешного прохождения теста')
 
 
 class TestHistoryResponse(BaseModel):
-    history: List[TestHistoryItem]
-    total: int
-    skip: int
-    limit: int
+    """Схема ответа с историей прохождения тестов и параметрами пагинации."""
+    history: List[TestHistoryItem] = Field(..., description='Список записей истории прохождения тестов')
+    total: int = Field(..., description='Общее количество элементов')
+    skip: int = Field(..., description='Количество элементов, пропускаемых перед выдачей результата')
+    limit: int = Field(..., description='Максимальное количество элементов в результате')
 
 
 class UserTestStatistics(BaseModel):
-    total_tests_taken: int
-    total_tests_completed: int
-    average_score: float
-    last_test_date: Optional[datetime]
+    """Схема агрегированной статистики прохождения тестов пользователем."""
+    total_tests_taken: int = Field(..., description='Общее количество начатых тестов')
+    total_tests_completed: int = Field(..., description='Количество завершённых тестов')
+    average_score: float = Field(..., description='Средний результат пользователя по завершённым тестам')
+    last_test_date: Optional[datetime] = Field(..., description='Дата и время последнего пройденного теста')
 
 
 class AdminQuestionResponse(BaseModel):
+    """Схема полной информации о тестовом вопросе для административных операций."""
     model_config = ConfigDict(from_attributes=True)
     
-    id: str
-    text: str
-    question_type: QuestionType
-    difficulty: str
-    category: str
-    tags: List[str]
-    options: List[Dict[str, Any]]
-    min_value: Optional[int] = None
-    max_value: Optional[int] = None
-    labels: Optional[Dict[int, str]] = None
-    explanation: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    id: str = Field(..., description='Уникальный идентификатор вопроса')
+    text: str = Field(..., description='Текст вопроса')
+    question_type: QuestionType = Field(..., description='Тип вопроса')
+    difficulty: str = Field(..., description='Уровень сложности вопроса')
+    category: str = Field(..., description='Категория вопроса')
+    tags: List[str] = Field(..., description='Список тегов вопроса')
+    options: List[Dict[str, Any]] = Field(..., description='Доступные варианты ответа на вопрос')
+    min_value: Optional[int] = Field(None, description='Минимально допустимое значение ответа')
+    max_value: Optional[int] = Field(None, description='Максимально допустимое значение ответа')
+    labels: Optional[Dict[int, str]] = Field(None, description='Подписи значений или вариантов ответа')
+    explanation: Optional[str] = Field(None, description='Пояснение к вопросу или правильному ответу')
+    created_at: datetime = Field(..., description='Дата и время создания записи')
+    updated_at: datetime = Field(..., description='Дата и время последнего обновления записи')
 
 
 class ErrorResponse(BaseModel):
-    detail: Union[str, Dict[str, Any]]
+    """Схема стандартного ответа API с описанием ошибки."""
+    detail: Union[str, Dict[str, Any]] = Field(..., description='Подробное описание ошибки')
 
 
 class CurrentTestQuestion(BaseModel):
     """Вопрос в текущем тесте"""
-    id: str
-    text: str
-    question_type: QuestionType
-    difficulty: str
-    category: str
-    tags: List[str]
-    options: List[Dict[str, Any]]
-    min_value: Optional[int] = None
-    max_value: Optional[int] = None
-    labels: Optional[Dict[int, str]] = None
-    answered: bool = Field(False, description="Был ли дан ответ на этот вопрос")
-    saved_answer: Optional[Any] = Field(None, description="Сохраненный ответ пользователя")
+    id: str = Field(..., description='Уникальный идентификатор вопроса')
+    text: str = Field(..., description='Текст вопроса')
+    question_type: QuestionType = Field(..., description='Тип вопроса')
+    difficulty: str = Field(..., description='Уровень сложности вопроса')
+    category: str = Field(..., description='Категория вопроса')
+    tags: List[str] = Field(..., description='Список тегов вопроса')
+    options: List[Dict[str, Any]] = Field(..., description='Доступные варианты ответа на вопрос')
+    min_value: Optional[int] = Field(None, description='Минимально допустимое значение ответа')
+    max_value: Optional[int] = Field(None, description='Максимально допустимое значение ответа')
+    labels: Optional[Dict[int, str]] = Field(None, description='Подписи значений или вариантов ответа')
+    answered: bool = Field(False, description='Признак наличия сохранённого ответа на вопрос')
+    saved_answer: Optional[Any] = Field(None, description='Сохранённый ответ пользователя на вопрос')
 
 class CurrentTestResponse(BaseModel):
-    session_id: str
-    test_name: str
-    description: str
-    status: str
-    started_at: datetime
-    expires_at: datetime
-    time_left_seconds: int
-    time_limit_minutes: int
-    total_questions: int
-    answered_questions: int
-    questions: List[CurrentTestQuestion]
+    """Схема ответа с полной информацией о текущем активном тесте пользователя."""
+    session_id: str = Field(..., description='Уникальный идентификатор сессии тестирования')
+    test_name: str = Field(..., description='Название теста')
+    description: str = Field(..., description='Описание текущего теста')
+    status: str = Field(..., description='Текущий статус тестовой сессии')
+    started_at: datetime = Field(..., description='Дата и время начала тестирования')
+    expires_at: datetime = Field(..., description='Дата и время истечения срока действия')
+    time_left_seconds: int = Field(..., description='Оставшееся время прохождения теста в секундах')
+    time_limit_minutes: int = Field(..., description='Лимит времени на прохождение теста в минутах')
+    total_questions: int = Field(..., description='Общее количество вопросов')
+    answered_questions: int = Field(..., description='Количество вопросов, на которые пользователь уже ответил')
+    questions: List[CurrentTestQuestion] = Field(..., description='Список вопросов')
 
 
 class ActiveTestErrorResponse(BaseModel):
-    detail: str
-    session_id: str
-    action: str
+    """Схема ошибки, возникающей при наличии уже активной тестовой сессии."""
+    detail: str = Field(..., description='Подробное описание ошибки')
+    session_id: str = Field(..., description='Уникальный идентификатор сессии тестирования')
+    action: str = Field(..., description='Название выполняемого действия')

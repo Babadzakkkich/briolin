@@ -3,10 +3,10 @@ from pydantic import BaseModel, Field
 
 class PaginationInfo(BaseModel):
     """Информация о пагинации"""
-    current_page: int = Field(1, description="Текущая страница")
-    total_pages: int = Field(1, description="Всего страниц")
-    total_results: int = Field(0, description="Всего результатов")
-    page_size: int = Field(10, description="Размер страницы")
+    current_page: int = Field(1, description='Номер текущей страницы')
+    total_pages: int = Field(1, description='Общее количество страниц')
+    total_results: int = Field(0, description='Общее количество найденных результатов')
+    page_size: int = Field(10, description='Количество элементов на одной странице')
 
     @property
     def has_next(self) -> bool:

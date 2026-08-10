@@ -20,12 +20,12 @@ class MessageStatus(str, Enum):
 
 class ParticipantBase(BaseModel):
     """Участник чата с отображаемым именем из profile-service"""
-    keycloak_id: str
-    display_name: str = Field(..., description="Имя и фамилия пользователя (first_name + last_name)")
-    username: Optional[str] = Field(None, description="Username для совместимости")
-    is_admin: bool = False
-    notifications_enabled: bool = True
-    avatar_url: Optional[str] = Field(None, description="URL аватарки пользователя")
+    keycloak_id: str = Field(..., description='Уникальный идентификатор пользователя в Keycloak')
+    display_name: str = Field(..., description='Отображаемое имя пользователя')
+    username: Optional[str] = Field(None, description='Имя пользователя участника чата')
+    is_admin: bool = Field(False, description='Признак наличия административных прав в чате')
+    notifications_enabled: bool = Field(True, description='Признак включённых уведомлений для участника чата')
+    avatar_url: Optional[str] = Field(None, description='URL изображения аватара')
 
 class ChatCreate(BaseModel):
     """
@@ -38,177 +38,145 @@ class ChatCreate(BaseModel):
     Для группового чата (type=group):
     - Название и аватарка задаются создателем
     """
-    type: ChatType = ChatType.DIRECT
-    participant_ids: List[str] = Field(
-        ..., 
-        min_items=1, 
-        description="Список Keycloak ID участников"
-    )
-    name: Optional[str] = Field(
-        None, 
-        min_length=1, 
-        max_length=100, 
-        description="Название чата (только для групповых чатов, для личных игнорируется)"
-    )
-    description: Optional[str] = Field(
-        None, 
-        max_length=500, 
-        description="Описание чата (только для групповых чатов)"
-    )
-    avatar_url: Optional[str] = Field(
-        None, 
-        description="URL аватарки чата (только для групповых чатов, для личных игнорируется)"
-    )
+    type: ChatType = Field(ChatType.DIRECT, description='Тип создаваемого чата')
+    participant_ids: List[str] = Field(..., min_items=1, description='Список Keycloak ID участников создаваемого чата')
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description='Название чата')
+    description: Optional[str] = Field(None, max_length=500, description='Описание чата')
+    avatar_url: Optional[str] = Field(None, description='URL изображения аватара')
 
 class ChatUpdate(BaseModel):
     """Обновление информации о чате (только для групповых чатов)"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    avatar_url: Optional[str] = None
-    status: Optional[ChatStatus] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description='Новое название чата')
+    description: Optional[str] = Field(None, max_length=500, description='Новое описание чата')
+    avatar_url: Optional[str] = Field(None, description='URL изображения аватара')
+    status: Optional[ChatStatus] = Field(None, description='Новый статус чата')
 
 class ChatResponse(BaseModel):
+    """Схема ответа с полной информацией о чате и его текущем состоянии."""
     model_config = ConfigDict(from_attributes=True)
     
-    id: uuid.UUID
-    type: ChatType
-    status: ChatStatus
-    name: Optional[str] = None
-    description: Optional[str] = None
-    avatar_url: Optional[str] = None
-    participants: List[ParticipantBase]
-    created_at: datetime
-    updated_at: datetime
-    last_message: Optional[Dict[str, Any]] = None
-    unread_count: int = 0
-    match_id: Optional[int] = None
+    id: uuid.UUID = Field(..., description='Уникальный идентификатор чата')
+    type: ChatType = Field(..., description='Тип чата')
+    status: ChatStatus = Field(..., description='Текущий статус чата')
+    name: Optional[str] = Field(None, description='Название чата')
+    description: Optional[str] = Field(None, description='Описание чата')
+    avatar_url: Optional[str] = Field(None, description='URL изображения аватара')
+    participants: List[ParticipantBase] = Field(..., description='Список участников чата')
+    created_at: datetime = Field(..., description='Дата и время создания записи')
+    updated_at: datetime = Field(..., description='Дата и время последнего обновления записи')
+    last_message: Optional[Dict[str, Any]] = Field(None, description='Данные последнего сообщения в чате')
+    unread_count: int = Field(0, description='Количество непрочитанных сообщений в чате')
+    match_id: Optional[int] = Field(None, description='Уникальный идентификатор совпадения пользователей')
 
 class ChatListResponse(BaseModel):
     """Список чатов с пагинацией"""
-    chats: List[ChatResponse]
-    total: int
-    page: int
-    size: int
+    chats: List[ChatResponse] = Field(..., description='Список чатов пользователя')
+    total: int = Field(..., description='Общее количество элементов')
+    page: int = Field(..., description='Номер страницы результатов')
+    size: int = Field(..., description='Количество элементов на странице')
 
 class MessageCreate(BaseModel):
     """Создание нового сообщения"""
-    content: str = Field(..., min_length=1, max_length=5000)
-    message_type: str = Field("text", pattern="^(text|image|file|audio|video)$")
-    reply_to_id: Optional[uuid.UUID] = Field(None, description="ID сообщения, на которое отвечаем")
-    media_url: Optional[str] = Field(None, description="URL медиа-файла")
-    media_type: Optional[str] = Field(None, description="Тип медиа")
-    file_size: Optional[int] = Field(None, ge=0, description="Размер файла в байтах")
+    content: str = Field(..., min_length=1, max_length=5000, description='Текст сообщения')
+    message_type: str = Field('text', pattern='^(text|image|file|audio|video)$', description='Тип сообщения')
+    reply_to_id: Optional[uuid.UUID] = Field(None, description='Идентификатор сообщения, на которое отправляется ответ')
+    media_url: Optional[str] = Field(None, description='URL медиафайла сообщения')
+    media_type: Optional[str] = Field(None, description='Тип медиафайла сообщения')
+    file_size: Optional[int] = Field(None, ge=0, description='Размер файла в байтах')
 
 class MessageUpdate(BaseModel):
     """Редактирование существующего сообщения"""
-    content: str = Field(..., min_length=1, max_length=5000, description="Новый текст сообщения")
+    content: str = Field(..., min_length=1, max_length=5000, description='Текст сообщения')
 
 class MessageResponse(BaseModel):
     """Ответ с сообщением с отображаемым именем отправителя"""
     model_config = ConfigDict(from_attributes=True)
     
-    id: uuid.UUID
-    chat_id: uuid.UUID
-    sender_keycloak_id: str
-    sender_display_name: str = Field(..., description="Имя и фамилия отправителя (first_name + last_name)")
-    sender_username: Optional[str] = Field(None, description="Username отправителя (для совместимости)")
-    content: str
-    message_type: str
-    status: MessageStatus
-    is_edited: bool = Field(default=False, description="Было ли сообщение отредактировано")
-    reply_to_id: Optional[uuid.UUID] = None
-    media_url: Optional[str] = None
-    media_type: Optional[str] = None
-    file_size: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
+    id: uuid.UUID = Field(..., description='Уникальный идентификатор сообщения')
+    chat_id: uuid.UUID = Field(..., description='Уникальный идентификатор чата')
+    sender_keycloak_id: str = Field(..., description='Keycloak ID отправителя сообщения')
+    sender_display_name: str = Field(..., description='Отображаемое имя отправителя сообщения')
+    sender_username: Optional[str] = Field(None, description='Имя пользователя отправителя сообщения')
+    content: str = Field(..., description='Текст сообщения')
+    message_type: str = Field(..., description='Тип сообщения')
+    status: MessageStatus = Field(..., description='Текущий статус сообщения')
+    is_edited: bool = Field(default=False, description='Признак того, что сообщение было отредактировано')
+    reply_to_id: Optional[uuid.UUID] = Field(None, description='Идентификатор сообщения, на которое отправляется ответ')
+    media_url: Optional[str] = Field(None, description='URL медиафайла сообщения')
+    media_type: Optional[str] = Field(None, description='Тип медиафайла сообщения')
+    file_size: Optional[int] = Field(None, description='Размер файла в байтах')
+    created_at: datetime = Field(..., description='Дата и время создания записи')
+    updated_at: datetime = Field(..., description='Дата и время последнего обновления записи')
     
-    # === НОВЫЕ ПОЛЯ для статуса прочтения ===
-    read_by: List[str] = Field(
-        default_factory=list, 
-        description="Список пользователей, прочитавших сообщение"
-    )
-    read_count: int = Field(
-        0, 
-        description="Количество пользователей, прочитавших сообщение"
-    )
-    is_read_by_me: bool = Field(
-        False, 
-        description="Прочитал ли текущий пользователь"
-    )
+    read_by: List[str] = Field(default_factory=list, description='Список Keycloak ID пользователей, прочитавших сообщение')
+    read_count: int = Field(0, description='Количество пользователей, прочитавших сообщение')
+    is_read_by_me: bool = Field(False, description='Признак того, что текущий пользователь прочитал сообщение')
 
 class MessageListResponse(BaseModel):
     """Список сообщений с пагинацией"""
-    messages: List[MessageResponse]
-    total: int
-    page: int
-    size: int
+    messages: List[MessageResponse] = Field(..., description='Список сообщений')
+    total: int = Field(..., description='Общее количество элементов')
+    page: int = Field(..., description='Номер страницы результатов')
+    size: int = Field(..., description='Количество элементов на странице')
 
 class MessageIdsRequest(BaseModel):
     """Запрос на отметку сообщений как прочитанных"""
-    message_ids: List[uuid.UUID] = Field(..., min_items=1, max_items=100, description="Список ID сообщений")
+    message_ids: List[uuid.UUID] = Field(..., min_items=1, max_items=100, description='Список идентификаторов сообщений')
 
-# === НОВАЯ СХЕМА: массовая отметка сообщений ===
 class BulkMessageIdsRequest(BaseModel):
     """Запрос на массовую отметку сообщений как прочитанных"""
-    message_ids: List[uuid.UUID] = Field(..., min_items=1, max_items=500, description="Список ID сообщений")
+    message_ids: List[uuid.UUID] = Field(..., min_items=1, max_items=500, description='Список идентификаторов сообщений')
 
-# === НОВАЯ СХЕМА: информация о прочитавших сообщение ===
 class ReadByUserInfo(BaseModel):
     """Информация о пользователе, прочитавшем сообщение"""
-    keycloak_id: str
-    display_name: str
-    avatar_url: Optional[str] = None
-    read_at: datetime
+    keycloak_id: str = Field(..., description='Уникальный идентификатор пользователя в Keycloak')
+    display_name: str = Field(..., description='Отображаемое имя пользователя')
+    avatar_url: Optional[str] = Field(None, description='URL изображения аватара')
+    read_at: datetime = Field(..., description='Дата и время прочтения сообщения')
 
 class MessageReadStatusResponse(BaseModel):
     """Ответ с информацией о том, кто прочитал сообщение"""
-    message_id: uuid.UUID
-    read_by_users: List[ReadByUserInfo] = Field(
-        default_factory=list,
-        description="Список пользователей с временем прочтения"
-    )
-    total_read_count: int
+    message_id: uuid.UUID = Field(..., description='Уникальный идентификатор сообщения')
+    read_by_users: List[ReadByUserInfo] = Field(default_factory=list, description='Информация о пользователях, прочитавших сообщение')
+    total_read_count: int = Field(..., description='Общее количество пользователей, прочитавших сообщение')
 
 class SearchMessagesResponse(BaseModel):
     """Результат поиска сообщений"""
-    messages: List[MessageResponse]
-    total: int
-    query: str
+    messages: List[MessageResponse] = Field(..., description='Список сообщений')
+    total: int = Field(..., description='Общее количество элементов')
+    query: str = Field(..., description='Поисковый запрос')
 
 class OnlineUsersResponse(BaseModel):
     """Список онлайн пользователей"""
-    online_users: List[str]
-    count: int
+    online_users: List[str] = Field(..., description='Список Keycloak ID пользователей, находящихся онлайн')
+    count: int = Field(..., description='Количество элементов')
 
-# WebSocket модели для документации
 class TypingIndicator(BaseModel):
     """Индикатор набора текста"""
-    chat_id: uuid.UUID
-    user_id: str
-    display_name: str = Field(..., description="Имя и фамилия пользователя")
-    is_typing: bool
+    chat_id: uuid.UUID = Field(..., description='Уникальный идентификатор чата')
+    user_id: str = Field(..., description='Keycloak ID пользователя, изменившего статус набора текста')
+    display_name: str = Field(..., description='Отображаемое имя пользователя')
+    is_typing: bool = Field(..., description='Признак того, что пользователь в данный момент печатает сообщение')
 
 class ReadReceipt(BaseModel):
     """Подтверждение прочтения одного сообщения"""
-    chat_id: uuid.UUID
-    user_id: str
-    message_id: uuid.UUID
-    read_at: datetime
+    chat_id: uuid.UUID = Field(..., description='Уникальный идентификатор чата')
+    user_id: str = Field(..., description='Keycloak ID пользователя, прочитавшего сообщение')
+    message_id: uuid.UUID = Field(..., description='Уникальный идентификатор сообщения')
+    read_at: datetime = Field(..., description='Дата и время прочтения сообщения')
 
-# === НОВАЯ WebSocket модель: массовое подтверждение прочтения ===
 class BulkReadReceipt(BaseModel):
     """Массовое подтверждение прочтения нескольких сообщений"""
-    type: str = "bulk_read_receipt"
-    chat_id: uuid.UUID
-    user_id: str
-    message_ids: List[uuid.UUID]
-    read_at: datetime
+    type: str = Field('bulk_read_receipt', description='Тип WebSocket-события о массовом прочтении сообщений')
+    chat_id: uuid.UUID = Field(..., description='Уникальный идентификатор чата')
+    user_id: str = Field(..., description='Keycloak ID пользователя, прочитавшего сообщения')
+    message_ids: List[uuid.UUID] = Field(..., description='Список идентификаторов сообщений')
+    read_at: datetime = Field(..., description='Дата и время прочтения сообщения')
 
 class WebSocketMessage(BaseModel):
     """WebSocket сообщение"""
-    type: str = Field(..., pattern="^(message|typing|read_receipt|bulk_read_receipt|chat_update|error|connection_established|subscribed|ping|pong|message_updated|message_deleted)$")
-    chat_id: Optional[uuid.UUID] = None
-    message: Optional[Dict[str, Any]] = None
-    sender_id: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    type: str = Field(..., pattern='^(message|typing|read_receipt|bulk_read_receipt|chat_update|error|connection_established|subscribed|ping|pong|message_updated|message_deleted)$', description='Тип WebSocket-события')
+    chat_id: Optional[uuid.UUID] = Field(None, description='Уникальный идентификатор чата')
+    message: Optional[Dict[str, Any]] = Field(None, description='Данные сообщения WebSocket-события')
+    sender_id: Optional[str] = Field(None, description='Keycloak ID отправителя сообщения')
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description='Дата и время события')

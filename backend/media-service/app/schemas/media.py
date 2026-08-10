@@ -7,69 +7,69 @@ class AvatarUploadResponse(BaseModel):
     """Ответ после загрузки аватарки"""
     model_config = ConfigDict(from_attributes=True)
     
-    avatar_id: str = Field(..., description="ID аватарки")
-    url: str = Field(..., description="URL для доступа к аватарке")
-    thumbnail_url: str = Field(..., description="URL thumbnail")
-    width: int = Field(..., description="Ширина изображения")
-    height: int = Field(..., description="Высота изображения")
-    file_size: int = Field(..., description="Размер файла в байтах")
+    avatar_id: str = Field(..., description='Уникальный идентификатор аватара')
+    url: str = Field(..., description='URL ресурса')
+    thumbnail_url: str = Field(..., description='URL уменьшенной версии изображения аватара')
+    width: int = Field(..., description='Ширина изображения в пикселях')
+    height: int = Field(..., description='Высота изображения в пикселях')
+    file_size: int = Field(..., description='Размер файла в байтах')
 
 
 class AvatarResponse(BaseModel):
     """Информация об аватарке (расширенная)"""
     model_config = ConfigDict(from_attributes=True)
     
-    avatar_id: str = Field(..., description="ID аватарки")
-    url: str = Field(..., description="URL для доступа к аватарке")
-    thumbnail_url: str = Field(..., description="URL thumbnail")
-    width: int = Field(..., description="Ширина изображения")
-    height: int = Field(..., description="Высота изображения")
-    file_size: int = Field(..., description="Размер файла в байтах")
-    is_current: bool = Field(..., description="Является ли текущей аватаркой")
-    created_at: datetime = Field(..., description="Дата загрузки")
-    file_name: str = Field(..., description="Оригинальное имя файла")
+    avatar_id: str = Field(..., description='Уникальный идентификатор аватара')
+    url: str = Field(..., description='URL ресурса')
+    thumbnail_url: str = Field(..., description='URL уменьшенной версии изображения аватара')
+    width: int = Field(..., description='Ширина изображения в пикселях')
+    height: int = Field(..., description='Высота изображения в пикселях')
+    file_size: int = Field(..., description='Размер файла в байтах')
+    is_current: bool = Field(..., description='Признак того, что аватар является текущим')
+    created_at: datetime = Field(..., description='Дата и время создания записи')
+    file_name: str = Field(..., description='Имя файла')
 
 
 class AvatarDeleteResponse(BaseModel):
     """Ответ после удаления аватарки"""
-    deleted: bool = Field(..., description="Удалено ли")
-    avatar_id: str = Field(..., description="ID удаленной аватарки")
+    deleted: bool = Field(..., description='Признак успешного удаления')
+    avatar_id: str = Field(..., description='Уникальный идентификатор аватара')
 
 
 class ErrorResponse(BaseModel):
     """Ответ с ошибкой"""
-    detail: str = Field(..., description="Описание ошибки")
+    detail: str = Field(..., description='Подробное описание ошибки')
 
 
 # События для RabbitMQ
 class AvatarUploadedEvent(BaseModel):
     """Событие: аватарка загружена"""
-    event_type: str = "avatar.uploaded"
-    keycloak_id: str
-    avatar_id: str
-    url: str
-    thumbnail_url: str
-    width: int
-    height: int
-    file_size: int
-    is_current: bool = Field(True, description="Является ли текущей")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    event_type: str = Field('avatar.uploaded', description='Тип события загрузки аватара')
+    keycloak_id: str = Field(..., description='Уникальный идентификатор пользователя в Keycloak')
+    avatar_id: str = Field(..., description='Уникальный идентификатор аватара')
+    url: str = Field(..., description='URL ресурса')
+    thumbnail_url: str = Field(..., description='URL уменьшенной версии изображения аватара')
+    width: int = Field(..., description='Ширина изображения в пикселях')
+    height: int = Field(..., description='Высота изображения в пикселях')
+    file_size: int = Field(..., description='Размер файла в байтах')
+    is_current: bool = Field(True, description='Признак того, что аватар является текущим')
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description='Дата и время события')
 
 
 class AvatarDeletedEvent(BaseModel):
     """Событие: аватарка удалена"""
-    event_type: str = "avatar.deleted"
-    keycloak_id: str
-    avatar_id: str
-    is_current: bool = Field(False, description="Была ли текущей")
-    soft_delete: bool = Field(True, description="Soft delete или hard delete")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    event_type: str = Field('avatar.deleted', description='Тип события удаления аватара')
+    keycloak_id: str = Field(..., description='Уникальный идентификатор пользователя в Keycloak')
+    avatar_id: str = Field(..., description='Уникальный идентификатор аватара')
+    is_current: bool = Field(False, description='Признак того, что аватар является текущим')
+    soft_delete: bool = Field(True, description='Признак мягкого удаления без физического удаления данных')
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description='Дата и время события')
 
 
 class AvatarUpdatedEvent(BaseModel):
     """Событие: аватарка обновлена (смена текущей)"""
-    event_type: str = "avatar.updated"
-    keycloak_id: str
-    avatar_id: str
-    is_current: bool = Field(True, description="Новый статус")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    event_type: str = Field('avatar.updated', description='Тип события обновления аватара')
+    keycloak_id: str = Field(..., description='Уникальный идентификатор пользователя в Keycloak')
+    avatar_id: str = Field(..., description='Уникальный идентификатор аватара')
+    is_current: bool = Field(True, description='Признак того, что аватар является текущим')
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description='Дата и время события')

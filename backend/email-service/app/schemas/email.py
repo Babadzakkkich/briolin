@@ -13,38 +13,43 @@ class EmailType(str, Enum):
 
 
 class EmailSendRequest(BaseModel):
-    to: EmailStr
-    subject: str
-    body: str
-    html_body: Optional[str] = None
+    """Схема запроса на отправку одного электронного письма."""
+    to: EmailStr = Field(..., description='Адрес электронной почты получателя')
+    subject: str = Field(..., description='Тема электронного письма')
+    body: str = Field(..., description='Текстовое содержимое электронного письма')
+    html_body: Optional[str] = Field(None, description='HTML-содержимое электронного письма')
 
 
 class EmailTemplate(BaseModel):
-    to: EmailStr
-    template: EmailType
-    context: Dict[str, Any] = Field(default_factory=dict)
+    """Схема запроса на отправку электронного письма по заданному шаблону."""
+    to: EmailStr = Field(..., description='Адрес электронной почты получателя')
+    template: EmailType = Field(..., description='Тип шаблона электронного письма')
+    context: Dict[str, Any] = Field(default_factory=dict, description='Контекст с данными для подстановки в шаблон письма')
 
 
 class BulkEmailRequest(BaseModel):
-    recipients: list[EmailStr]
-    subject: str
-    body: str
-    html_body: Optional[str] = None
+    """Схема запроса на массовую отправку электронного письма нескольким получателям."""
+    recipients: list[EmailStr] = Field(..., description='Список адресов электронной почты получателей')
+    subject: str = Field(..., description='Тема электронного письма')
+    body: str = Field(..., description='Текстовое содержимое электронного письма')
+    html_body: Optional[str] = Field(None, description='HTML-содержимое электронного письма')
 
 
 class EmailResponse(BaseModel):
-    success: bool
-    message: str
-    to: EmailStr
+    """Схема результата операции отправки электронного письма."""
+    success: bool = Field(..., description='Признак успешного выполнения операции')
+    message: str = Field(..., description='Сообщение о результате отправки письма')
+    to: EmailStr = Field(..., description='Адрес электронной почты получателя')
 
 
 class EmailNotification(BaseModel):
-    type: EmailType
-    to: EmailStr
-    name: Optional[str] = None
-    timestamp: Optional[str] = None
-    test_name: Optional[str] = None
-    score: Optional[int] = None
-    total: Optional[int] = None
-    percentage: Optional[float] = None
-    code: Optional[str] = None
+    """Схема данных уведомления, используемого для формирования электронного письма."""
+    type: EmailType = Field(..., description='Тип почтового уведомления')
+    to: EmailStr = Field(..., description='Адрес электронной почты получателя')
+    name: Optional[str] = Field(None, description='Имя получателя уведомления')
+    timestamp: Optional[str] = Field(None, description='Дата и время события, связанного с уведомлением')
+    test_name: Optional[str] = Field(None, description='Название теста, связанного с уведомлением')
+    score: Optional[int] = Field(None, description='Количество набранных баллов')
+    total: Optional[int] = Field(None, description='Максимально возможное количество баллов')
+    percentage: Optional[float] = Field(None, description='Результат теста в процентах')
+    code: Optional[str] = Field(None, description='Код подтверждения')

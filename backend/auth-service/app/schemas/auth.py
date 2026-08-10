@@ -5,43 +5,50 @@ from shared.schemas.shared import UserRole
 
 
 class UserRegister(BaseModel):
-    email: EmailStr
-    username: str = Field(..., min_length=3, max_length=50)
-    password: str = Field(..., min_length=6)
+    """Схема данных для регистрации нового пользователя."""
+    email: EmailStr = Field(..., description='Адрес электронной почты пользователя')
+    username: str = Field(..., min_length=3, max_length=50, description='Имя пользователя для отображения и входа в систему')
+    password: str = Field(..., min_length=6, description='Пароль пользователя')
 
 
 class UserLogin(BaseModel):
-    username: str
-    password: str
+    """Схема учётных данных для входа пользователя в систему."""
+    username: str = Field(..., description='Имя пользователя для отображения и входа в систему')
+    password: str = Field(..., description='Пароль пользователя')
 
 
 class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str
-    expires_in: int
-    refresh_expires_in: int
+    """Схема ответа с токенами доступа и параметрами их действия."""
+    access_token: str = Field(..., description='Токен доступа для авторизации запросов')
+    refresh_token: str = Field(..., description='Refresh-токен для обновления сессии пользователя')
+    token_type: str = Field(..., description='Тип токена авторизации')
+    expires_in: int = Field(..., description='Оставшееся время действия токена в секундах')
+    refresh_expires_in: int = Field(..., description='Оставшееся время действия refresh-токена в секундах')
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    """Схема запроса на обновление токенов пользовательской сессии."""
+    refresh_token: str = Field(..., description='Refresh-токен для обновления сессии пользователя')
 
 
 class LogoutRequest(BaseModel):
-    refresh_token: str
+    """Схема запроса на завершение пользовательской сессии."""
+    refresh_token: str = Field(..., description='Refresh-токен для обновления сессии пользователя')
 
 
 class TokenPayload(BaseModel):
-    sub: Optional[str] = None
-    exp: Optional[int] = None
-    realm_access: Optional[dict] = None
-    resource_access: Optional[dict] = None
+    """Схема полезной нагрузки токена аутентификации пользователя."""
+    sub: Optional[str] = Field(None, description='Идентификатор субъекта из JWT-токена')
+    exp: Optional[int] = Field(None, description='Время истечения срока действия токена в формате Unix timestamp')
+    realm_access: Optional[dict] = Field(None, description='Данные о ролях пользователя на уровне realm из токена Keycloak')
+    resource_access: Optional[dict] = Field(None, description='Данные о клиентских ролях пользователя из токена Keycloak')
 
 
 class UserResponse(BaseModel):
+    """Схема ответа с основными данными учётной записи пользователя."""
     model_config = ConfigDict(from_attributes=True)
     
-    id: int
-    keycloak_id: str
-    email: EmailStr
-    is_active: bool
+    id: int = Field(..., description='Внутренний идентификатор пользователя')
+    keycloak_id: str = Field(..., description='Уникальный идентификатор пользователя в Keycloak')
+    email: EmailStr = Field(..., description='Адрес электронной почты пользователя')
+    is_active: bool = Field(..., description='Признак активности учётной записи')
