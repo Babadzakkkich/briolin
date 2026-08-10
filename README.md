@@ -76,44 +76,26 @@ Keycloak Admin: http://localhost:8080 (admin/admin)
 MinIO Console: http://localhost:9001
 
 
-Структура проекта
+## Структура проекта
 
 briolin/
-
 ├── backend/                    # Все бэкенд-сервисы
-
 │   ├── api-gateway/            # Точка входа, проксирует запросы
-
 │   ├── auth-service/           # Аутентификация через Keycloak
-
 │   ├── user-service/           # Управление пользователями
-
 │   ├── profile-service/        # Профили и эмбеддинги
-
 │   ├── matching-service/       # Лайки, матчи, рекомендации
-
 │   ├── chat-service/           # Чаты и WebSocket
-
 │   ├── media-service/          # Аватарки (MinIO)
-
 │   ├── testing-service/        # Психологический тест
-
 │   ├── email-service/          # Email-уведомления
-
 │   └── shared/                 # Общий код (JWT, RabbitMQ, события)
-
 ├── frontend/                   # React-приложение
-
 ├── infrastructure/             # Инфраструктура
-
 │   ├── caddy/                  # Конфиг Caddy
-
 │   ├── keycloak/               # Realm для Keycloak
-
 │   └── postgres/               # SQL-скрипты инициализации
-
 ├── scripts/                    # Вспомогательные скрипты
-
 └── docker-compose.yml          # Оркестрация всех сервисов
 
 
