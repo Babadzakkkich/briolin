@@ -25,6 +25,15 @@ import { MatchesPage } from '@/pages/dashboard/MatchesPage';
 import { AdminUsersPage } from '@/pages/dashboard/admin/AdminUsersPage';
 import { AdminUserDetailPage } from '@/pages/dashboard/admin/AdminUserDetailPage';
 import { ToastContainer } from '@/shared/toast/ToastContainer';
+import { BookingPage } from '@/pages/dashboard/BookingPage';
+import { PaymentPage } from '@/pages/dashboard/PaymentPage';
+import { BookingSuccessPage } from '@/pages/dashboard/BookingSuccessPage';
+import { PsychologistLayout } from '@/app/layouts/PsychologistLayout';
+import { PsychologistDashboardPage } from '@/pages/psychologist/PsychologistDashboardPage';
+import { PsychologistBookingsPage } from '@/pages/psychologist/PsychologistBookingsPage';
+import { PsychologistServicesPage } from '@/pages/psychologist/PsychologistServicesPage';
+import { ServiceFormPage } from '@/pages/psychologist/ServiceFormPage';
+import { InterviewResultPage } from '@/pages/psychologist/InterviewResultPage';
 
 export function AppRouter() {
   return (
@@ -50,6 +59,9 @@ export function AppRouter() {
               <Route path='settings' element={<SettingsPage />} />
               <Route path='messages' element={<MessagesPage />} />
               <Route path='services' element={<ServicesPage />} />
+              <Route path='services/:serviceId/booking' element={<BookingPage />} />
+              <Route path='payment' element={<PaymentPage />} />
+              <Route path='booking-success/:bookingId' element={<BookingSuccessPage />} />
               <Route path='search/classic' element={<ClassicSearchPage />} />
               <Route path='search/targeted' element={<TargetedSearchPage />} />
               <Route path='users/:keycloakId' element={<UserProfilePage />} />
@@ -62,6 +74,19 @@ export function AppRouter() {
                 <Route path='admin' element={<AdminUsersPage />} />
                 <Route path='admin/users/:keycloakId' element={<AdminUserDetailPage />} />
               </Route>
+            </Route>
+          </Route>
+        </Route>
+
+        <Route path='/psychologist' element={<AuthGuard />}>
+          <Route element={<RoleGuard role='psychologist' />}>
+            <Route element={<PsychologistLayout />}>
+              <Route index element={<PsychologistDashboardPage />} />
+              <Route path='bookings' element={<PsychologistBookingsPage />} />
+              <Route path='bookings/:bookingId/result' element={<InterviewResultPage />} />
+              <Route path='services' element={<PsychologistServicesPage />} />
+              <Route path='services/new' element={<ServiceFormPage />} />
+              <Route path='services/:serviceId/edit' element={<ServiceFormPage />} />
             </Route>
           </Route>
         </Route>

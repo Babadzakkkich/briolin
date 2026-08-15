@@ -146,6 +146,7 @@ export function BottomNav() {
   const location = useLocation();
   const accessToken = useAuthStore((s) => s.accessToken);
   const isAdmin = useAccountStore((s) => s.roles.includes('admin'));
+  const isPsychologist = useAccountStore((s) => s.roles.includes('psychologist'));
 
   useEffect(() => {
     if (!accessToken) return;
@@ -155,9 +156,13 @@ export function BottomNav() {
       .catch(() => {});
   }, [accessToken]);
 
-  const moreNav = isAdmin
-    ? [...MORE_NAV, { to: '/dashboard/admin', icon: Shield, label: 'Админка' }]
-    : MORE_NAV;
+  const moreNav = [
+    ...MORE_NAV,
+    ...(isAdmin ? [{ to: '/dashboard/admin', icon: Shield, label: 'Админка' }] : []),
+    ...(isPsychologist
+      ? [{ to: '/psychologist', icon: Briefcase, label: 'Кабинет психолога' }]
+      : []),
+  ];
   const isMoreActive = moreNav.some((item) => location.pathname.startsWith(item.to));
 
   function renderMainItem({ to, icon: Icon, label }: (typeof MAIN_NAV)[number]) {
@@ -263,6 +268,7 @@ export function BottomNav() {
 
 export function Sidebar() {
   const isAdmin = useAccountStore((s) => s.roles.includes('admin'));
+  const isPsychologist = useAccountStore((s) => s.roles.includes('psychologist'));
 
   return (
     <nav className='border-border hidden h-screen w-70 shrink-0 flex-col gap-10 border-r bg-white pt-10 pb-4 md:flex'>
@@ -306,6 +312,11 @@ export function Sidebar() {
         {isAdmin && (
           <SidebarItem to='/dashboard/admin' icon={Shield}>
             Админка
+          </SidebarItem>
+        )}
+        {isPsychologist && (
+          <SidebarItem to='/psychologist' icon={Briefcase}>
+            Кабинет психолога
           </SidebarItem>
         )}
       </div>

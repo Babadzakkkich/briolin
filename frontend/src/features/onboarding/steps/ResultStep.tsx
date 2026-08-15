@@ -1,7 +1,7 @@
 import { Button } from '@/shared/uikit/Button';
 import { Text } from '@/shared/uikit/Text';
 import type { StepProps } from '@/features/onboarding/model/types';
-import { CircleCheck, CircleX } from 'lucide-react';
+import { BarChart3, CircleCheck, CircleX, ShieldCheck, Target } from 'lucide-react';
 
 interface TestResults {
   total_score: number;
@@ -64,12 +64,37 @@ export function ResultStep({ onNext, onRetry, data }: StepProps) {
             </div>
           </div>
         )}
+
+        {results && (
+          <div className='grid w-full grid-cols-3 gap-2'>
+            {[
+              { icon: BarChart3, label: 'Баллы', value: `${Math.round(results.total_score)}` },
+              {
+                icon: Target,
+                label: 'Максимум',
+                value: `${Math.round(results.max_possible_score)}`,
+              },
+              { icon: ShieldCheck, label: 'Статус', value: passed ? 'Пройдено' : 'Повторить' },
+            ].map(({ icon: Icon, label, value }) => (
+              <div
+                key={label}
+                className='bg-surface flex flex-col items-center rounded-xl px-2 py-3'
+              >
+                <Icon className='text-accent mb-1' size={16} />
+                <span className='text-secondary text-[10px]'>{label}</span>
+                <span className='text-primary mt-0.5 text-[12px] font-semibold'>{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {passed ? (
         <Button onClick={() => onNext()}>Перейти в приложение</Button>
       ) : (
-        <Button variant='outline' onClick={onRetry}>Пройти тест заново</Button>
+        <Button variant='outline' onClick={onRetry}>
+          Пройти тест заново
+        </Button>
       )}
     </div>
   );

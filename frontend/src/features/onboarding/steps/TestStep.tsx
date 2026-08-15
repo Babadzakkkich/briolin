@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import axios from 'axios';
 import { Button } from '@/shared/uikit/Button';
 import { Text } from '@/shared/uikit/Text';
@@ -21,6 +22,7 @@ export function TestStep({ onNext }: StepProps<unknown>) {
   const [loadError, setLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [answers, setAnswers] = useState<Record<number, string | number>>({});
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,13 +77,21 @@ export function TestStep({ onNext }: StepProps<unknown>) {
         onNext(result.results);
       } else {
         setCurrentIndex((i) => i + 1);
-        setSelectedAnswer(null);
+        setAnswers((previous) => ({ ...previous, [currentIndex]: selectedAnswer }));
+        setSelectedAnswer(answers[currentIndex + 1] ?? null);
       }
     } catch {
       toast.error('Ошибка при отправке ответа');
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handlePrevious() {
+    if (currentIndex === 0 || submitting) return;
+    const previousIndex = currentIndex - 1;
+    setCurrentIndex(previousIndex);
+    setSelectedAnswer(answers[previousIndex] ?? null);
   }
 
   if (loading && questions.length === 0) {
@@ -146,9 +156,23 @@ export function TestStep({ onNext }: StepProps<unknown>) {
 
       <QuestionOptions question={current} selected={selectedAnswer} onSelect={setSelectedAnswer} />
 
-      <Button onClick={handleNext} disabled={selectedAnswer === null || submitting}>
-        {isLast ? 'Завершить' : 'Далее'}
-      </Button>
+      <div className='flex gap-3'>
+        <Button
+          variant='secondary'
+          onClick={handlePrevious}
+          disabled={currentIndex === 0 || submitting}
+          aria-label='Предыдущий вопрос'
+        >
+          <ArrowLeft size={17} />
+        </Button>
+        <Button
+          className='flex-1'
+          onClick={handleNext}
+          disabled={selectedAnswer === null || submitting}
+        >
+          {submitting ? 'Сохраняем...' : isLast ? 'Завершить анкету' : 'Далее'}
+        </Button>
+      </div>
     </div>
   );
 }

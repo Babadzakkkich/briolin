@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Zap, Lock, AlertCircle, X, Heart } from 'lucide-react';
-import { searchApi } from '@/entities/search';
+import { filterSearchableProfiles, searchApi } from '@/entities/search';
 import type { SearchLockInfo, ProfilePreview } from '@/entities/search';
 import { matchingApi } from '@/entities/matching';
 import { profileApi } from '@/entities/profile';
@@ -147,8 +147,9 @@ export function CupidonPage() {
     setExhausted(false);
     try {
       const res = await searchApi.recommendations();
-      seenIds.current = new Set(res.data.profiles.map((p) => p.keycloak_id));
-      setQueue(res.data.profiles);
+      const profiles = await filterSearchableProfiles(res.data.profiles);
+      seenIds.current = new Set(profiles.map((p) => p.keycloak_id));
+      setQueue(profiles);
       pageRef.current = 1;
       totalPagesRef.current = res.data.pagination.total_pages;
       setLockInfo(res.data.lock_info ?? null);
@@ -172,7 +173,8 @@ export function CupidonPage() {
       for (let attempt = 0; attempt < MAX_EMPTY_FETCHES; attempt++) {
         const nextPage = pageRef.current < totalPagesRef.current ? pageRef.current + 1 : 1;
         const res = await searchApi.recommendations({ page: nextPage });
-        const fresh = res.data.profiles.filter((p) => !seenIds.current.has(p.keycloak_id));
+        const eligible = await filterSearchableProfiles(res.data.profiles);
+        const fresh = eligible.filter((p) => !seenIds.current.has(p.keycloak_id));
         fresh.forEach((p) => seenIds.current.add(p.keycloak_id));
         pageRef.current = nextPage;
         totalPagesRef.current = res.data.pagination.total_pages;

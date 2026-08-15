@@ -1,7 +1,12 @@
 import { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Search } from 'lucide-react';
-import { searchApi, ProfileCard, SearchSkeleton } from '@/entities/search';
+import {
+  searchApi,
+  ProfileCard,
+  SearchSkeleton,
+  filterSearchableProfiles,
+} from '@/entities/search';
 import type { SearchResponse, TargetedSearchRequest, ProfilePreview } from '@/entities/search';
 import { profileApi } from '@/entities/profile';
 import type { QuestionsStatus, ProfileQuestions } from '@/entities/profile';
@@ -68,7 +73,12 @@ export function TargetedSearchPage() {
       setLastFilters(filters);
       try {
         const res = await searchApi.targeted(filters);
-        setResult(res.data);
+        const profiles = await filterSearchableProfiles(res.data.profiles);
+        setResult({
+          ...res.data,
+          profiles,
+          pagination: { ...res.data.pagination, total_results: profiles.length },
+        });
         setSearched(true);
       } catch {
         setSearchError(true);

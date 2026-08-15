@@ -1,7 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, AlertCircle, ChevronDown } from 'lucide-react';
-import { searchApi, ProfileCard, SearchSkeleton } from '@/entities/search';
+import {
+  searchApi,
+  ProfileCard,
+  SearchSkeleton,
+  filterSearchableProfiles,
+} from '@/entities/search';
 import type { ProfilePreview } from '@/entities/search';
 import { profileApi } from '@/entities/profile';
 import type { QuestionsStatus, ProfileQuestions } from '@/entities/profile';
@@ -84,11 +89,13 @@ export function ClassicSearchPage() {
       setMaxAge(s.maxAge || '');
       setCity(s.city || '');
       if (s.profiles?.length > 0) {
-        setProfiles(s.profiles);
-        setTotalResults(s.totalResults || 0);
-        setHasMore(s.hasMore || false);
-        setPage(s.page || 1);
-        setSearched(true);
+        filterSearchableProfiles(s.profiles).then((eligibleProfiles) => {
+          setProfiles(eligibleProfiles);
+          setTotalResults(eligibleProfiles.length);
+          setHasMore(s.hasMore || false);
+          setPage(s.page || 1);
+          setSearched(true);
+        });
       }
     } catch {}
   }, []);
@@ -117,13 +124,16 @@ export function ClassicSearchPage() {
           page: p,
           limit: 12,
         });
+        const eligibleProfiles = await filterSearchableProfiles(res.data.profiles);
         const newProfiles = append
-          ? (prev: ProfilePreview[]) => [...prev, ...res.data.profiles]
-          : res.data.profiles;
+          ? (prev: ProfilePreview[]) => [...prev, ...eligibleProfiles]
+          : eligibleProfiles;
         const nextHasMore = p < res.data.pagination.total_pages;
 
         setProfiles(newProfiles);
-        setTotalResults(res.data.pagination.total_results);
+        setTotalResults((current) =>
+          append ? current + eligibleProfiles.length : eligibleProfiles.length,
+        );
         setHasMore(nextHasMore);
         setPage(p);
         setSearched(true);
@@ -135,8 +145,8 @@ export function ClassicSearchPage() {
             minAge,
             maxAge,
             city,
-            profiles: res.data.profiles,
-            totalResults: res.data.pagination.total_results,
+            profiles: eligibleProfiles,
+            totalResults: eligibleProfiles.length,
             hasMore: nextHasMore,
             page: p,
           };

@@ -5,12 +5,19 @@ import { ProfileStep } from '@/features/onboarding/steps/ProfileStep';
 import { ResultStep } from '@/features/onboarding/steps/ResultStep';
 import { TestStep } from '@/features/onboarding/steps/TestStep';
 import type { StepProps } from '@/features/onboarding/model/types';
+import { WelcomeStep } from '@/features/onboarding/steps/WelcomeStep';
 
-const STEPS: React.ComponentType<StepProps<unknown>>[] = [ProfileStep, TestStep, ResultStep];
+const STEPS: React.ComponentType<StepProps<unknown>>[] = [
+  WelcomeStep,
+  ProfileStep,
+  TestStep,
+  ResultStep,
+];
 
 export function OnboardingPage() {
   const location = useLocation();
-  const initialStep = (location.state as { step?: number } | null)?.step ?? 0;
+  const requestedStep = (location.state as { step?: number } | null)?.step ?? 0;
+  const initialStep = Math.min(Math.max(requestedStep, 0), STEPS.length - 1);
   const [step, setStep] = useState(initialStep);
   const [stepData, setStepData] = useState<unknown>(undefined);
   const navigate = useNavigate();
@@ -28,7 +35,7 @@ export function OnboardingPage() {
 
   return (
     <div className='flex flex-col items-center gap-6'>
-      <div className='flex gap-2'>
+      <div className='flex gap-2' aria-label={`Шаг ${step + 1} из ${STEPS.length}`}>
         {STEPS.map((_, i) => (
           <div
             key={i}

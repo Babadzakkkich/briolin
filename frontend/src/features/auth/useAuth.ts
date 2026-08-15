@@ -25,7 +25,11 @@ export function useAuth() {
     const payload = getJwtPayload(data.access_token);
     if (!payload.email_verified) {
       const email = payload.email as string | undefined;
-      try { await sessionApi.requestVerification(); } catch { /* код уже выслан */ }
+      try {
+        await sessionApi.requestVerification();
+      } catch {
+        /* код уже выслан */
+      }
       navigate('/check-email', { state: { email } });
       return;
     }
@@ -50,11 +54,11 @@ export function useAuth() {
       if (hasPassed) {
         navigate('/dashboard');
       } else {
-        navigate('/onboarding', { state: { step: 1 } });
+        navigate('/onboarding', { state: { step: 2 } });
       }
     } catch {
       setTestPassed(false);
-      navigate('/onboarding', { state: { step: 1 } });
+      navigate('/onboarding', { state: { step: 2 } });
     }
   };
 
