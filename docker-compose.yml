@@ -1,53 +1,53 @@
 services:
-    caddy:
-        image: caddy:2-alpine
-        container_name: briolin-caddy
-        ports:
-            - "80:80"
-        volumes:
-            - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-            - caddy-data:/data
-            - caddy-config:/config
-        depends_on:
-            - frontend
-            - api-gateway
-        networks:
-            - briolin-network
-        restart: unless-stopped
+  caddy:
+      image: caddy:2-alpine
+      container_name: briolin-caddy
+      ports:
+          - "80:80"
+      volumes:
+          - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+          - caddy-data:/data
+          - caddy-config:/config
+      depends_on:
+          - frontend
+          - api-gateway
+      networks:
+          - briolin-network
+      restart: unless-stopped
 
-    frontend:
-        container_name: briolin-frontend
-        build:
-            context: ./frontend
-            dockerfile: Dockerfile.local
-        expose:
-            - "5173"
-        environment:
-            VITE_API_BASE_URL: /api/v1
-        volumes:
-            - ./frontend:/app
-            - /app/node_modules
-        networks:
-            - briolin-network
-    # =========== INFRASTRUCTURE ===========
-    keycloak-postgres:
-        image: postgres:17-alpine
-        container_name: keycloak-postgres
-        environment:
-            POSTGRES_USER: keycloak
-            POSTGRES_PASSWORD: keycloak
-            POSTGRES_DB: keycloak
-        ports:
-            - "5433:5432"
-        volumes:
-            - keycloak-postgres-data:/var/lib/postgresql/data
-        networks:
-            - briolin-network
-        healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U keycloak"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
+  frontend:
+      container_name: briolin-frontend
+      build:
+          context: ./frontend
+          dockerfile: Dockerfile.local
+      expose:
+          - "5173"
+      environment:
+          VITE_API_BASE_URL: /api/v1
+      volumes:
+          - ./frontend:/app
+          - /app/node_modules
+      networks:
+          - briolin-network
+  # =========== INFRASTRUCTURE ===========
+  keycloak-postgres:
+      image: postgres:17-alpine
+      container_name: keycloak-postgres
+      environment:
+          POSTGRES_USER: keycloak
+          POSTGRES_PASSWORD: keycloak
+          POSTGRES_DB: keycloak
+      ports:
+          - "5433:5432"
+      volumes:
+          - keycloak-postgres-data:/var/lib/postgresql/data
+      networks:
+          - briolin-network
+      healthcheck:
+          test: ["CMD-SHELL", "pg_isready -U keycloak"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.4
@@ -103,42 +103,42 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-    redis:
-        image: redis:7-alpine
-        container_name: briolin-redis
-        ports:
-            - "6379:6379"
-        volumes:
-            - redis-data:/data
-        command: redis-server --appendonly yes
-        networks:
-            - briolin-network
-        healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
-            interval: 5s
-            timeout: 3s
-            retries: 5
+  redis:
+      image: redis:7-alpine
+      container_name: briolin-redis
+      ports:
+          - "6379:6379"
+      volumes:
+          - redis-data:/data
+      command: redis-server --appendonly yes
+      networks:
+          - briolin-network
+      healthcheck:
+          test: ["CMD", "redis-cli", "ping"]
+          interval: 5s
+          timeout: 3s
+          retries: 5
 
-    redis-insight:
-        image: redislabs/redisinsight:2.70
-        container_name: briolin-redis-insight
-        ports:
-            - "5540:5540"
-        volumes:
-            - redis-insight-data:/db
-        environment:
-            - REDISINSIGHT_HOST=0.0.0.0
-            - REDISINSIGHT_PORT=5540
-            - REDISINSIGHT_DATA_DIR=/db
-        depends_on:
-            - redis
-        networks:
-            - briolin-network
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:5540/"]
-            interval: 30s
-            timeout: 10s
-            retries: 3
+  redis-insight:
+      image: redislabs/redisinsight:2.70
+      container_name: briolin-redis-insight
+      ports:
+          - "5540:5540"
+      volumes:
+          - redis-insight-data:/db
+      environment:
+          - REDISINSIGHT_HOST=0.0.0.0
+          - REDISINSIGHT_PORT=5540
+          - REDISINSIGHT_DATA_DIR=/db
+      depends_on:
+          - redis
+      networks:
+          - briolin-network
+      healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:5540/"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
 
   rabbitmq:
     image: rabbitmq:4.2.2-management-alpine
@@ -452,27 +452,27 @@ services:
       - init
 
 volumes:
-    caddy-data:
-    caddy-config:
-    postgres-db-data:
+  caddy-data:
+  caddy-config:
+  postgres-db-data:
   mongo-db-data:
   pgadmin-data:
   keycloak-postgres-data:
-    keycloak-data:
-    redis-data:
-    redis-insight-data:
-    rabbitmq-data:
-    minio-data:
-        driver: local
-    model-cache:
-    auth-postgres-data:
-    user-postgres-data:
-    profile-postgres-data:
-    testing-postgres-data:
-    chat-postgres-data:
-    matching-postgres-data:
-    media-postgres-data:
+  keycloak-data:
+  redis-data:
+  redis-insight-data:
+  rabbitmq-data:
+  minio-data:
+    driver: local
+  model-cache:
+  auth-postgres-data:
+  user-postgres-data:
+  profile-postgres-data:
+  testing-postgres-data:
+  chat-postgres-data:
+  matching-postgres-data:
+  media-postgres-data:
 
 networks:
-    briolin-network:
-        driver: bridge
+  briolin-network:
+      driver: bridge
